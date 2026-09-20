@@ -181,4 +181,112 @@ describe("optimizeBulk", () => {
       expect(result.nature?.minus).toBe("spa"); // Impish nature
     });
   });
+
+  describe("Def & SpD multipliers (1.5x, 2.0x)", () => {
+    it("shifts EVs to Def and HP when SpD has 1.5x multiplier (+1 SpD stage / Sandstorm)", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      // Base case (1.0x): 32 H, 16 Def, 16 SpD
+      const normalResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+      });
+      expect(normalResult.evs).toEqual({ hp: 32, def: 16, spd: 16 });
+
+      // With 1.5x SpD: Def needs more investment to balance physical and special bulk
+      const spdBoostedResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+        spdMultiplier: 1.5,
+      });
+
+      expect(spdBoostedResult.evs.hp).toBe(32);
+      expect(spdBoostedResult.evs.def).toBeGreaterThan(spdBoostedResult.evs.spd);
+      expect(spdBoostedResult.evs.hp + spdBoostedResult.evs.def + spdBoostedResult.evs.spd).toBe(64);
+    });
+
+    it("shifts EVs to SpD and HP when Def has 2.0x multiplier (+2 Def stages)", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      const defBoostedResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+        defMultiplier: 2.0,
+      });
+
+      expect(defBoostedResult.evs.hp).toBe(32);
+      expect(defBoostedResult.evs.spd).toBeGreaterThan(defBoostedResult.evs.def);
+      expect(defBoostedResult.evs.hp + defBoostedResult.evs.def + defBoostedResult.evs.spd).toBe(64);
+    });
+
+    it("maintains symmetric distribution when both Def and SpD have 1.5x multiplier", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      const normalResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+      });
+      const bothBoostedResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+        defMultiplier: 1.5,
+        spdMultiplier: 1.5,
+      });
+
+      expect(bothBoostedResult.evs).toEqual(normalResult.evs);
+      expect(bothBoostedResult.score).toBeGreaterThan(normalResult.score);
+    });
+
+    it("selects Def+ nature when SpD multiplier is 1.5x", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      const result = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        spdMultiplier: 1.5,
+      });
+
+      expect(result.nature?.plus).toBe("def");
+    });
+
+    it("selects SpD+ nature when Def multiplier is 2.0x", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      const result = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        defMultiplier: 2.0,
+      });
+
+      expect(result.nature?.plus).toBe("spd");
+    });
+
+    it("safely falls back to 1.0 when multipliers are non-positive or undefined", () => {
+      const baseStats = { hp: 100, def: 100, spd: 100 };
+      const nature = { plus: null, minus: null };
+      const pool = 64;
+
+      const normalResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+      });
+      const fallbackResult = optimizeBulk(baseStats, nature, pool, {
+        physicalRatio: 0.5,
+        optimizeNature: false,
+        defMultiplier: -1,
+        spdMultiplier: 0,
+      });
+
+      expect(fallbackResult.evs).toEqual(normalResult.evs);
+      expect(fallbackResult.score).toBeCloseTo(normalResult.score, 5);
+    });
+  });
 });

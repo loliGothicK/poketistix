@@ -2,6 +2,7 @@ import {
   alpha,
   Autocomplete,
   Avatar,
+  Badge,
   Box,
   Button,
   Chip,
@@ -148,6 +149,8 @@ export function Training({
   const [bulkSettingsAnchorEl, setBulkSettingsAnchorEl] = useState<HTMLButtonElement | null>(null);
   const isBulkSettingsOpen = Boolean(bulkSettingsAnchorEl);
   const [physicalRatio, setPhysicalRatio] = useState<number>(0.5);
+  const [defMultiplier, setDefMultiplier] = useState<number>(1.0);
+  const [spdMultiplier, setSpdMultiplier] = useState<number>(1.0);
 
   // --- 仮想敵耐え調整モーダル状態 ---
   const [survivalModalOpen, setSurvivalModalOpen] = useState<boolean>(false);
@@ -221,6 +224,8 @@ export function Training({
 
     const result = optimizeBulk(baseStats, ongoing.nature ?? {}, availablePool, {
       physicalRatio,
+      defMultiplier,
+      spdMultiplier,
       minEvs: {
         hp: ongoing.evs?.hp ?? 0,
         def: ongoing.evs?.def ?? 0,
@@ -904,11 +909,20 @@ export function Training({
                     size="small"
                     onClick={(e) => setBulkSettingsAnchorEl(e.currentTarget)}
                     sx={{
-                      color: "text.secondary",
+                      color:
+                        defMultiplier !== 1.0 || spdMultiplier !== 1.0
+                          ? "primary.main"
+                          : "text.secondary",
                       "&:hover": { color: "primary.main" },
                     }}
                   >
-                    <Tune fontSize="small" />
+                    <Badge
+                      color="primary"
+                      variant="dot"
+                      invisible={defMultiplier === 1.0 && spdMultiplier === 1.0}
+                    >
+                      <Tune fontSize="small" />
+                    </Badge>
                   </IconButton>
                 </Tooltip>
 
@@ -928,7 +942,7 @@ export function Training({
                     paper: {
                       sx: {
                         p: 2.5,
-                        width: 280,
+                        width: 300,
                         borderRadius: 2,
                         boxShadow: theme.shadows[8],
                       },
@@ -936,9 +950,32 @@ export function Training({
                   }}
                 >
                   <Stack spacing={2}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      {t("teamBuilder.optimizeBulkSettings")}
-                    </Typography>
+                    <Stack
+                      direction="row"
+                      sx={{ justifyContent: "space-between", alignItems: "center" }}
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {t("teamBuilder.optimizeBulkSettings")}
+                      </Typography>
+                      {(defMultiplier !== 1.0 || spdMultiplier !== 1.0) && (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => {
+                            setDefMultiplier(1.0);
+                            setSpdMultiplier(1.0);
+                          }}
+                          sx={{
+                            fontSize: "0.7rem",
+                            p: 0,
+                            minWidth: "auto",
+                            textTransform: "none",
+                          }}
+                        >
+                          {t("teamBuilder.bulkMultiplierReset")}
+                        </Button>
+                      )}
+                    </Stack>
 
                     <Box>
                       <Stack
@@ -986,6 +1023,84 @@ export function Training({
                             color={physicalRatio === preset.ratio ? "primary" : "default"}
                             variant={physicalRatio === preset.ratio ? "filled" : "outlined"}
                             onClick={() => setPhysicalRatio(preset.ratio)}
+                            sx={{ fontSize: "0.75rem" }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Divider />
+
+                    <Box>
+                      <Stack
+                        direction="row"
+                        sx={{ justifyContent: "space-between", alignItems: "center", mb: 0.75 }}
+                      >
+                        <Typography variant="caption" color="text.secondary">
+                          {t("teamBuilder.bulkDefMultiplier")}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 700,
+                            color: defMultiplier !== 1.0 ? "primary.main" : "text.primary",
+                          }}
+                        >
+                          {defMultiplier}x
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                        {[
+                          { label: t("teamBuilder.bulkMultiplierNormal"), value: 1.0 },
+                          { label: t("teamBuilder.bulkMultiplier1_5"), value: 1.5 },
+                          { label: t("teamBuilder.bulkMultiplier2_0"), value: 2.0 },
+                        ].map((preset) => (
+                          <Chip
+                            key={preset.value}
+                            label={preset.label}
+                            size="small"
+                            clickable
+                            color={defMultiplier === preset.value ? "primary" : "default"}
+                            variant={defMultiplier === preset.value ? "filled" : "outlined"}
+                            onClick={() => setDefMultiplier(preset.value)}
+                            sx={{ fontSize: "0.75rem" }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Box>
+                      <Stack
+                        direction="row"
+                        sx={{ justifyContent: "space-between", alignItems: "center", mb: 0.75 }}
+                      >
+                        <Typography variant="caption" color="text.secondary">
+                          {t("teamBuilder.bulkSpdMultiplier")}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 700,
+                            color: spdMultiplier !== 1.0 ? "primary.main" : "text.primary",
+                          }}
+                        >
+                          {spdMultiplier}x
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                        {[
+                          { label: t("teamBuilder.bulkMultiplierNormal"), value: 1.0 },
+                          { label: t("teamBuilder.bulkMultiplier1_5"), value: 1.5 },
+                          { label: t("teamBuilder.bulkMultiplier2_0"), value: 2.0 },
+                        ].map((preset) => (
+                          <Chip
+                            key={preset.value}
+                            label={preset.label}
+                            size="small"
+                            clickable
+                            color={spdMultiplier === preset.value ? "primary" : "default"}
+                            variant={spdMultiplier === preset.value ? "filled" : "outlined"}
+                            onClick={() => setSpdMultiplier(preset.value)}
                             sx={{ fontSize: "0.75rem" }}
                           />
                         ))}

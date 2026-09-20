@@ -27,6 +27,16 @@ export interface BulkOptimizationOptions {
    * デフォルトは true
    */
   optimizeNature?: boolean;
+  /**
+   * 防御の補正倍率 (1.0 = 通常, 1.5 = 1.5倍, 2.0 = 2倍 など)
+   * デフォルトは 1.0
+   */
+  defMultiplier?: number;
+  /**
+   * 特防の補正倍率 (1.0 = 通常, 1.5 = 1.5倍, 2.0 = 2倍 など)
+   * デフォルトは 1.0
+   */
+  spdMultiplier?: number;
 }
 
 export interface BulkOptimizationResult {
@@ -44,6 +54,8 @@ export interface BulkOptimizationResult {
 
 function searchOptimalEvs(
   baseStats: { hp: number; def: number; spd: number },
+  defNatureMultiplier: number,
+  spdNatureMultiplier: number,
   defMultiplier: number,
   spdMultiplier: number,
   pool: number,
@@ -68,17 +80,19 @@ function searchOptimalEvs(
       const maxD = Math.min(remainingForD, MAX_EV_PER_STAT);
 
       for (let evD = minD; evD <= maxD; evD++) {
-        const B = calcStatus(baseStats.def, evB, defMultiplier);
-        const D = calcStatus(baseStats.spd, evD, spdMultiplier);
+        const B = calcStatus(baseStats.def, evB, defNatureMultiplier);
+        const D = calcStatus(baseStats.spd, evD, spdNatureMultiplier);
+        const effB = Math.floor(B * defMultiplier);
+        const effD = Math.floor(D * spdMultiplier);
 
         let score = 0;
         if (p === 1) {
-          score = H * B;
+          score = H * effB;
         } else if (p === 0) {
-          score = H * D;
+          score = H * effD;
         } else {
-          // (H * B * D) / (p * D + (1 - p) * B)
-          score = (H * B * D) / (p * D + (1 - p) * B);
+          // (H * effB * effD) / (p * effD + (1 - p) * effB)
+          score = (H * effB * effD) / (p * effD + (1 - p) * effB);
         }
 
         const totalUsed = evH + evB + evD;
@@ -126,17 +140,22 @@ export function optimizeBulk(
   const minB = Math.max(0, Math.min(MAX_EV_PER_STAT, options?.minEvs?.def ?? 0));
   const minD = Math.max(0, Math.min(MAX_EV_PER_STAT, options?.minEvs?.spd ?? 0));
 
+  const defMult = options?.defMultiplier && options.defMultiplier > 0 ? options.defMultiplier : 1.0;
+  const spdMult = options?.spdMultiplier && options.spdMultiplier > 0 ? options.spdMultiplier : 1.0;
+
   const isNaturePlusSpecified = Boolean(nature.plus);
   const shouldOptimizeNature = !isNaturePlusSpecified && (options?.optimizeNature ?? true);
 
   if (!shouldOptimizeNature) {
-    const defMultiplier = nature.plus === "def" ? 1.1 : nature.minus === "def" ? 0.9 : 1.0;
-    const spdMultiplier = nature.plus === "spd" ? 1.1 : nature.minus === "spd" ? 0.9 : 1.0;
+    const defNatureMultiplier = nature.plus === "def" ? 1.1 : nature.minus === "def" ? 0.9 : 1.0;
+    const spdNatureMultiplier = nature.plus === "spd" ? 1.1 : nature.minus === "spd" ? 0.9 : 1.0;
 
     const result = searchOptimalEvs(
       baseStats,
-      defMultiplier,
-      spdMultiplier,
+      defNatureMultiplier,
+      spdNatureMultiplier,
+      defMult,
+      spdMult,
       pool,
       minH,
       minB,
@@ -160,11 +179,33 @@ export function optimizeBulk(
       : (options?.defaultMinus ?? "atk");
 
   // Def+ 候補
-  const candDef = searchOptimalEvs(baseStats, 1.1, 1.0, pool, minH, minB, minD, p);
+  const candDef = searchOptimalEvs(
+    baseStats,
+    1.1,
+    1.0,
+    defMult,
+    spdMult,
+    pool,
+    minH,
+    minB,
+    minD,
+    p,
+  );
   const natureDef = { plus: "def", minus: effectiveMinus };
 
   // SpD+ 候補
-  const candSpd = searchOptimalEvs(baseStats, 1.0, 1.1, pool, minH, minB, minD, p);
+  const candSpd = searchOptimalEvs(
+    baseStats,
+    1.0,
+    1.1,
+    defMult,
+    spdMult,
+    pool,
+    minH,
+    minB,
+    minD,
+    p,
+  );
   const natureSpd = { plus: "spd", minus: effectiveMinus };
 
   let chosen = candDef;
