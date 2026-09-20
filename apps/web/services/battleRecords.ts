@@ -43,6 +43,29 @@ export const fetchBattleRecordFromServer = async (id: string): Promise<BattleRec
   });
 };
 
+const formatErrorMessage = (errorText: string, defaultMessage: string): string => {
+  try {
+    const parsed = JSON.parse(errorText);
+    if (parsed.error) {
+      if (Array.isArray(parsed.error)) {
+        return parsed.error
+          .map((issue: { path?: readonly (string | number)[]; message?: string }) => {
+            const pathStr = issue.path && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+            return `${pathStr}${issue.message ?? "Validation error"}`;
+          })
+          .join(", ");
+      }
+      if (typeof parsed.error === "string") {
+        return parsed.error;
+      }
+      return JSON.stringify(parsed.error);
+    }
+  } catch {
+    // ignore
+  }
+  return errorText.trim().length > 0 ? errorText : defaultMessage;
+};
+
 export const createBattleRecordOnServer = async (
   input: BattleRecordInput,
 ): Promise<BattleRecord> => {
@@ -55,19 +78,11 @@ export const createBattleRecordOnServer = async (
     if (!res.ok) {
       const errorText = await res.text();
       span.setAttribute("error", true);
-      let errorMsg = errorText;
-      try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error) {
-          errorMsg = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
-        }
-      } catch {
-        // ignore
-      }
+      const errorMsg = formatErrorMessage(errorText, "Failed to create battle record");
       Sentry.captureException(new Error("Failed to create battle record"), {
         extra: { status: res.status, errorText, input },
       });
-      throw new Error(`Failed to create battle record: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     return (await res.json()) as Promise<BattleRecord>;
   });
@@ -86,19 +101,11 @@ export const updateBattleRecordOnServer = async (
     if (!res.ok) {
       const errorText = await res.text();
       span.setAttribute("error", true);
-      let errorMsg = errorText;
-      try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error) {
-          errorMsg = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
-        }
-      } catch {
-        // ignore
-      }
+      const errorMsg = formatErrorMessage(errorText, "Failed to update battle record");
       Sentry.captureException(new Error("Failed to update battle record"), {
         extra: { status: res.status, errorText, id, input },
       });
-      throw new Error(`Failed to update battle record: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     return (await res.json()) as Promise<BattleRecord>;
   });

@@ -63,6 +63,47 @@ describe("draftToInput", () => {
     expect(input.opponents).toEqual([]);
   });
 
+  it("normalizes empty teamId string to null", () => {
+    const input = draftToInput({ ...emptyDraft(), teamId: "   " }, "season-1");
+    expect(input.teamId).toBeNull();
+  });
+
+  it("safely handles invalid playedAt without throwing RangeError", () => {
+    expect(() => draftToInput({ ...emptyDraft(), playedAt: "invalid-date" }, "season-1")).not.toThrow();
+    const input = draftToInput({ ...emptyDraft(), playedAt: "invalid-date" }, "season-1");
+    expect(input.playedAt).toBeNull();
+
+    const emptyInput = draftToInput({ ...emptyDraft(), playedAt: "" }, "season-1");
+    expect(emptyInput.playedAt).toBeNull();
+  });
+
+  it("normalizes empty itemSlug and abilitySlug to null and filters empty moves/tags", () => {
+    const input = draftToInput(
+      {
+        ...emptyDraft(),
+        tags: ["  ", "weather-rain", ""],
+        opponents: [
+          {
+            key: "a",
+            pokemonSlug: "  pikachu  ",
+            itemSlug: "   ",
+            abilitySlug: "",
+            moves: ["  ", "thunderbolt", ""],
+            selectionRole: null,
+            notes: "   ",
+          },
+        ],
+      },
+      "season-1",
+    );
+    expect(input.tags).toEqual(["weather-rain"]);
+    expect(input.opponents[0].pokemonSlug).toBe("pikachu");
+    expect(input.opponents[0].itemSlug).toBeNull();
+    expect(input.opponents[0].abilitySlug).toBeNull();
+    expect(input.opponents[0].moves).toEqual(["thunderbolt"]);
+    expect(input.opponents[0].notes).toBeNull();
+  });
+
   it("ignores non-numeric rating", () => {
     const input = draftToInput({ ...emptyDraft(), rating: "abc" }, "season-1");
     expect(input.rating).toBeNull();

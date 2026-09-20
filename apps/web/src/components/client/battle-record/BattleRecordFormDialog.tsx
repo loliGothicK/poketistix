@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useRef } from "react";
 import {
+  Alert,
   alpha,
   Box,
   Button,
@@ -127,9 +128,8 @@ function BattleRecordFormContent({
   const { t } = useTranslation();
   const theme = useTheme();
 
-  const [seasonId, setSeasonId] = useState<string | null>(
-    editing ? editing.seasonId : defaultSeasonId,
-  );
+  const [selectedSeasonIdOverride, setSelectedSeasonIdOverride] = useState<string | null>(null);
+  const seasonId = editing ? editing.seasonId : (selectedSeasonIdOverride ?? defaultSeasonId);
 
   const initialFormat = editing
     ? (seasons.find((s) => s.id === editing.seasonId)?.format ?? "doubles")
@@ -159,6 +159,7 @@ function BattleRecordFormContent({
   );
   const [resultChosen, setResultChosen] = useState(!!editing);
   const [localSubmitting, setLocalSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
   const isPending = submitting || localSubmitting;
 
@@ -179,8 +180,12 @@ function BattleRecordFormContent({
     if (!canSave || !seasonId || submittingRef.current || isPending) return;
     submittingRef.current = true;
     setLocalSubmitting(true);
+    setSubmitError(null);
     try {
       await onSubmit(draft, seasonId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("battleRecord.saveFailed");
+      setSubmitError(msg);
     } finally {
       submittingRef.current = false;
       setLocalSubmitting(false);
@@ -351,7 +356,7 @@ function BattleRecordFormContent({
                 labelId="record-season-label"
                 label={t("battleRecord.form.season")}
                 value={seasonId ?? ""}
-                onChange={(e) => setSeasonId(e.target.value || null)}
+                onChange={(e) => setSelectedSeasonIdOverride(e.target.value || null)}
                 disabled={editing !== null}
               >
                 {seasons.map((season) => (
@@ -438,6 +443,14 @@ function BattleRecordFormContent({
           />
         </Stack>
       </DialogContent>
+
+      {submitError && (
+        <Box sx={{ px: 3, pb: 1 }}>
+          <Alert severity="error" onClose={() => setSubmitError(null)}>
+            {submitError}
+          </Alert>
+        </Box>
+      )}
 
       <Divider />
       <Stack direction="row" spacing={1} sx={{ p: 2 }}>

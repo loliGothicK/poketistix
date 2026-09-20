@@ -111,21 +111,32 @@ const parseRating = (value: string): number | null => {
 /** 下書きを API 入力（BattleRecordInput）へ変換する */
 export const draftToInput = (draft: BattleRecordDraft, seasonId: string): BattleRecordInput => ({
   seasonId,
-  teamId: draft.teamId,
+  teamId: draft.teamId ? emptyToNull(draft.teamId) : null,
   result: draft.result,
-  myTeam: draft.myTeam as unknown as BattleRecordInput["myTeam"],
+  myTeam: (draft.myTeam ?? []).filter(
+    (m) => m !== null && m !== undefined,
+  ) as unknown as BattleRecordInput["myTeam"],
   mySelection: selectionToIndices(draft.selection),
   rating: parseRating(draft.rating),
   notes: emptyToNull(draft.notes),
-  playedAt: draft.playedAt ? new Date(draft.playedAt).toISOString() : null,
+  playedAt: (() => {
+    if (!draft.playedAt || typeof draft.playedAt !== "string") return null;
+    const trimmed = draft.playedAt.trim();
+    if (!trimmed) return null;
+    const d = new Date(trimmed);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  })(),
   opponents: draft.opponents.map((opponent, slotIndex) => ({
     slotIndex,
-    pokemonSlug: opponent.pokemonSlug,
-    itemSlug: opponent.itemSlug,
-    abilitySlug: opponent.abilitySlug,
-    moves: opponent.moves.length > 0 ? [...opponent.moves] : null,
+    pokemonSlug: opponent.pokemonSlug.trim(),
+    itemSlug: opponent.itemSlug ? emptyToNull(opponent.itemSlug) : null,
+    abilitySlug: opponent.abilitySlug ? emptyToNull(opponent.abilitySlug) : null,
+    moves: (() => {
+      const validMoves = (opponent.moves ?? []).map((m) => m.trim()).filter((m) => m.length > 0);
+      return validMoves.length > 0 ? validMoves : null;
+    })(),
     selectionRole: opponent.selectionRole,
     notes: emptyToNull(opponent.notes),
   })),
-  tags: [...draft.tags],
+  tags: (draft.tags ?? []).map((t) => t.trim()).filter((t) => t.length > 0),
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useSyncExternalStore } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -15,6 +16,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Snackbar,
   Stack,
   Tab,
   Tabs,
@@ -27,6 +29,7 @@ import InsightsRounded from "@mui/icons-material/InsightsRounded";
 import Image from "next/image";
 import { LocalizedLink as Link } from "@/components/client/LocalizedLink";
 import { useAtom, useAtomValue } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
 import { isAuthenticatedAtom } from "@/store/auth";
@@ -329,11 +332,21 @@ export default function BattleRecordPage() {
   const safeTeams = useMemo(() => (mounted ? rawTeams : []), [mounted, rawTeams]);
 
   const [activeTeamId, setActiveTeamId] = useAtom(activeTeamIdAtom);
-  const localTeams = useAtomValue(localTeamsAtom);
+  const [localTeams, setLocalTeams] = useAtom(localTeamsAtom);
+  const queryClient = useQueryClient();
   const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
   const isSubmittingRecordRef = useRef(false);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ResultFilter>("all");
+  const [snackbar, setSnackbar] = useState<{
+    readonly open: boolean;
+    readonly message: string;
+    readonly severity: "success" | "error";
+  }>({
+    open: false,
+    message: "",
+    severity: "success",
+  });
 
   useEffect(() => {
     if (
@@ -411,13 +424,23 @@ export default function BattleRecordPage() {
   }
 
   const handleSeasonSubmit = async (input: SeasonInput) => {
-    if (seasonEditing) {
-      await updateSeason(seasonEditing.id, input);
-    } else {
-      const created = await createSeason(input);
-      setSelectedSeasonId(created.id);
+    try {
+      if (seasonEditing) {
+        await updateSeason(seasonEditing.id, input);
+      } else {
+        const created = await createSeason(input);
+        setSelectedSeasonId(created.id);
+      }
+      setSeasonDialogOpen(false);
+      setSeasonEditing(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSnackbar({
+        open: true,
+        message: msg,
+        severity: "error",
+      });
     }
-    setSeasonDialogOpen(false);
   };
 
   const handleRecordSubmit = async (draft: BattleRecordDraft, seasonId: string) => {
@@ -427,30 +450,48 @@ export default function BattleRecordPage() {
     try {
       const input = draftToInput(draft, seasonId);
 
-      const teamSavePromise = (async () => {
-        if (draft.teamId && localTeams.some((lt) => lt.id === draft.teamId)) {
-          const selectedTeam = safeTeams.find((tm) => tm.id === draft.teamId);
-          if (selectedTeam) {
-            try {
-              await saveTeamsToServer([selectedTeam]);
-            } catch {
-              // ignore to allow battle record creation even if offline
-            }
+      // ローカル限定チームの場合は、DBの外部キー制約および競合を防ぐため直列で先に同期
+      if (draft.teamId && localTeams.some((lt) => lt.id === draft.teamId)) {
+        const selectedTeam = safeTeams.find((tm) => tm.id === draft.teamId);
+        if (selectedTeam) {
+          try {
+            await saveTeamsToServer([selectedTeam]);
+            setLocalTeams((prev) => prev.filter((t) => t.id !== selectedTeam.id));
+            void queryClient.invalidateQueries({ queryKey: ["teams"] });
+          } catch (teamErr) {
+            console.warn("Failed to sync team before saving battle record:", teamErr);
           }
         }
-      })();
+      }
 
-      const recordPromise = (async () => {
-        if (recordEditing) {
-          const { seasonId: _seasonId, ...update } = input;
-          await updateRecord(recordEditing.id, update);
-        } else {
-          await createRecord(input);
-        }
-      })();
+      if (recordEditing) {
+        const { seasonId: _seasonId, ...update } = input;
+        await updateRecord(recordEditing.id, update);
+      } else {
+        await createRecord(input);
+      }
 
-      await Promise.all([teamSavePromise, recordPromise]);
+      // 現在と異なるシーズンに記録した場合は、表示中のシーズンを自動切り替え
+      if (seasonId !== activeSeasonId) {
+        setSelectedSeasonId(seasonId);
+      }
+
       setRecordDialogOpen(false);
+      setRecordEditing(null);
+      setSnackbar({
+        open: true,
+        message: t("battleRecord.saveSuccess"),
+        severity: "success",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSnackbar({
+        open: true,
+        message: msg || t("battleRecord.saveFailed"),
+        severity: "error",
+      });
+      // ダイアログ側でエラーを表示し、下書き入力を保持させるため再throw
+      throw err;
     } finally {
       isSubmittingRecordRef.current = false;
       setIsSubmittingRecord(false);
@@ -764,6 +805,22 @@ export default function BattleRecordPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

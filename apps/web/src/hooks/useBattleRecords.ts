@@ -53,10 +53,20 @@ export const useBattleRecords = (filter: BattleRecordsFilter) => {
   const createMutation = useMutation({
     mutationFn: (input: BattleRecordInput) => createBattleRecordOnServer(input),
     onSuccess: (createdRecord) => {
-      // 楽観的/即座に現在のフィルターキャッシュを更新
-      queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
-        prev ? [createdRecord, ...prev] : [createdRecord],
+      queryClient.setQueryData<readonly BattleRecord[]>(
+        battleRecordsQueryKey({ seasonId: createdRecord.seasonId, teamId: filter.teamId }),
+        (prev) =>
+          prev
+            ? [createdRecord, ...prev.filter((r) => r.id !== createdRecord.id)]
+            : [createdRecord],
       );
+      if (filter.seasonId && filter.seasonId !== createdRecord.seasonId) {
+        queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
+          prev
+            ? [createdRecord, ...prev.filter((r) => r.id !== createdRecord.id)]
+            : [createdRecord],
+        );
+      }
       invalidate();
     },
   });
@@ -65,9 +75,16 @@ export const useBattleRecords = (filter: BattleRecordsFilter) => {
     mutationFn: ({ id, input }: { readonly id: string; readonly input: BattleRecordUpdate }) =>
       updateBattleRecordOnServer(id, input),
     onSuccess: (updatedRecord) => {
-      queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
-        prev ? prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)) : [updatedRecord],
+      queryClient.setQueryData<readonly BattleRecord[]>(
+        battleRecordsQueryKey({ seasonId: updatedRecord.seasonId, teamId: filter.teamId }),
+        (prev) =>
+          prev ? prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)) : [updatedRecord],
       );
+      if (filter.seasonId && filter.seasonId !== updatedRecord.seasonId) {
+        queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
+          prev ? prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)) : [updatedRecord],
+        );
+      }
       invalidate();
     },
   });
