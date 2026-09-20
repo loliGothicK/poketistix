@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { alpha, Box, IconButton, Stack, Typography } from "@mui/material";
+import { alpha, Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import Add from "@mui/icons-material/Add";
 import Close from "@mui/icons-material/Close";
 import EditNote from "@mui/icons-material/EditNote";
+import RestartAlt from "@mui/icons-material/RestartAlt";
+import Sync from "@mui/icons-material/Sync";
 import Image from "next/image";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
+import { useHotkeys } from "react-hotkeys-hook";
 import { SelectPokemonDialog } from "@/components/client/team-builder/SelectPokemonDialog";
 import type { BattleFormat, OpponentSelectionRole } from "@/store/battle-record/battleRecord";
 import { flexRowCenter, sectionLabel } from "@/theme/sx";
@@ -31,33 +34,57 @@ const roleColor = (role: OpponentSelectionRole | null): string | null =>
 /**
  * 相手6枠。空きスロットは + で種族検索して追加。
  * 追加後はカードのタップで 選出外 → 後発 → 先発 を循環（自チームと同じ操作感）。
- * 鉛筆アイコンで持ち物・技などの詳細をあとから追記できる。
+ * 鉛筆アイコンで持ち物・技などの詳細をあとから追記でき、更新アイコンで選び直せる。
  */
 export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProps) {
   const { t } = useTranslation();
   const theme = useTheme();
   const [selectOpen, setSelectOpen] = useState(false);
+  const [selectSlotIndex, setSelectSlotIndex] = useState<number | null>(null);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const limits = selectionLimits(format);
 
   const backCount = opponents.filter((o) => o.selectionRole !== null).length;
   const leadCount = opponents.filter((o) => o.selectionRole === "lead").length;
 
-  const addSpecies = (identifier: string | null) => {
-    if (!identifier || opponents.length >= MAX_OPPONENTS) return;
-    onChange([
-      ...opponents,
-      {
-        key: nextOpponentKey(),
-        pokemonSlug: identifier,
-        itemSlug: null,
-        abilitySlug: null,
-        moves: [],
-        selectionRole: null,
-        notes: "",
-      },
-    ]);
+  const openSelectFor = (index: number | null) => {
+    setSelectSlotIndex(index);
+    setSelectOpen(true);
+  };
+
+  const handlePokemonSelected = (identifier: string | null) => {
+    if (!identifier) return;
+    if (selectSlotIndex !== null && selectSlotIndex < opponents.length) {
+      // 既存スロットの選び直し（置換）
+      onChange(
+        opponents.map((o, i) =>
+          i === selectSlotIndex
+            ? {
+                ...o,
+                pokemonSlug: identifier,
+                abilitySlug: null,
+                moves: [],
+              }
+            : o,
+        ),
+      );
+    } else if (opponents.length < MAX_OPPONENTS) {
+      // 新規スロット追加
+      onChange([
+        ...opponents,
+        {
+          key: nextOpponentKey(),
+          pokemonSlug: identifier,
+          itemSlug: null,
+          abilitySlug: null,
+          moves: [],
+          selectionRole: null,
+          notes: "",
+        },
+      ]);
+    }
     setSelectOpen(false);
+    setSelectSlotIndex(null);
   };
 
   const removeAt = (index: number) => {
@@ -66,7 +93,7 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
 
   const cycleAt = (index: number) => {
     const current = opponents[index];
-    // この個体を除いた選出数
+    if (!current) return;
     const others = opponents.filter((_, i) => i !== index);
     const counts = {
       back: others.filter((o) => o.selectionRole !== null).length,
@@ -76,7 +103,42 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
     onChange(opponents.map((o, i) => (i === index ? { ...o, selectionRole: nextRole } : o)));
   };
 
+  const handleSlotHotkey = (index: number) => {
+    if (index < opponents.length) {
+      cycleAt(index);
+    } else if (index === opponents.length && opponents.length < MAX_OPPONENTS) {
+      openSelectFor(null);
+    }
+  };
+
+  useHotkeys(
+    "a",
+    () => {
+      if (opponents.length < MAX_OPPONENTS) {
+        openSelectFor(null);
+      }
+    },
+    [opponents],
+  );
+
+  useHotkeys("alt+r, shift+r", () => onChange([]), [onChange]);
+
+  useHotkeys("alt+1, shift+1", () => handleSlotHotkey(0), [opponents, format]);
+  useHotkeys("alt+2, shift+2", () => handleSlotHotkey(1), [opponents, format]);
+  useHotkeys("alt+3, shift+3", () => handleSlotHotkey(2), [opponents, format]);
+  useHotkeys("alt+4, shift+4", () => handleSlotHotkey(3), [opponents, format]);
+  useHotkeys("alt+5, shift+5", () => handleSlotHotkey(4), [opponents, format]);
+  useHotkeys("alt+6, shift+6", () => handleSlotHotkey(5), [opponents, format]);
+
   const slots = Array.from({ length: MAX_OPPONENTS }, (_, i) => opponents[i] ?? null);
+
+  const excludedIdentifiers =
+    selectSlotIndex !== null && selectSlotIndex < opponents.length
+      ? (opponents
+          .filter((_, i) => i !== selectSlotIndex)
+          .map((o) => o.pokemonSlug)
+          .filter(Boolean) as string[])
+      : (opponents.map((o) => o?.pokemonSlug).filter(Boolean) as string[]);
 
   return (
     <Box>
@@ -93,6 +155,43 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
           {backCount}/{limits.maxBack} · {leadCount}/{limits.leadCount}{" "}
           {t("battleRecord.selection.leadShort")}
         </Typography>
+        {backCount > 0 && (
+          <Button
+            size="small"
+            variant="text"
+            color="inherit"
+            onClick={() => onChange(opponents.map((o) => ({ ...o, selectionRole: null })))}
+            sx={{
+              fontSize: "0.75rem",
+              py: 0.25,
+              px: 0.75,
+              minWidth: "auto",
+              color: "text.secondary",
+              "&:hover": { color: "primary.main" },
+            }}
+          >
+            {t("battleRecord.form.resetSelection")}
+          </Button>
+        )}
+        {opponents.length > 0 && (
+          <Button
+            size="small"
+            variant="text"
+            color="inherit"
+            onClick={() => onChange([])}
+            startIcon={<RestartAlt sx={{ fontSize: 15 }} />}
+            sx={{
+              fontSize: "0.75rem",
+              py: 0.25,
+              px: 0.75,
+              minWidth: "auto",
+              color: "text.secondary",
+              "&:hover": { color: "error.main" },
+            }}
+          >
+            {t("battleRecord.form.resetSlots")}
+          </Button>
+        )}
       </Stack>
 
       <Box
@@ -107,7 +206,14 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
             return (
               <Box
                 key={`empty-${index}`}
-                onClick={() => opponents.length < MAX_OPPONENTS && setSelectOpen(true)}
+                onClick={() => opponents.length < MAX_OPPONENTS && openSelectFor(null)}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " " || e.key === "a" || e.key === "A") {
+                    e.preventDefault();
+                    if (opponents.length < MAX_OPPONENTS) openSelectFor(null);
+                  }
+                }}
                 role="button"
                 aria-label={t("battleRecord.form.addOpponent")}
                 sx={{
@@ -121,6 +227,10 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                   color: "text.disabled",
                   "&:hover": {
                     borderColor: opponents.length < MAX_OPPONENTS ? "primary.main" : "divider",
+                  },
+                  "&:focus-visible": {
+                    outline: "2px solid",
+                    outlineColor: "primary.main",
                   },
                   borderRadius: 2,
                 }}
@@ -137,6 +247,22 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
             <Box
               key={opponent.key}
               onClick={() => cycleAt(index)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  cycleAt(index);
+                } else if (e.key === "c" || e.key === "C") {
+                  e.preventDefault();
+                  openSelectFor(index);
+                } else if (e.key === "Delete" || e.key === "Backspace") {
+                  e.preventDefault();
+                  removeAt(index);
+                } else if (e.key === "d" || e.key === "D") {
+                  e.preventDefault();
+                  setDetailIndex(index);
+                }
+              }}
               role="button"
               aria-label={t(`pokemon.${opponent.pokemonSlug}.name`)}
               aria-pressed={opponent.selectionRole !== null}
@@ -153,7 +279,11 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                 opacity: opponent.selectionRole === null ? 0.75 : 1,
                 transition: "border-color 0.15s, background-color 0.15s",
                 "&:hover .slot-action": { opacity: 1 },
-                overflow: "hidden",
+                "&:focus-visible .slot-action": { opacity: 1 },
+                "&:focus-visible": {
+                  outline: "2px solid",
+                  outlineColor: "primary.main",
+                },
                 borderRadius: 2,
               }}
             >
@@ -163,11 +293,12 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                 width={44}
                 height={44}
               />
+              {/* 選出ロール表示（左下） */}
               {color && (
                 <Box
                   sx={{
                     position: "absolute",
-                    top: 4,
+                    bottom: 4,
                     left: 4,
                     width: 12,
                     height: 12,
@@ -178,7 +309,33 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                   }}
                 />
               )}
-              {/* 詳細を追記 */}
+              {/* 選び直す（左上） */}
+              <IconButton
+                className="slot-action"
+                size="small"
+                aria-label={t("battleRecord.form.changePokemon")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openSelectFor(index);
+                }}
+                sx={{
+                  position: "absolute",
+                  top: 2,
+                  left: 2,
+                  opacity: { xs: 1, sm: 0 },
+                  transition: "opacity 0.15s",
+                  bgcolor: "background.paperRaised",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  width: 22,
+                  height: 22,
+                  color: "text.secondary",
+                  "&:hover": { bgcolor: "background.paperRaised", color: "primary.main" },
+                }}
+              >
+                <Sync sx={{ fontSize: 14 }} />
+              </IconButton>
+              {/* 詳細を追記（右下） */}
               <IconButton
                 className="slot-action"
                 size="small"
@@ -189,9 +346,8 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                 }}
                 sx={{
                   position: "absolute",
-                  bottom: -8,
-                  left: "50%",
-                  transform: "translateX(-50%)",
+                  bottom: 2,
+                  right: 2,
                   opacity: { xs: 1, sm: 0 },
                   transition: "opacity 0.15s",
                   bgcolor: "background.paperRaised",
@@ -205,7 +361,7 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
               >
                 <EditNote sx={{ fontSize: 15 }} />
               </IconButton>
-              {/* 削除 */}
+              {/* 削除（右上） */}
               <IconButton
                 className="slot-action"
                 size="small"
@@ -216,8 +372,8 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                 }}
                 sx={{
                   position: "absolute",
-                  top: -8,
-                  right: -8,
+                  top: 2,
+                  right: 2,
                   opacity: { xs: 1, sm: 0 },
                   transition: "opacity 0.15s",
                   bgcolor: "error.main",
@@ -238,12 +394,19 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
       </Typography>
 
       <SelectPokemonDialog
-        title={t("battleRecord.form.addOpponent")}
+        title={
+          selectSlotIndex !== null
+            ? t("battleRecord.form.changePokemon")
+            : t("battleRecord.form.addOpponent")
+        }
         open={selectOpen}
-        onClose={() => setSelectOpen(false)}
+        onClose={() => {
+          setSelectOpen(false);
+          setSelectSlotIndex(null);
+        }}
         translator={t}
-        onChange={addSpecies}
-        excludedIdentifiers={opponents.map((o) => o?.pokemonSlug).filter(Boolean) as string[]}
+        onChange={handlePokemonSelected}
+        excludedIdentifiers={excludedIdentifiers}
       />
 
       <OpponentDetailDialog

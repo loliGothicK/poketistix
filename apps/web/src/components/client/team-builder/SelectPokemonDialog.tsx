@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import Search from "@mui/icons-material/Search";
 import { championsPokemonList, type ChampionsPokemon } from "@/data/champions-pokemon";
-import { ComponentProps, useRef, useMemo, useState } from "react";
+import { ComponentProps, useRef, useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { typeIcon } from "@/lib/image";
 import {
@@ -67,7 +67,11 @@ export function SelectPokemonDialog({
   const autocompleteInputRef = useRef<HTMLInputElement>(null);
   const boxSearchInputRef = useRef<HTMLInputElement>(null);
 
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const handleDialogEntered = () => {
+    setHighlightedIndex(0);
     if (activeTab === "master") {
       autocompleteInputRef.current?.focus();
     } else {
@@ -144,8 +148,63 @@ export function SelectPokemonDialog({
     );
   }, [box, boxSearch, translator, i18n, excludedIdentifiers]);
 
+  const searchResultKey = `${activeTab}:${results.visible.length}:${filteredBox.length}:${tokens.length}:${boxSearch}`;
+  const [prevSearchResultKey, setPrevSearchResultKey] = useState(searchResultKey);
+
+  if (prevSearchResultKey !== searchResultKey) {
+    setPrevSearchResultKey(searchResultKey);
+    setHighlightedIndex(0);
+  }
+
+  useEffect(() => {
+    const el = itemRefs.current[highlightedIndex];
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlightedIndex]);
+
   const handleSelect = (pokemon: ChampionsPokemon) => {
     onChange(pokemon.identifier);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (activeTab === "master") {
+      if (results.visible.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.min(prev + 1, results.visible.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter") {
+        const item = results.visible[highlightedIndex];
+        if (item) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSelect(item);
+        }
+      }
+    } else {
+      if (filteredBox.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.min(prev + 1, filteredBox.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter") {
+        const item = filteredBox[highlightedIndex];
+        if (item) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (onSelectFromBox) {
+            onSelectFromBox(item);
+          } else {
+            onChange(item.identifier);
+          }
+        }
+      }
+    }
   };
 
   return (
@@ -181,7 +240,7 @@ export function SelectPokemonDialog({
               label={translator("teamBuilder.query.label")}
               placeholder={translator("teamBuilder.query.placeholder")}
               helperText={translator("teamBuilder.query.helper")}
-              textFieldProps={{ inputRef: autocompleteInputRef }}
+              textFieldProps={{ inputRef: autocompleteInputRef, onKeyDown: handleKeyDown }}
             />
 
             <Box
@@ -200,11 +259,15 @@ export function SelectPokemonDialog({
                 </Typography>
               ) : (
                 <Stack divider={<Divider flexItem />}>
-                  {results.visible.map((pokemon) => (
+                  {results.visible.map((pokemon, index) => (
                     <Stack
                       key={pokemon.id}
+                      ref={(el) => {
+                        itemRefs.current[index] = el;
+                      }}
                       direction="row"
                       onClick={() => handleSelect(pokemon)}
+                      onMouseEnter={() => setHighlightedIndex(index)}
                       sx={{
                         alignItems: "center",
                         gap: 1,
@@ -212,6 +275,11 @@ export function SelectPokemonDialog({
                         py: 1,
                         cursor: "pointer",
                         borderRadius: 2,
+                        bgcolor: index === highlightedIndex ? "action.selected" : "transparent",
+                        outline:
+                          index === highlightedIndex
+                            ? `2px solid ${theme.palette.primary.main}`
+                            : undefined,
                         "&:hover": { bgcolor: "action.hover" },
                       }}
                     >
@@ -288,6 +356,7 @@ export function SelectPokemonDialog({
               placeholder={translator("box.searchPlaceholder")}
               value={boxSearch}
               onChange={(e) => setBoxSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
               inputRef={boxSearchInputRef}
               sx={{ mb: 2 }}
               slotProps={{
@@ -310,9 +379,12 @@ export function SelectPokemonDialog({
                 </Typography>
               ) : (
                 <Stack divider={<Divider flexItem />}>
-                  {filteredBox.map((pokemon) => (
+                  {filteredBox.map((pokemon, index) => (
                     <Stack
                       key={pokemon.boxId}
+                      ref={(el) => {
+                        itemRefs.current[index] = el;
+                      }}
                       direction="row"
                       onClick={() => {
                         if (onSelectFromBox) {
@@ -321,6 +393,7 @@ export function SelectPokemonDialog({
                           onChange(pokemon.identifier);
                         }
                       }}
+                      onMouseEnter={() => setHighlightedIndex(index)}
                       sx={{
                         alignItems: "center",
                         gap: 1,
@@ -328,6 +401,11 @@ export function SelectPokemonDialog({
                         py: 1,
                         cursor: "pointer",
                         borderRadius: 2,
+                        bgcolor: index === highlightedIndex ? "action.selected" : "transparent",
+                        outline:
+                          index === highlightedIndex
+                            ? `2px solid ${theme.palette.primary.main}`
+                            : undefined,
                         "&:hover": { bgcolor: "action.hover" },
                       }}
                     >

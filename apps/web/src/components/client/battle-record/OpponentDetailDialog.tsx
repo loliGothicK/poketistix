@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Avatar,
+  Box,
   Button,
   Dialog,
   DialogActions,
@@ -12,7 +13,9 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import Sync from "@mui/icons-material/Sync";
 import { useTranslation } from "react-i18next";
+import { SelectPokemonDialog } from "@/components/client/team-builder/SelectPokemonDialog";
 import type { OpponentDraft } from "./formState";
 import {
   MovesAutocomplete,
@@ -63,6 +66,7 @@ function OpponentDetailContent({
   const abilityOptions = usePokemonAbilityOptions(pokemonSlug);
   const moveOptions = usePokemonMoveOptions(pokemonSlug);
   const [draft, setDraft] = useState<OpponentDraft>(opponent);
+  const [changeSpeciesOpen, setChangeSpeciesOpen] = useState(false);
 
   const formName = `pokemon.${draft.pokemonSlug}.formName`;
 
@@ -70,8 +74,10 @@ function OpponentDetailContent({
     <>
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
         <Avatar src={`/pokemon/${draft.pokemonSlug}.png`} alt={draft.pokemonSlug} />
-        <span>
-          {t(`pokemon.${draft.pokemonSlug}.name`)}
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="h6" component="span" sx={{ fontWeight: 700 }}>
+            {t(`pokemon.${draft.pokemonSlug}.name`)}
+          </Typography>
           {i18n.exists(formName) && (
             <Typography
               component="span"
@@ -80,7 +86,15 @@ function OpponentDetailContent({
               {t(formName)}
             </Typography>
           )}
-        </span>
+        </Box>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<Sync />}
+          onClick={() => setChangeSpeciesOpen(true)}
+        >
+          {t("battleRecord.form.changePokemon")}
+        </Button>
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -123,6 +137,24 @@ function OpponentDetailContent({
           {t("common.save")}
         </Button>
       </DialogActions>
+
+      <SelectPokemonDialog
+        title={t("battleRecord.form.changePokemon")}
+        open={changeSpeciesOpen}
+        onClose={() => setChangeSpeciesOpen(false)}
+        translator={t}
+        onChange={(identifier) => {
+          if (identifier) {
+            setDraft((prev) => ({
+              ...prev,
+              pokemonSlug: identifier,
+              abilitySlug: null,
+              moves: [],
+            }));
+          }
+          setChangeSpeciesOpen(false);
+        }}
+      />
     </>
   );
 }

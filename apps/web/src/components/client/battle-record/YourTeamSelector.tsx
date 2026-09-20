@@ -1,15 +1,16 @@
 "use client";
 
-import { alpha, Box, Stack, Typography } from "@mui/material";
+import { alpha, Box, Button, Stack, Typography } from "@mui/material";
 import Image from "next/image";
-
 import { useTranslation } from "react-i18next";
+import { useHotkeys } from "react-hotkeys-hook";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { BattleFormat } from "@/store/battle-record/battleRecord";
 import { flexRowCenter, sectionLabel } from "@/theme/sx";
 import {
   backCount,
   cycleMember,
+  emptySelection,
   memberState,
   selectionLimits,
   type MemberSelectionState,
@@ -39,6 +40,19 @@ export function YourTeamSelector({ myTeam, selection, onChange, format }: YourTe
 
   const limits = selectionLimits(format);
 
+  const handleKeyCycle = (index: number) => {
+    if (index < myTeam.length) {
+      onChange(cycleMember(selection, index, format));
+    }
+  };
+
+  useHotkeys("1", () => handleKeyCycle(0), [myTeam, selection, format]);
+  useHotkeys("2", () => handleKeyCycle(1), [myTeam, selection, format]);
+  useHotkeys("3", () => handleKeyCycle(2), [myTeam, selection, format]);
+  useHotkeys("4", () => handleKeyCycle(3), [myTeam, selection, format]);
+  useHotkeys("5", () => handleKeyCycle(4), [myTeam, selection, format]);
+  useHotkeys("6", () => handleKeyCycle(5), [myTeam, selection, format]);
+
   return (
     <Box>
       <Stack direction="row" spacing={2} sx={{ ...flexRowCenter, mb: 1, flexWrap: "wrap" }}>
@@ -54,6 +68,24 @@ export function YourTeamSelector({ myTeam, selection, onChange, format }: YourTe
           {backCount(selection)}/{limits.maxBack} · {selection.leads.length}/{limits.leadCount}{" "}
           {t("battleRecord.selection.leadShort")}
         </Typography>
+        {backCount(selection) > 0 && (
+          <Button
+            size="small"
+            variant="text"
+            color="inherit"
+            onClick={() => onChange(emptySelection)}
+            sx={{
+              fontSize: "0.75rem",
+              py: 0.25,
+              px: 0.75,
+              minWidth: "auto",
+              color: "text.secondary",
+              "&:hover": { color: "primary.main" },
+            }}
+          >
+            {t("battleRecord.form.resetSelection")}
+          </Button>
+        )}
       </Stack>
 
       {myTeam.length === 0 ? (
@@ -75,6 +107,13 @@ export function YourTeamSelector({ myTeam, selection, onChange, format }: YourTe
               <Box
                 key={member.boxId}
                 onClick={() => onChange(cycleMember(selection, index, format))}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onChange(cycleMember(selection, index, format));
+                  }
+                }}
                 role="button"
                 aria-label={t(`pokemon.${member.identifier}.name`)}
                 aria-pressed={state !== "unused"}
@@ -91,6 +130,10 @@ export function YourTeamSelector({ myTeam, selection, onChange, format }: YourTe
                   opacity: state === "unused" ? 0.7 : 1,
                   borderRadius: 2,
                   py: 1,
+                  "&:focus-visible": {
+                    outline: "2px solid",
+                    outlineColor: "primary.main",
+                  },
                 }}
               >
                 <Image
