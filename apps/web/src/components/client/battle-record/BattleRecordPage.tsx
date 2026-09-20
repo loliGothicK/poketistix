@@ -459,7 +459,9 @@ export default function BattleRecordPage() {
             setLocalTeams((prev) => prev.filter((t) => t.id !== selectedTeam.id));
             void queryClient.invalidateQueries({ queryKey: ["teams"] });
           } catch (teamErr) {
-            console.warn("Failed to sync team before saving battle record:", teamErr);
+            // チーム同期失敗 → バトルレコード保存も中断してエラーを伝搬させる
+            // 握りつぶすと DB の外部キー制約違反で 500 になり、サイレント失敗になる
+            throw teamErr instanceof Error ? teamErr : new Error(t("battleRecord.teamSyncFailed"));
           }
         }
       }

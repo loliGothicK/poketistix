@@ -182,6 +182,7 @@
     "recordBattle": "Record battle",
     "saveSuccess": "Battle record saved",
     "saveFailed": "Failed to save battle record",
+    "teamSyncFailed": "Failed to sync team to server. Please save your team first, then try again.",
     "currentRating": "Current Rating",
     "party": "Party",
     "noParty": "This team has no Pokémon yet.",

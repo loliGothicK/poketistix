@@ -39,15 +39,12 @@ export const useTeamsData = () => {
           ]
         : localTeams;
 
-  // 新規チーム追加ロジック: ローカルストレージに追加し、ログイン中ならクエリキャッシュにも即座にマージ
+  // 新規チーム追加ロジック: ローカルストレージにのみ追加する。
+  // QueryCache（サーバーデータ）は書き換えない。
+  // マージロジック（上の teams 計算式）が localTeams のみのチームを末尾に自動追加するため、UI には即座に反映される。
+  // QueryCache を書き換えると、5分間の staleTime 内にサーバーリフェッチが起きた際にチームが消えるバグが発生する。
   const addTeam = (newTeam: Team) => {
     setLocalTeams((prev) => [...prev.filter((t) => t.id !== newTeam.id), newTeam]);
-    if (isAuthenticated) {
-      queryClient.setQueryData<readonly Team[]>(["teams"], (old = []) => [
-        ...old.filter((t) => t.id !== newTeam.id),
-        newTeam,
-      ]);
-    }
   };
 
   // 更新ロジック: ローカルストレージに即時反映（未保存変更として保持）

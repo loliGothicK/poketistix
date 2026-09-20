@@ -254,6 +254,7 @@
     "recordBattle": "対戦を記録",
     "saveSuccess": "対戦記録を保存しました",
     "saveFailed": "対戦記録の保存に失敗しました",
+    "teamSyncFailed": "チームのサーバー同期に失敗しました。先にチームを保存してから再度お試しください。",
     "currentRating": "最新レート",
     "party": "パーティ",
     "noParty": "このチームにはまだポケモンがいません。",
