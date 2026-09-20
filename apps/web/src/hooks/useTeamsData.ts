@@ -39,6 +39,17 @@ export const useTeamsData = () => {
           ]
         : localTeams;
 
+  // 新規チーム追加ロジック: ローカルストレージに追加し、ログイン中ならクエリキャッシュにも即座にマージ
+  const addTeam = (newTeam: Team) => {
+    setLocalTeams((prev) => [...prev.filter((t) => t.id !== newTeam.id), newTeam]);
+    if (isAuthenticated) {
+      queryClient.setQueryData<readonly Team[]>(["teams"], (old = []) => [
+        ...old.filter((t) => t.id !== newTeam.id),
+        newTeam,
+      ]);
+    }
+  };
+
   // 更新ロジック: ローカルストレージに即時反映（未保存変更として保持）
   const updateTeams = (newTeams: readonly Team[]) => {
     setLocalTeams(newTeams);
@@ -46,11 +57,12 @@ export const useTeamsData = () => {
 
   // 削除ロジック: ローカルストレージとクエリキャッシュの両方から即座に除去
   const removeTeam = (teamId: string) => {
-    const newLocalTeams = localTeams.filter((t) => t.id !== teamId);
-    setLocalTeams(newLocalTeams);
+    setLocalTeams((prev) => prev.filter((t) => t.id !== teamId));
 
     if (isAuthenticated) {
-      queryClient.setQueryData(["teams"], newLocalTeams);
+      queryClient.setQueryData<readonly Team[]>(["teams"], (old = []) =>
+        old.filter((t) => t.id !== teamId),
+      );
       deleteTeamMutation.mutate(teamId);
     }
   };
@@ -61,6 +73,7 @@ export const useTeamsData = () => {
     teams,
     isLoading,
     isError: isAuthenticated === true ? teamsQuery.isError : false,
+    addTeam,
     updateTeams,
     removeTeam,
   };

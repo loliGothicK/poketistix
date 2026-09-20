@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useSyncExternalStore, useEffect } from "react";
+import { useState, useMemo, useSyncExternalStore, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
@@ -545,7 +545,7 @@ export default function TeamBuilderPage({
   });
 
   const [activeTeamId, setActiveTeamId] = useAtom(activeTeamIdAtom);
-  const { teams: rawTeams, isLoading, updateTeams, removeTeam } = useTeamsData();
+  const { teams: rawTeams, isLoading, addTeam, removeTeam } = useTeamsData();
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -554,40 +554,99 @@ export default function TeamBuilderPage({
   const teams = useMemo(() => (mounted ? rawTeams : []), [mounted, rawTeams]);
 
   const teamParam = searchParams.get("team");
+  const initialSyncedRef = useRef(false);
+  const prevTeamParamRef = useRef<string | null>(null);
 
   // チーム未選択時または存在しないチームIDの場合、先頭のチームを自動選択（ロード中・認証判定中はスキップ）
   useEffect(() => {
     if (!mounted || isLoading || teams.length === 0) return;
 
-    // 1. URL の team パラメータに該当するチームがあれば最優先
-    if (teamParam && teams.some((t) => t.id === teamParam)) {
-      if (activeTeamId !== teamParam) {
-        setActiveTeamId(teamParam);
+    if (!initialSyncedRef.current) {
+      initialSyncedRef.current = true;
+      // 1. URL の team パラメータに該当するチームがあれば最優先
+      if (teamParam && teams.some((t) => t.id === teamParam)) {
+        if (activeTeamId !== teamParam) {
+          setActiveTeamId(teamParam);
+        }
+        prevTeamParamRef.current = teamParam;
+        return;
+      }
+
+      // 2. 現在の activeTeamId が teams に存在していれば維持
+      if (activeTeamId && teams.some((t) => t.id === activeTeamId)) {
+        prevTeamParamRef.current = activeTeamId;
+        if (!isMobile && !teamParam) {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("team", activeTeamId);
+          router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
+        }
+        return;
+      }
+
+      // 3. 該当チームが存在しない（または未選択）の場合にのみ、先頭チームへ安全にフォールバック
+      const firstId = teams[0].id;
+      setActiveTeamId(firstId);
+      prevTeamParamRef.current = firstId;
+      if (!isMobile) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("team", firstId);
+        router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
       }
       return;
     }
 
-    // 2. 現在の activeTeamId が teams に存在していれば維持（勝手に書き換えない！）
+    // 初回同期完了後:
+    // ブラウザの戻る・進むなどで URL の teamParam が外部から変更された場合
+    if (teamParam !== prevTeamParamRef.current) {
+      prevTeamParamRef.current = teamParam;
+      if (teamParam && teams.some((t) => t.id === teamParam)) {
+        if (activeTeamId !== teamParam) {
+          setActiveTeamId(teamParam);
+        }
+        return;
+      }
+    }
+
+    // 現在の activeTeamId が依然として存在しているなら絶対に上書きしない（同期や再取得での巻き戻りを防止）
     if (activeTeamId && teams.some((t) => t.id === activeTeamId)) {
       return;
     }
 
-    // 3. 該当チームが存在しない（または未選択）の場合にのみ、先頭チームへ安全にフォールバック
-    setActiveTeamId(teams[0].id);
-  }, [mounted, isLoading, teams, activeTeamId, teamParam, setActiveTeamId]);
+    // アクティブなチームが削除されるなどして存在しなくなった場合のみフォールバック
+    const fallbackId = teams[0]?.id ?? null;
+    setActiveTeamId(fallbackId);
+    prevTeamParamRef.current = fallbackId;
+    if (!isMobile && fallbackId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("team", fallbackId);
+      router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
+    }
+  }, [
+    mounted,
+    isLoading,
+    teams,
+    activeTeamId,
+    teamParam,
+    isMobile,
+    lang,
+    router,
+    searchParams,
+    setActiveTeamId,
+  ]);
 
   const handleSelectTeam = (id: string) => {
     setActiveTeamId(id);
     setSelectedSlot(undefined);
-    const params = new URLSearchParams(window.location.search);
+    prevTeamParamRef.current = id;
+    const params = new URLSearchParams(searchParams.toString());
     params.set("team", id);
     params.delete("slot");
-    window.history.replaceState(null, "", `/${lang}/team-builder?${params.toString()}`);
+    router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
   };
 
   const handleSelectSlot = (slot: number) => {
     setSelectedSlot(slot);
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams.toString());
     params.set("slot", slot.toString());
     if (activeTeamId) {
       params.set("team", activeTeamId);
@@ -595,19 +654,19 @@ export default function TeamBuilderPage({
     if (isMobile) {
       router.push(`/${lang}/team-builder?${params.toString()}`);
     } else {
-      window.history.replaceState(null, "", `/${lang}/team-builder?${params.toString()}`);
+      router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
     }
   };
 
   const handleBackFromSlot = () => {
     setSelectedSlot(undefined);
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams.toString());
     params.delete("slot");
     if (isMobile) {
       params.set("view", "overview");
       router.push(`/${lang}/team-builder?${params.toString()}`);
     } else {
-      window.history.replaceState(null, "", `/${lang}/team-builder?${params.toString()}`);
+      router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
     }
   };
 
@@ -641,18 +700,19 @@ export default function TeamBuilderPage({
   const handleCreateTeam = (team: {
     readonly name?: string;
     readonly members: Team["members"];
-  }) => {
-    const newTeam = {
+  }): Team => {
+    const newTeam: Team = {
       id: ulid(),
       name: team.name || t("teamBuilder.teamLabel", { index: teams.length + 1 }),
       members: team.members,
     };
-    updateTeams([...teams, newTeam]);
+    addTeam(newTeam);
     handleSelectTeam(newTeam.id);
+    return newTeam;
   };
 
-  const handleCreateNewTeam = () => {
-    handleCreateTeam({
+  const handleCreateNewTeam = (): Team => {
+    return handleCreateTeam({
       name: t("teamBuilder.teamLabel", { index: teams.length + 1 }),
       members: Array(MAX_TEAM_SIZE).fill(null),
     });
@@ -667,10 +727,11 @@ export default function TeamBuilderPage({
       } else {
         setActiveTeamId(null);
         setSelectedSlot(undefined);
-        const params = new URLSearchParams(window.location.search);
+        prevTeamParamRef.current = null;
+        const params = new URLSearchParams(searchParams.toString());
         params.delete("team");
         params.delete("slot");
-        window.history.replaceState(null, "", `/${lang}/team-builder?${params.toString()}`);
+        router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
       }
     }
     setDeleteTargetId(null);
@@ -993,12 +1054,12 @@ export default function TeamBuilderPage({
                   router.push(`/${lang}/team-builder?view=overview&team=${id}`);
                 }}
                 onCreateTeam={() => {
-                  handleCreateNewTeam();
-                  router.push(`/${lang}/team-builder?view=overview`);
+                  const newTeam = handleCreateNewTeam();
+                  router.push(`/${lang}/team-builder?view=overview&team=${newTeam.id}`);
                 }}
                 onImportTeam={(team) => {
-                  handleCreateTeam(team);
-                  router.push(`/${lang}/team-builder?view=overview`);
+                  const newTeam = handleCreateTeam(team);
+                  router.push(`/${lang}/team-builder?view=overview&team=${newTeam.id}`);
                 }}
                 onError={(d) => {
                   setDiagnostics(d);
@@ -1011,7 +1072,7 @@ export default function TeamBuilderPage({
                 onSelectSlot={handleSelectSlot}
                 onBack={() => {
                   setSelectedSlot(undefined);
-                  const params = new URLSearchParams(window.location.search);
+                  const params = new URLSearchParams(searchParams.toString());
                   params.delete("slot");
                   params.delete("view");
                   router.push(`/${lang}/team-builder?${params.toString()}`);

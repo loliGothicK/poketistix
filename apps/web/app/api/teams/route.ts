@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { teams, teamMembers, boxPokemon } from "@/lib/db/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, asc } from "drizzle-orm";
 import { withChildSpan } from "@/lib/otel";
 import type { Team, TrainedPokemon } from "@/store/team/team";
 import { teamsSaveSchema } from "@/lib/validator/team";
@@ -18,7 +18,11 @@ export async function GET(_request: Request) {
   const result = await withChildSpan(
     "db.teams.list",
     async (_span) => {
-      const userTeams = await db.select().from(teams).where(eq(teams.userId, userId));
+      const userTeams = await db
+        .select()
+        .from(teams)
+        .where(eq(teams.userId, userId))
+        .orderBy(asc(teams.createdAt));
 
       if (userTeams.length === 0) return [];
 
