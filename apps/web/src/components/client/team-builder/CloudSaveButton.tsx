@@ -91,7 +91,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
     const draftReasons = formatTeamValidationIssues(parseResult, t, activeTeam.members);
 
     const isLoading = saveMutation.isPending || isTeamsLoading;
-    const isSaved = !hasUnsavedChanges && !isTeamsLoading;
+    const isSaved = !hasUnsavedChanges;
 
     const actionIcon = isLoading ? (
       <CircularProgress size={16} color="inherit" />
@@ -118,7 +118,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
         onClick={() => saveMutation.mutate()}
         slotProps={{
           tooltip: { title: actionText, open: true },
-          fab: { disabled: isLoading || isSaved || isDraft },
+          fab: { disabled: isLoading || isSaved },
         }}
       />
     ) : (
@@ -127,7 +127,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
         variant={hasUnsavedChanges ? "contained" : "outlined"}
         disableElevation
         color={hasUnsavedChanges ? (isDraft ? "warning" : "primary") : "inherit"}
-        disabled={isLoading || isSaved || isDraft}
+        disabled={isLoading || isSaved}
         startIcon={actionIcon}
         onClick={() => saveMutation.mutate()}
         sx={{ transition: "all 0.2s", minWidth: 140 }}
@@ -138,7 +138,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
 
     return (
       <>
-        {isDraft && draftReasons.length > 0 && !asSpeedDialAction ? (
+        {hasUnsavedChanges && isDraft && draftReasons.length > 0 && !asSpeedDialAction ? (
           <Tooltip
             arrow
             title={
