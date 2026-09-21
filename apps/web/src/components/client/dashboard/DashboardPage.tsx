@@ -53,6 +53,7 @@ import { useVariableValues } from "@/hooks/useVariableValues";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ulid } from "ulid";
 import type { Dashboard, DashboardVariable, DashboardWidget } from "@/store/dashboard/dashboard";
+import { DASHBOARD_GRID_MAX_COLS, DASHBOARD_GRID_MAX_ROWS } from "@/store/dashboard/dashboard";
 import { WidgetCard } from "./WidgetCard";
 import { VariableBar } from "./VariableBar";
 import { WidgetEditDrawer } from "./WidgetEditDrawer";
@@ -60,6 +61,18 @@ import { VisualizeEditor } from "./VisualizeEditor";
 import "react-resizable/css/styles.css";
 
 const GRID_COLUMNS = { xs: 2, sm: 4, md: 6, lg: 8 } as const;
+
+/** Clamp widget size to the server-side validation limits so save never 422s. */
+function clampWidgetSize(widget: DashboardWidget): DashboardWidget {
+  const w = Math.min(Math.max(Math.round(widget.w), 1), DASHBOARD_GRID_MAX_COLS);
+  const h = Math.min(Math.max(Math.round(widget.h), 1), DASHBOARD_GRID_MAX_ROWS);
+  if (w === widget.w && h === widget.h) return widget;
+  return { ...widget, w, h };
+}
+
+function normalizeLayout(layout: readonly DashboardWidget[]): readonly DashboardWidget[] {
+  return layout.map(clampWidgetSize);
+}
 
 function newEmptyWidget(y: number): DashboardWidget {
   return {
@@ -144,7 +157,7 @@ export default function DashboardPage() {
 
   const handleStartEdit = () => {
     if (!activeDashboard) return;
-    setDraftLayout(activeDashboard.layout);
+    setDraftLayout(normalizeLayout(activeDashboard.layout));
     setDraftVariables(activeDashboard.variables ?? []);
     setEditing(true);
   };
@@ -159,8 +172,10 @@ export default function DashboardPage() {
 
   const handleSave = async () => {
     if (!activeDashboard || draftLayout === null) return;
+    const layout = normalizeLayout(draftLayout);
+    setDraftLayout(layout);
     await updateDashboard(activeDashboard.id, {
-      layout: draftLayout,
+      layout,
       variables: draftVariables ?? [],
     });
     setEditing(false);
@@ -200,7 +215,8 @@ export default function DashboardPage() {
   };
 
   const handleWidgetChange = (updated: DashboardWidget) => {
-    setDraftLayout((prev) => (prev ?? []).map((w) => (w.id === updated.id ? updated : w)));
+    const clamped = clampWidgetSize(updated);
+    setDraftLayout((prev) => (prev ?? []).map((w) => (w.id === clamped.id ? clamped : w)));
   };
 
   const handleWidgetResize = (id: string, dw: number, dh: number) => {
@@ -209,8 +225,8 @@ export default function DashboardPage() {
         w.id === id
           ? {
               ...w,
-              w: Math.min(Math.max(w.w + dw, 1), GRID_COLUMNS.lg),
-              h: Math.max(w.h + dh, 1),
+              w: Math.min(Math.max(w.w + dw, 1), DASHBOARD_GRID_MAX_COLS),
+              h: Math.min(Math.max(w.h + dh, 1), DASHBOARD_GRID_MAX_ROWS),
             }
           : w,
       ),
