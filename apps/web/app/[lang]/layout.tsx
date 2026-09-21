@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/client/layout";
 import { ContentLayoutProvider } from "@/components/client/content/ContentLayoutContext";
 import { ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { BASE_URL } from "@/lib/seo/metadata";
 
@@ -93,6 +94,7 @@ export default async function RootLayout({
             <AppLayout lang={lang}>
               {children}
               <Analytics />
+              <SpeedInsights />
             </AppLayout>
           </ContentLayoutProvider>
         </AppRouterCacheProvider>
