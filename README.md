@@ -2,21 +2,63 @@
 
 Pokétistix is a monorepo containing a modern web application and a WebAssembly-based Pokémon damage calculator.
 
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser"]
+        WEB["Next.js App"]
+    end
+
+    subgraph SaaS["Backend & SaaS"]
+        SB[("Supabase<br/>PostgreSQL + Auth")]
+        CF["Cloudflare Workers<br/>docs-search API (Hono + D1)"]
+        SEN["Sentry<br/>errors + traces"]
+        VCL["Vercel<br/>hosting + analytics"]
+    end
+
+    subgraph PKG["Workspace packages"]
+        DC["damage-calc<br/>Rust → Wasm"]
+        DT["data<br/>game datasets"]
+        EN["engine<br/>sim core (Rust)"]
+        PM["pkmn-meta<br/>sim meta data"]
+    end
+
+    EXT1["Google OAuth"]
+    EXT3["pokepast.es<br/>paste export"]
+
+    WEB -- "Auth + SQL (Drizzle)" --> SB
+    SB -- "social login" --> EXT1
+    WEB -- "docs full-text search" --> CF
+    WEB -- "error reports" --> SEN
+    WEB -- "hosting + analytics" --> VCL
+    WEB -- "damage calc (Wasm)" --> DC
+    WEB -- "game data" --> DT
+    WEB -- "share export" --> EXT3
+```
+
 ## 🛠️ Tech Stack
 
 ### Application (`apps/web`)
-- **Framework:** [Next.js](https://nextjs.org/) (App Router, React 19)
+- **Framework:** [Next.js](https://nextjs.org/) 16 (App Router, React 19)
 - **Database & Backend:** [Supabase](https://supabase.com/) (PostgreSQL) + [Drizzle ORM](https://orm.drizzle.team/)
 - **State Management & Data Fetching:** [Jotai](https://jotai.org/), [React Query](https://tanstack.com/query/latest)
 - **Styling & UI:** Material UI, Base UI, Emotion
+- **Content:** [Content Collections](https://www.content-collections.dev/) (docs/blog MDX), i18n via `i18next` + `react-i18next` (ja/en)
+- **Monitoring:** [Sentry](https://sentry.io/) (error tracking + OpenTelemetry spans)
 - **Tooling:** Vitest (Testing), [Oxc](https://oxc-project.github.io/) (`oxlint`, `oxfmt`) for lightning-fast linting and formatting
 
 ### Packages (`packages/*`)
 - **`@poketistix/damage-calc`:** High-performance Pokémon damage calculator written in **Rust** and compiled to **WebAssembly (Wasm)**.
+- **`@poketistix/engine`:** Pokémon simulation engine, powered by Rust/WebAssembly.
+- **`@poketistix/data`:** Pokémon game datasets (master/champions data).
+- **`@poketistix/pkmn-meta`:** Pokémon simulation meta data.
+
+### Workers (`workers/*`)
+- **`docs-search`:** Documentation search API built with [Hono](https://hono.dev/), deployed to [Cloudflare Workers](https://workers.cloudflare.com/) with [D1](https://developers.cloudflare.com/d1/) (`poketistix-docs` database). Managed with [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
 ### Monorepo Tooling
-- **Package Manager:** [pnpm](https://pnpm.io/)
-- **Build System:** [Turborepo](https://turbo.build/)
+- **Package Manager:** [pnpm](https://pnpm.io/) (v12+, workspaces with recursive `pnpm -r` scripts)
 - **Versioning & Releases:** [Changesets](https://github.com/changesets/changesets)
 
 ---
@@ -25,8 +67,8 @@ Pokétistix is a monorepo containing a modern web application and a WebAssembly-
 
 ### Prerequisites
 Ensure you have the following installed on your system:
-- [Node.js](https://nodejs.org/) (v24+ recommended)
-- [pnpm](https://pnpm.io/) (v11+)
+- [Node.js](https://nodejs.org/) (v26+, see the `volta` pin in `package.json`)
+- [pnpm](https://pnpm.io/) (v12+)
 - [Rust & Cargo](https://rustup.rs/) (with the `wasm32-unknown-unknown` target)
 - [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) (Install via `cargo install wasm-pack`)
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (Requires Docker for local development)
@@ -52,7 +94,7 @@ For local development, create a `.env.local` file in the `apps/web` directory.
    ```
 
 2. **Start the Local Environment:**
-   Run the following command from the root directory. This will start the local Supabase container, run Drizzle database migrations, and spin up the Next.js development server:
+   Run the following command from the root directory. It starts every workspace's dev server in parallel. For `apps/web` this includes starting the local Supabase container, running Drizzle database migrations + seeding, and spinning up the Next.js development server; for `workers/docs-search` it starts Wrangler in local dev mode:
    ```bash
    pnpm run dev
    ```
@@ -65,8 +107,14 @@ For local development, create a `.env.local` file in the `apps/web` directory.
 Database scripts are located in `apps/web` but can be run via pnpm filters or directly inside the app directory:
 - `pnpm --filter @poketistix/app run db:generate` - Generate Drizzle migrations
 - `pnpm --filter @poketistix/app run db:migrate` - Apply migrations to the database (defaults to local database via `.env.local`)
-- `pnpm --filter @poketistix/app run db:studio` - Open Drizzle Studio to inspect the database visually
+- `pnpm --filter @poketistix/app run db:push` - Push schema directly to the database
+- `pnpm --filter @poketistix/app run db:seed` - Seed the database with initial data
+- `pnpm --filter @poketistix/app run db:setup:local` - Migrate + seed in one step (runs automatically via `pnpm run dev`)
 - `pnpm --filter @poketistix/app run db:reset:local` - Reset the local Supabase database and re-apply migrations
+
+#### Docs Search Index (Cloudflare D1)
+- `pnpm --filter @poketistix/app run d1:migrate` - Apply D1 migrations for the docs database
+- `pnpm --filter @poketistix/app run d1:index` - Index docs content into D1 (used by `workers/docs-search`)
 
 #### Production Database Migration
 To apply migrations to the production database from your local machine, run the migration script with `NODE_ENV=production` so that it uses the production environment variables (`.env.production`), or pass the `DATABASE_URL` explicitly.
@@ -95,6 +143,18 @@ DATABASE_URL="<YOUR_PROD_URL>" pnpm --filter @poketistix/app run db:migrate
 
 ---
 
+## 🧪 Development
+
+Common commands run from the repository root (they recurse into all workspaces via `pnpm -r`):
+
+- `pnpm test` - Run Vitest suites
+- `pnpm lint` - Lint with `oxlint` (type-aware)
+- `pnpm fmt` - Format with `oxfmt`
+- `pnpm check` - Typecheck (`tsc --noEmit`)
+- `pnpm --filter @poketistix/app run i18n:check` - Verify translation keys
+
+---
+
 ## 📦 Release Cycle
 
 This repository uses [Changesets](https://github.com/changesets/changesets) and GitHub Actions to automate versioning, changelogs, and package publishing.
@@ -113,5 +173,4 @@ Commit the generated `.changeset/*.md` file along with your code changes and pus
 When changes are merged into the `main` branch, the **Changesets GitHub Action** (`.github/workflows/changesets.yml`) takes over:
 - It runs `pnpm turbo run version` to consume the changeset files and bump the `package.json` versions.
 - It updates the `CHANGELOG.md` files.
-- It automatically publishes updated packages (like the Rust/Wasm `@poketistix/damage-calc`) to the npm registry.
 - It creates a new Release and Tag on GitHub.
