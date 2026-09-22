@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useSyncExternalStore, useEffect, useRef } from "react";
+import { useState, useMemo, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
@@ -554,90 +554,19 @@ export default function TeamBuilderPage({
   const teams = useMemo(() => (mounted ? rawTeams : []), [mounted, rawTeams]);
 
   const teamParam = searchParams.get("team");
-  const initialSyncedRef = useRef(false);
-  const prevTeamParamRef = useRef<string | null>(null);
 
-  // チーム未選択時または存在しないチームIDの場合、先頭のチームを自動選択（ロード中・認証判定中はスキップ）
-  useEffect(() => {
-    if (!mounted || isLoading || teams.length === 0) return;
-
-    if (!initialSyncedRef.current) {
-      initialSyncedRef.current = true;
-      // 1. URL の team パラメータに該当するチームがあれば最優先
-      if (teamParam && teams.some((t) => t.id === teamParam)) {
-        if (activeTeamId !== teamParam) {
-          setActiveTeamId(teamParam);
-        }
-        prevTeamParamRef.current = teamParam;
-        return;
-      }
-
-      // 2. 現在の activeTeamId が teams に存在していれば維持
-      if (activeTeamId && teams.some((t) => t.id === activeTeamId)) {
-        prevTeamParamRef.current = activeTeamId;
-        if (!isMobile && !teamParam) {
-          const params = new URLSearchParams(searchParams.toString());
-          params.set("team", activeTeamId);
-          router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
-        }
-        return;
-      }
-
-      // 3. 該当チームが存在しない（または未選択）の場合にのみ、先頭チームへ安全にフォールバック
-      const firstId = teams[0].id;
-      setActiveTeamId(firstId);
-      prevTeamParamRef.current = firstId;
-      if (!isMobile) {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("team", firstId);
-        router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
-      }
-      return;
-    }
-
-    // 初回同期完了後:
-    // ブラウザの戻る・進むなどで URL の teamParam が外部から変更された場合
-    if (teamParam !== prevTeamParamRef.current) {
-      prevTeamParamRef.current = teamParam;
-      if (teamParam && teams.some((t) => t.id === teamParam)) {
-        if (activeTeamId !== teamParam) {
-          setActiveTeamId(teamParam);
-        }
-        return;
-      }
-    }
-
-    // 現在の activeTeamId が依然として存在しているなら絶対に上書きしない（同期や再取得での巻き戻りを防止）
-    if (activeTeamId && teams.some((t) => t.id === activeTeamId)) {
-      return;
-    }
-
-    // アクティブなチームが削除されるなどして存在しなくなった場合のみフォールバック
-    const fallbackId = teams[0]?.id ?? null;
-    setActiveTeamId(fallbackId);
-    prevTeamParamRef.current = fallbackId;
-    if (!isMobile && fallbackId) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("team", fallbackId);
-      router.replace(`/${lang}/team-builder?${params.toString()}`, { scroll: false });
-    }
-  }, [
-    mounted,
-    isLoading,
-    teams,
-    activeTeamId,
-    teamParam,
-    isMobile,
-    lang,
-    router,
-    searchParams,
-    setActiveTeamId,
-  ]);
+  // 選択チームはレンダー時に導出する: URL指定 > 保存済み選択 > 先頭チーム。
+  // effect による atom への書き戻しはしない (部分的な一覧での上書きや URL との往復が不整合の原因になるため)。
+  // 選択変更は handleSelectTeam などのイベントハンドラで atom と URL の両方を直接更新する。
+  const effectiveTeamId = useMemo(() => {
+    if (teamParam && teams.some((t) => t.id === teamParam)) return teamParam;
+    if (activeTeamId && teams.some((t) => t.id === activeTeamId)) return activeTeamId;
+    return teams[0]?.id ?? null;
+  }, [teams, teamParam, activeTeamId]);
 
   const handleSelectTeam = (id: string) => {
     setActiveTeamId(id);
     setSelectedSlot(undefined);
-    prevTeamParamRef.current = id;
     const params = new URLSearchParams(searchParams.toString());
     params.set("team", id);
     params.delete("slot");
@@ -648,8 +577,8 @@ export default function TeamBuilderPage({
     setSelectedSlot(slot);
     const params = new URLSearchParams(searchParams.toString());
     params.set("slot", slot.toString());
-    if (activeTeamId) {
-      params.set("team", activeTeamId);
+    if (effectiveTeamId) {
+      params.set("team", effectiveTeamId);
     }
     if (isMobile) {
       router.push(`/${lang}/team-builder?${params.toString()}`);
@@ -695,7 +624,7 @@ export default function TeamBuilderPage({
 
   if (isLoading) return <Box sx={{ p: 3 }}>{t("teamBuilder.loading")}</Box>;
 
-  const activeTeam = teams.find((t) => t.id === activeTeamId) || null;
+  const activeTeam = teams.find((t) => t.id === effectiveTeamId) || null;
 
   const handleCreateTeam = (team: {
     readonly name?: string;
@@ -720,14 +649,13 @@ export default function TeamBuilderPage({
 
   const handleDeleteTeam = (teamId: string) => {
     removeTeam(teamId);
-    if (activeTeamId === teamId) {
+    if (effectiveTeamId === teamId) {
       const remaining = teams.filter((t) => t.id !== teamId);
       if (remaining.length > 0) {
         handleSelectTeam(remaining[0].id);
       } else {
         setActiveTeamId(null);
         setSelectedSlot(undefined);
-        prevTeamParamRef.current = null;
         const params = new URLSearchParams(searchParams.toString());
         params.delete("team");
         params.delete("slot");
@@ -942,7 +870,7 @@ export default function TeamBuilderPage({
                   teams.map((team) => (
                     <ListItem key={team.id} disablePadding>
                       <ListItemButton
-                        selected={team.id === activeTeamId}
+                        selected={team.id === effectiveTeamId}
                         onClick={() => handleSelectTeam(team.id)}
                         sx={{
                           mx: 1,

@@ -15,16 +15,15 @@ import {
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CheckIcon from "@mui/icons-material/Check";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { localTeamsAtom, Team } from "@/store/team/team";
 import { isAuthenticatedAtom } from "@/store/auth";
-import { saveTeamsToServer } from "@services/teams";
+import { fetchTeamsFromServer, saveTeamsToServer } from "@services/teams";
 import { teamSchema, teamSaveSchema } from "@/lib/validator/team";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useTeamsData } from "@/hooks/useTeamsData";
 import { formatTeamValidationIssues } from "@/lib/validator/format-issues";
-import { isTeamEqual } from "@/lib/team/equality";
 
 type CloudSaveButtonProps = {
   asSpeedDialAction?: boolean;
@@ -56,19 +55,14 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
         return validTeams;
       },
       onSuccess: async (validTeams) => {
-        // 1. サーバーキャッシュを保存した最新データで即座に同期（楽観的更新）
-        queryClient.setQueryData<readonly Team[]>(["teams"], (old = []) => {
-          const map = new Map(old.map((t) => [t.id, t]));
-          validTeams.forEach((t) => map.set(t.id, t));
-          return Array.from(map.values());
-        });
+        // 1. サーバーからの最新データで refetch し、キャッシュを確定状態にする
+        //    await することで「localTeams 削除後にキャッシュにも存在しない」消失ウィンドウを防ぐ
+        await queryClient.invalidateQueries({ queryKey: ["teams"] });
 
-        // 2. 保存成功したチームを localTeams（未保存差分）から削除
+        // 2. refetch 完了後に localTeams（未保存差分）から保存済みチームを削除
+        //    この時点ではサーバーから返ったデータがキャッシュに入っているため UI に乖離がない
         const savedIds = new Set(validTeams.map((t) => t.id));
         setLocalTeams((prev) => prev.filter((t) => !savedIds.has(t.id)));
-
-        // 3. バックグラウンドで最新データを再検証（await せずに即時完了）
-        void queryClient.invalidateQueries({ queryKey: ["teams"] });
 
         setSnackMessage(t("teamBuilder.saveSuccess"));
         setSnackSeverity("success");
@@ -81,11 +75,21 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
       },
     });
 
+    // ["teams"] キャッシュをリアクティブに購読する（enabled: false で fetch は走らない）
+    const { data: serverTeams = [] } = useQuery<readonly Team[]>({
+      queryKey: ["teams"],
+      queryFn: fetchTeamsFromServer,
+      enabled: false,
+    });
+
     if (!isAuthenticated || !activeTeam) return null;
 
-    const serverTeams = queryClient.getQueryData<readonly Team[]>(["teams"]) ?? [];
-    const serverTeam = serverTeams.find((st) => st.id === activeTeam.id);
-    const hasUnsavedChanges = !serverTeam || !isTeamEqual(serverTeam, activeTeam);
+    // localTeams に存在する = 未保存差分がある（新規作成 or ローカル編集）
+    // これが「Synced か否か」を判定する唯一の真実
+    const isInLocalTeams = localTeams.some((lt) => lt.id === activeTeam.id);
+    // サーバーに存在しない = まだ一度も同期されていない新規チーム
+    const isNewTeam = !serverTeams.some((st) => st.id === activeTeam.id);
+    const hasUnsavedChanges = isInLocalTeams || isNewTeam;
     const parseResult = teamSchema.safeParse(activeTeam);
     const isDraft = !parseResult.success;
     const draftReasons = formatTeamValidationIssues(parseResult, t, activeTeam.members);

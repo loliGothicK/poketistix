@@ -19,7 +19,7 @@ export const teamHistoryAtom = atom<Map<string, HistoryEntry>>(new Map());
 export const useActiveTeam = () => {
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
   const [localTeams, setLocalTeams] = useAtom(localTeamsAtom);
-  const activeId = useAtomValue(activeTeamIdAtom);
+  const storedActiveId = useAtomValue(activeTeamIdAtom);
   const queryClient = useQueryClient();
   const [historyMap, setHistoryMap] = useAtom(teamHistoryAtom);
 
@@ -43,7 +43,13 @@ export const useActiveTeam = () => {
           ]
         : localTeams;
 
-  const team = teams.find(({ id }) => id === activeId);
+  // 有効な保存済み選択がなければ先頭チームにフォールバックする (レンダー時導出。effect による書き戻しはしない)
+  const activeId =
+    storedActiveId && teams.some((t) => t.id === storedActiveId)
+      ? storedActiveId
+      : (teams[0]?.id ?? null);
+
+  const team = activeId ? teams.find(({ id }) => id === activeId) : undefined;
 
   const getHistoryEntry = useCallback(
     (id: string): HistoryEntry => historyMap.get(id) ?? { past: [], future: [] },

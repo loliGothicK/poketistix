@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, useSyncExternalStore } from "react";
+import { useMemo, useState, useRef, useSyncExternalStore } from "react";
 import {
   Alert,
   Box,
@@ -348,30 +348,39 @@ export default function BattleRecordPage() {
     severity: "success",
   });
 
-  useEffect(() => {
-    if (
-      mounted &&
-      safeTeams.length > 0 &&
-      (!activeTeamId || !safeTeams.some((t) => t.id === activeTeamId))
-    ) {
-      setActiveTeamId(safeTeams[0].id);
-    }
-  }, [mounted, activeTeamId, safeTeams, setActiveTeamId]);
-
+  // 選択チームはレンダー時に導出する (activeTeam のメモ化を参照)。
+  // 不足分の書き戻しは行わない: 部分的な一覧での上書きが不整合の原因になるため。
+  //
+  // NOTE: safeTeams は isAuthenticated=null（認証確認中）の間は空になる。
+  // その間も activeTeamId が localTeams に存在する場合は直接返すことで、
+  // 「新チームを選択しても画面が変わらない」を防ぐ。
   const activeTeam = useMemo(() => {
-    if (activeTeamId && safeTeams.some((tm) => tm.id === activeTeamId)) {
-      return safeTeams.find((tm) => tm.id === activeTeamId) ?? null;
+    if (activeTeamId) {
+      const fromSafe = safeTeams.find((tm) => tm.id === activeTeamId);
+      if (fromSafe) return fromSafe;
+      // safeTeams がまだ空の場合（認証確認中）は localTeams から直接引く
+      const fromLocal = localTeams.find((lt) => lt.id === activeTeamId);
+      if (fromLocal) return fromLocal;
     }
-    return safeTeams[0] ?? null;
-  }, [safeTeams, activeTeamId]);
+    return safeTeams[0] ?? localTeams[0] ?? null;
+  }, [safeTeams, activeTeamId, localTeams]);
+
+  // safeTeams はサーバー＋ローカルのマージだが、認証確認中は空になる。
+  // localTeams にしかないチーム（未 Sync の新規チーム）を補完することで
+  // Select の options から消えないようにする。
+  const allTeams = useMemo(() => {
+    const seen = new Set(safeTeams.map((tm) => tm.id));
+    const localOnly = localTeams.filter((lt) => !seen.has(lt.id));
+    return [...safeTeams, ...localOnly];
+  }, [safeTeams, localTeams]);
 
   const teamNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const tm of safeTeams) {
+    for (const tm of allTeams) {
       map.set(tm.id, tm.name);
     }
     return map;
-  }, [safeTeams]);
+  }, [allTeams]);
 
   const activeSeason = useMemo(() => {
     if (selectedSeasonId && seasons.some((s) => s.id === selectedSeasonId)) {

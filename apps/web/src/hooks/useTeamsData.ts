@@ -40,6 +40,8 @@ export const useTeamsData = () => {
         : localTeams;
 
   // 新規チーム追加ロジック: ローカルストレージに追加（未保存変更として保持）
+  // NOTE: ["teams"] キャッシュ（サーバー状態）は更新しない。
+  // useTeamsData のマージロジック（serverTeams + localOnlyTeams）が既にローカル限定チームを含むため不要。
   const addTeam = (newTeam: Team) => {
     setLocalTeams((prev) => [...prev.filter((t) => t.id !== newTeam.id), newTeam]);
   };
