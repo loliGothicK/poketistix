@@ -28,19 +28,19 @@ ignoredBuiltDependencies:
   - unrs-resolver
 minimumReleaseAgeExclude:
   - '@types/node@26.1.0 || 26.1.1 || 26.1.2'
-  - '@sentry/browser-utils@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/browser@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/core@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/feedback@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/nextjs@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/node-core@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/node@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/opentelemetry@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/react@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/replay-canvas@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/replay@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/server-utils@10.64.0 || 10.65.0 || 10.67.0'
-  - '@sentry/vercel-edge@10.64.0 || 10.65.0 || 10.67.0'
+  - '@sentry/browser-utils@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/browser@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/core@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/feedback@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/nextjs@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/node-core@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/node@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/opentelemetry@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/react@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/replay-canvas@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/replay@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/server-utils@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
+  - '@sentry/vercel-edge@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'
   - '@supabase/auth-js@2.110.1 || 2.110.6 || 2.110.9 || 2.111.0'
   - '@supabase/cli-darwin-arm64@2.109.1 || 2.110.0 || 2.114.0 || 2.115.0'
   - '@supabase/cli-darwin-x64@2.109.1 || 2.110.0 || 2.114.0 || 2.115.0'
@@ -58,10 +58,10 @@ minimumReleaseAgeExclude:
   - supabase@2.109.1 || 2.110.0 || 2.114.0 || 2.115.0
   - '@pokemetrix/damage-calc@0.1.0 || 0.1.1'
   - '@poketistix/damage-calc@0.1.0 || 0.1.1'
-  - react-i18next@17.0.10 || 17.0.14
+  - react-i18next@17.0.10 || 17.0.14 || 17.0.15
   - happy-dom@20.11.0
-  - '@tanstack/query-core@5.101.3 || 5.103.0'
-  - '@tanstack/react-query@5.101.3 || 5.103.0'
+  - '@tanstack/query-core@5.101.3 || 5.103.0 || 5.103.2'
+  - '@tanstack/react-query@5.101.3 || 5.103.0 || 5.103.2'
   - '@oxfmt/binding-android-arm-eabi@0.61.0 || 0.62.0 || 0.64.0'
   - '@oxfmt/binding-android-arm64@0.61.0 || 0.62.0 || 0.64.0'
   - '@oxfmt/binding-darwin-arm64@0.61.0 || 0.62.0 || 0.64.0'
@@ -134,3 +134,6 @@ minimumReleaseAgeExclude:
   - lint-staged@17.4.1 || 17.5.0
   - schema-utils@4.5.0
   - zod@4.6.5
+  - '@content-collections/core@0.15.3'
+  - drizzle-kit@0.31.11
+  - drizzle-orm@0.45.3
