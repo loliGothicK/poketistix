@@ -6,5 +6,5 @@ export const config: VercelConfig = {
       "renovate/*": false,
     },
   },
-  ignoreCommand: 'echo "$VERCEL_GIT_COMMIT_MESSAGE" | grep -qF "[skip]"',
+  ignoreCommand: 'echo "$VERCEL_GIT_COMMIT_MESSAGE" | grep -qF "[skip deploy]"',
 };
