@@ -550,7 +550,10 @@
     "protect": "まもる",
     "tarShot": "タールショット",
     "calculate": "計算",
-    "fieldTab": "フィールド"
+    "fieldTab": "フィールド",
+    "loadFromBox": "BOXから選ぶ",
+    "boxEmpty": "BOXにポケモンが登録されていません",
+    "loginRequiredForBox": "BOXのポケモンを読み込むにはログインが必要です"
   },
   "share": {
     "pageTitle": "チームシェア",

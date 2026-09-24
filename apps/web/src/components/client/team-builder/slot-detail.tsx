@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/Delete";
+import AllInboxRoundedIcon from "@mui/icons-material/AllInboxRounded";
 import { useAtomValue } from "jotai";
 import { useSetAtom } from "jotai";
 import { Training } from "@/components/client/team-builder/training";
@@ -55,6 +56,7 @@ export default function TeamSlotDetail({
   const theme = useTheme();
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogTab, setDialogTab] = useState<"master" | "box">("master");
   const [savedSnackbar, setSavedSnackbar] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -62,6 +64,11 @@ export default function TeamSlotDetail({
   const setActiveSlotIndex = useSetAtom(activeSlotIndexAtom);
   const { saveToBox } = useBoxData();
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
+
+  const handleOpenDialog = (tab: "master" | "box" = "master") => {
+    setDialogTab(tab);
+    setDialogOpen(true);
+  };
 
   // URL 由来のスロットを、Lint セレクタ（activeSlotLintIssueAtom）が参照する atom に同期する。
   useEffect(() => {
@@ -145,6 +152,16 @@ export default function TeamSlotDetail({
           <Stack direction="row" spacing={1} sx={{ display: { xs: "none", md: "flex" } }}>
             {isAuthenticated && (
               <Button
+                variant="outlined"
+                onClick={() => handleOpenDialog("box")}
+                startIcon={<AllInboxRoundedIcon />}
+                size="small"
+              >
+                {t("damageCalc.loadFromBox")}
+              </Button>
+            )}
+            {isAuthenticated && (
+              <Button
                 variant="contained"
                 onClick={() => {
                   saveToBox(member);
@@ -176,7 +193,7 @@ export default function TeamSlotDetail({
               member={member}
               activeTab={activeTab}
               onUpdate={(trained: TrainedPokemon) => updateSlot(slot, trained)}
-              onChangePokemonClick={() => setDialogOpen(true)}
+              onChangePokemonClick={() => handleOpenDialog("master")}
             />
           </Box>
         ) : (
@@ -184,9 +201,20 @@ export default function TeamSlotDetail({
             <Typography variant="body1" color="text.secondary" gutterBottom>
               {t("teamBuilder.emptySlot")}
             </Typography>
-            <Button variant="contained" onClick={() => setDialogOpen(true)}>
-              {t("teamBuilder.selectPokemon")}
-            </Button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 1 }}>
+              <Button variant="contained" onClick={() => handleOpenDialog("master")}>
+                {t("teamBuilder.selectPokemon")}
+              </Button>
+              {isAuthenticated && (
+                <Button
+                  variant="outlined"
+                  startIcon={<AllInboxRoundedIcon />}
+                  onClick={() => handleOpenDialog("box")}
+                >
+                  {t("damageCalc.loadFromBox")}
+                </Button>
+              )}
+            </Stack>
           </Box>
         )}
       </Box>
@@ -197,6 +225,14 @@ export default function TeamSlotDetail({
           sx={{ display: { xs: "flex", md: "none" }, position: "fixed", bottom: 16, right: 16 }}
           icon={<SpeedDialIcon />}
         >
+          {isAuthenticated && (
+            <SpeedDialAction
+              icon={<AllInboxRoundedIcon />}
+              title={t("damageCalc.loadFromBox")}
+              slotProps={{ tooltip: { title: t("damageCalc.loadFromBox"), open: true } }}
+              onClick={() => handleOpenDialog("box")}
+            />
+          )}
           {isAuthenticated && (
             <SpeedDialAction
               icon={<SaveOutlinedIcon />}
@@ -222,6 +258,7 @@ export default function TeamSlotDetail({
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         translator={t}
+        initialTab={dialogTab}
         onChange={(identifier) => {
           updateSlot(slot, toDefault(identifier));
           setDialogOpen(false);

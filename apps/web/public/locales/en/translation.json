@@ -479,7 +479,10 @@
     "protect": "Protect",
     "tarShot": "Tar Shot",
     "calculate": "Calculate",
-    "fieldTab": "Field"
+    "fieldTab": "Field",
+    "loadFromBox": "Load from Box",
+    "boxEmpty": "No Pokémon in your Box",
+    "loginRequiredForBox": "Log in to load Pokémon from your Box"
   },
   "share": {
     "pageTitle": "Team Share",

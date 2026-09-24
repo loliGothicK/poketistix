@@ -27,8 +27,8 @@ export type FeedbackStatus =
 
 export type FeedbackCardProps = {
   readonly title: string;
-  readonly category: FeedbackCategory | string;
-  readonly status?: FeedbackStatus | string;
+  readonly category: FeedbackCategory;
+  readonly status?: FeedbackStatus;
   readonly source?: string;
   readonly children: ReactNode;
 };
@@ -350,7 +350,7 @@ export function FeedbackReply({ children, author }: FeedbackReplyProps) {
 }
 
 export type FeedbackBadgeProps = {
-  readonly status: FeedbackStatus | string;
+  readonly status: FeedbackStatus;
   readonly label?: string;
   readonly size?: "small" | "medium";
 };
@@ -385,7 +385,7 @@ export function FeedbackBadge({ status, label, size = "small" }: FeedbackBadgePr
 
 export type FeedbackItemProps = {
   readonly title: string;
-  readonly status?: FeedbackStatus | string;
+  readonly status?: FeedbackStatus;
   readonly label?: string;
   readonly children: ReactNode;
 };

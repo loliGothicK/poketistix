@@ -1,6 +1,7 @@
 import {
   Autocomplete,
   Box,
+  Button,
   Checkbox,
   createFilterOptions,
   Divider,
@@ -16,6 +17,7 @@ import AddIcon from "@mui/icons-material/Add";
 import RemoveIcon from "@mui/icons-material/Remove";
 import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import AllInboxRoundedIcon from "@mui/icons-material/AllInboxRounded";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Image from "next/image";
@@ -39,6 +41,8 @@ import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { flexRowCenter } from "@/theme/sx";
 import type { SxProps, Theme } from "@mui/material/styles";
 import type { PokemonPanelState } from "./useDamageCalcPage";
+import { LoadFromBoxDialog } from "./LoadFromBoxDialog";
+import { loadPokemonFromBox } from "./loadPokemonFromBox";
 
 type PokemonOption = {
   readonly identifier: string;
@@ -132,6 +136,7 @@ export function PokemonPanel({
   const { t, i18n } = useTranslation();
 
   const isAttacker = role === "attacker";
+  const [isBoxDialogOpen, setIsBoxDialogOpen] = useState(false);
 
   // Pokemon options
   const pokemonOptions = useMemo((): readonly PokemonOption[] => {
@@ -227,19 +232,43 @@ export function PokemonPanel({
     >
       <Stack spacing={2}>
         {/* Header */}
-        <Stack direction="row" spacing={1} sx={flexRowCenter}>
-          {value.identifier && (
-            <Image
-              src={`/pokemon/${value.identifier}.png`}
-              alt={value.identifier}
-              width={40}
-              height={40}
-              style={{ imageRendering: "pixelated" }}
-            />
-          )}
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            {label}
-          </Typography>
+        <Stack
+          direction="row"
+          sx={{
+            ...flexRowCenter,
+            justifyContent: "space-between",
+          }}
+        >
+          <Stack direction="row" spacing={1} sx={flexRowCenter}>
+            {value.identifier && (
+              <Image
+                src={`/pokemon/${value.identifier}.png`}
+                alt={value.identifier}
+                width={40}
+                height={40}
+                style={{ imageRendering: "pixelated" }}
+              />
+            )}
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              {label}
+            </Typography>
+          </Stack>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AllInboxRoundedIcon fontSize="small" />}
+            onClick={() => setIsBoxDialogOpen(true)}
+            sx={{
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 600,
+              fontSize: "0.8125rem",
+              py: 0.5,
+              px: 1.25,
+            }}
+          >
+            {t("damageCalc.loadFromBox")}
+          </Button>
         </Stack>
 
         {/* Basics */}
@@ -562,6 +591,13 @@ export function PokemonPanel({
           ))}
         </Stack>
       </Stack>
+
+      <LoadFromBoxDialog
+        open={isBoxDialogOpen}
+        onClose={() => setIsBoxDialogOpen(false)}
+        onSelect={(pokemon) => onChange(loadPokemonFromBox(pokemon, role))}
+        role={role}
+      />
     </SurfaceCard>
   );
 }

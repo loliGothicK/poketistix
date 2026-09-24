@@ -32,10 +32,22 @@ const resources = {
         auroraVeil: "Aurora Veil",
         helpingHand: "Helping Hand",
         powerSpot: "Power Spot",
+        loadFromBox: "Load from Box",
       },
     },
   },
 };
+
+vi.mock("@/hooks/useBoxData", () => ({
+  useBoxData: () => ({
+    box: [],
+    isLoading: false,
+    isError: false,
+    saveToBox: vi.fn(),
+    updateInBox: vi.fn(),
+    removeFromBox: vi.fn(),
+  }),
+}));
 
 // Use an IIFE or top-level await to init i18n safely before tests run
 await i18n.init({
@@ -170,5 +182,10 @@ describe("PokemonPanel UI Conditions", () => {
     renderPanel({ role: "attacker", isDoubles: false });
     expect(screen.queryByLabelText("Helping Hand")).toBeNull();
     expect(screen.queryByLabelText("Power Spot")).toBeNull();
+  });
+
+  it("renders 'Load from Box' button", () => {
+    renderPanel();
+    expect(screen.getByRole("button", { name: /Load from Box/i })).toBeDefined();
   });
 });

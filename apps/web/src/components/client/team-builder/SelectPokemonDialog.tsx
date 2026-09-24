@@ -34,6 +34,11 @@ import { isAuthenticatedAtom } from "@/store/auth";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { TFunction } from "i18next";
 import { useTheme } from "@mui/material/styles";
+import { itemById } from "@/data/items";
+import { moveById } from "@/data/moves";
+import { itemSprite } from "@/lib/image";
+import Image from "next/image";
+import { formatEvsAndNature } from "@/components/client/damage-calc/LoadFromBoxDialog";
 
 type SelectPokemonDialogProps = Pick<ComponentProps<typeof Dialog>, "open" | "onClose"> & {
   readonly title: string;
@@ -41,6 +46,7 @@ type SelectPokemonDialogProps = Pick<ComponentProps<typeof Dialog>, "open" | "on
   readonly translator: TFunction;
   readonly onSelectFromBox?: (pokemon: TrainedPokemon) => void;
   readonly excludedIdentifiers?: string[];
+  readonly initialTab?: "master" | "box";
 };
 
 /** Cap the rendered result rows so a broad filter can't tank the dialog. */
@@ -54,17 +60,29 @@ export function SelectPokemonDialog({
   translator,
   onSelectFromBox,
   excludedIdentifiers,
+  initialTab,
 }: SelectPokemonDialogProps) {
   const { t, i18n } = useTranslation();
   const [tokens, setTokens] = useState<QueryToken[]>([]);
-  const [tab, setTab] = useState<"master" | "box">("master");
+  const [tab, setTab] = useState<"master" | "box">(initialTab ?? "master");
   const [boxSearch, setBoxSearch] = useState("");
-  const { box } = useBoxData();
+  const { box, isLoading } = useBoxData();
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
-  const showBoxTab = isAuthenticated && Boolean(onSelectFromBox);
+  const showBoxTab = Boolean(onSelectFromBox);
   const activeTab = showBoxTab ? tab : "master";
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
+  if (open !== prevOpen || initialTab !== prevInitialTab) {
+    setPrevOpen(open);
+    setPrevInitialTab(initialTab);
+    if (open) {
+      setTab(initialTab ?? "master");
+      setBoxSearch("");
+    }
+  }
 
   // オートフォーカス用: Dialog が完全に開いた後に input を focus する
   const autocompleteInputRef = useRef<HTMLInputElement>(null);
@@ -138,17 +156,39 @@ export function SelectPokemonDialog({
     }
     const trimmed = boxSearch.trim().toLowerCase();
     if (!trimmed) return result;
-    return result.filter(
-      (p) =>
-        translator(`pokemon.${p.identifier}.name`).toLowerCase().includes(trimmed) ||
-        (i18n.exists(`pokemon.${p.identifier}.formName`)
-          ? translator(`pokemon.${p.identifier}.formName`)
-          : ""
-        )
-          .toLowerCase()
-          .includes(trimmed) ||
-        p.identifier.includes(trimmed),
-    );
+    return result.filter((p) => {
+      const name = translator(`pokemon.${p.identifier}.name`).toLowerCase();
+      if (name.includes(trimmed) || p.identifier.toLowerCase().includes(trimmed)) return true;
+
+      if (i18n.exists(`pokemon.${p.identifier}.formName`)) {
+        const formName = translator(`pokemon.${p.identifier}.formName`).toLowerCase();
+        if (formName.includes(trimmed)) return true;
+      }
+
+      // Item search
+      if (p.item) {
+        const item = itemById.get(p.item);
+        if (item) {
+          const itemName = translator(`items.${item.identifier}.name`).toLowerCase();
+          if (itemName.includes(trimmed) || item.identifier.toLowerCase().includes(trimmed))
+            return true;
+        }
+      }
+
+      // Move search
+      for (const moveId of p.moves) {
+        if (moveId !== null) {
+          const m = moveById.get(moveId);
+          if (m) {
+            const moveName = translator(`moves.${m.identifier}.name`).toLowerCase();
+            if (moveName.includes(trimmed) || m.identifier.toLowerCase().includes(trimmed))
+              return true;
+          }
+        }
+      }
+
+      return false;
+    });
   }, [box, boxSearch, translator, i18n, excludedIdentifiers]);
 
   const searchResultKey = `${activeTab}:${results.visible.length}:${filteredBox.length}:${tokens.length}:${boxSearch}`;
@@ -477,7 +517,7 @@ export function SelectPokemonDialog({
 
             <Box
               sx={{
-                maxHeight: 380,
+                maxHeight: 460,
                 overflowY: "auto",
                 "&::-webkit-scrollbar": {
                   width: "6px",
@@ -488,17 +528,41 @@ export function SelectPokemonDialog({
                 },
               }}
             >
-              {filteredBox.length === 0 ? (
+              {!isAuthenticated ? (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
+                >
+                  {translator("damageCalc.loginRequiredForBox")}
+                </Typography>
+              ) : isLoading ? (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
+                >
+                  {translator("common.loading")}
+                </Typography>
+              ) : box.length === 0 ? (
                 <Typography
                   variant="body2"
                   sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
                 >
                   {translator("box.empty")}
                 </Typography>
+              ) : filteredBox.length === 0 ? (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
+                >
+                  {translator("box.noResults")}
+                </Typography>
               ) : (
                 <Box component="div">
                   {filteredBox.map((pokemon, index) => {
                     const isSelected = index === highlightedIndex;
+                    const item = pokemon.item ? itemById.get(pokemon.item) : null;
+                    const isFormNameExists = i18n.exists(`pokemon.${pokemon.identifier}.formName`);
+
                     return (
                       <Stack
                         key={pokemon.boxId}
@@ -518,7 +582,7 @@ export function SelectPokemonDialog({
                           alignItems: "center",
                           gap: 1.5,
                           px: { xs: 2, sm: 2.5 },
-                          py: 1.25,
+                          py: 1.5,
                           cursor: "pointer",
                           bgcolor: isSelected
                             ? alpha(theme.palette.primary.main, 0.1)
@@ -540,7 +604,7 @@ export function SelectPokemonDialog({
                         <Box
                           sx={{
                             width: 3.5,
-                            height: 26,
+                            height: 38,
                             borderRadius: "2px",
                             bgcolor: isSelected ? theme.palette.primary.main : "transparent",
                             flexShrink: 0,
@@ -548,45 +612,113 @@ export function SelectPokemonDialog({
                           }}
                         />
 
-                        <Avatar
-                          src={`/pokemon/${pokemon.identifier}.png`}
-                          alt={pokemon.identifier}
-                          sx={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: "8px",
-                            bgcolor: alpha(theme.palette.text.primary, 0.03),
-                            p: 0.25,
-                            flexShrink: 0,
-                            "& img": { objectFit: "contain" },
-                          }}
-                        />
-
-                        <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1.5 }}>
-                          <Typography
-                            variant="body1"
+                        {/* Pokemon avatar with item icon */}
+                        <Box sx={{ position: "relative", flexShrink: 0 }}>
+                          <Avatar
+                            src={`/pokemon/${pokemon.identifier}.png`}
+                            alt={pokemon.identifier}
                             sx={{
-                              fontWeight: isSelected ? 700 : 600,
-                              color: isSelected ? theme.palette.primary.main : "text.primary",
-                              transition: "color 0.12s ease",
+                              width: 48,
+                              height: 48,
+                              borderRadius: "10px",
+                              bgcolor: alpha(theme.palette.text.primary, 0.04),
+                              p: 0.25,
+                              "& img": { objectFit: "contain", imageRendering: "pixelated" },
                             }}
-                            noWrap
-                          >
-                            {translator(`pokemon.${pokemon.identifier}.name`)}
-                          </Typography>
-                          {i18n.exists(`pokemon.${pokemon.identifier}.formName`) && (
-                            <Typography
-                              variant="caption"
+                          />
+                          {item && (
+                            <Box
                               sx={{
-                                color: "text.secondary",
-                                display: "block",
-                                fontSize: "0.75rem",
+                                position: "absolute",
+                                bottom: -2,
+                                right: -2,
+                                width: 22,
+                                height: 22,
+                                borderRadius: "50%",
+                                bgcolor: "background.paper",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                boxShadow: 1,
+                              }}
+                            >
+                              <Image
+                                src={itemSprite(item.identifier)}
+                                alt={item.identifier}
+                                width={16}
+                                height={16}
+                              />
+                            </Box>
+                          )}
+                        </Box>
+
+                        {/* Info Column */}
+                        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                          <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 700,
+                                color: isSelected ? theme.palette.primary.main : "text.primary",
                               }}
                               noWrap
                             >
-                              {translator(`pokemon.${pokemon.identifier}.formName`)}
+                              {translator(`pokemon.${pokemon.identifier}.name`)}
+                              {isFormNameExists &&
+                                ` (${translator(`pokemon.${pokemon.identifier}.formName`)})`}
                             </Typography>
-                          )}
+                            {item && (
+                              <Typography
+                                variant="caption"
+                                sx={{ color: "text.secondary", fontWeight: 500 }}
+                                noWrap
+                              >
+                                @ {translator(`items.${item.identifier}.name`)}
+                              </Typography>
+                            )}
+                          </Stack>
+
+                          {/* Stats and Nature */}
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "primary.main",
+                              fontWeight: 600,
+                              display: "block",
+                              mt: 0.25,
+                              fontSize: "0.75rem",
+                            }}
+                            noWrap
+                          >
+                            {formatEvsAndNature(pokemon, translator)}
+                          </Typography>
+
+                          {/* Moves */}
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            sx={{ mt: 0.5, flexWrap: "wrap", gap: 0.5 }}
+                          >
+                            {pokemon.moves
+                              .filter((m): m is number => m !== null)
+                              .map((moveId) => {
+                                const move = moveById.get(moveId);
+                                if (!move) return null;
+                                return (
+                                  <Chip
+                                    key={moveId}
+                                    label={translator(`moves.${move.identifier}.name`)}
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: "0.7rem",
+                                      fontWeight: 500,
+                                      bgcolor: alpha(theme.palette.text.primary, 0.05),
+                                    }}
+                                  />
+                                );
+                              })}
+                          </Stack>
                         </Box>
                       </Stack>
                     );
