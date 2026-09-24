@@ -1,29 +1,57 @@
 ---
-title: "Winrate Insights"
-description: "Visualize your win rates and trends based on your battle logs."
+title: "Battle Analytics"
+description: "In-depth competitive performance tracking with pick rates, win rates per Pokémon, team performance, and matchup analytics."
 order: 6
 group: "Analytics"
 ---
 
 ## Overview
 
-Battle Analytics is a tool that visualizes your win rates and behavioral trends based on the data saved in your Battle Records.
-It helps you analyze metagame tendencies and uncover vulnerable matchups to refine your team.
-For an end-to-end tutorial covering team building, battle logging, and analytics, check the [Practical Workflow Guide](/docs/workflow-guide).
+Battle Analytics (`/battle-analytics`) transforms raw match logs from [Battle Record](/docs/battle-record) into actionable strategic insights.
 
-## Winrate Insights
+Rather than simple win/loss tallies, it lets you dissect your results across three dedicated analytical dimensions: which Pokémon deliver the highest win rate when brought, which teams perform best in the current meta, and which opposing threats cause the most trouble.
 
-The **Winrate Insights** tab allows you to quickly check your overall battle data for the season.
+---
 
-### Displayed Metrics
+## The Three Analytics Tabs
 
-| Metric          | Description                                                      |
-| --------------- | ---------------------------------------------------------------- |
-| Total Matches   | The total number of games played in the season                   |
-| Win Rate        | Calculated as Wins / (Wins + Losses)                             |
-| Common Matchups | The Pokémon that appeared most frequently on the opponent's team |
+Switch seamlessly between views via the tabs at the top of the analytics dashboard:
 
-## Dashboard
+### 1. Pokémon Performance (Pick & Win Rates)
 
-The Dashboard allows you to build your own custom analytics view by freely placing widgets.
-For detailed instructions and widget types, please refer to the [Dashboard](/docs/dashboard) documentation.
+Aggregates metrics for each Pokémon registered in your active team:
+
+| Metric                         | Description                                                                 | Strategic Insight                                                                                                               |
+| :----------------------------- | :-------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| **Pick Count & Pick Rate (%)** | Percentage of matches where this Pokémon was selected.                      | Measures team cohesion. Identifies core linchpins vs. "dead weight" Pokémon that are rarely chosen.                             |
+| **Win Rate When Picked (%)**   | Win percentage specifically in games where this Pokémon entered the match.  | Identifies your most impactful win conditions and spotlights members who might be liabilities despite high selection frequency. |
+| **Lead vs. Backline Ratio**    | Breakdown of how often the Pokémon was deployed as a starter vs. a reserve. | Evaluates whether your leads are establishing early control and whether your sweepers successfully close out games.             |
+
+### 2. Team Performance Breakdown
+
+When managing multiple teams or testing new variations, compare your teams side-by-side:
+
+- **Record & Win Percentage**: Pinpoint which archetype excels most in the current ranked season.
+- **Iteration Tracking**: Correlate win rate spikes and drops with specific team iterations documented in [Team Builder](/docs/team-builder) revision histories.
+
+### 3. Opponent Pokémon Matchups
+
+Tracks your performance against every opposing Pokémon encountered across your matches:
+
+- **Targeted Threat Identification**: Uncover hidden vulnerabilities (e.g., opposing threats where your win rate drops below 35% despite regular encounters).
+- **Metagame Frequency**: Monitor the most prevalent opposing cores in your current rating bracket.
+
+---
+
+## Filters & Strategic Feedback Loop
+
+### Season and Team Filtering
+
+Use the header selectors to isolate specific **Seasons** or narrow your focus to a single **Team**.
+
+### The Iterative Improvement Loop
+
+1. **Analyze**: Identify problematic opposing Pokémon in the Opponent Matchups tab.
+2. **Review**: Open your team's **Strategy Notes** in [Team Builder](/docs/team-builder) to review your gameplan against that archetype.
+3. **Refine**: Re-benchmark key thresholds using [Damage Calculator](/docs/damage-calc) (using **Load from Box**), tweak EV spreads, and record a new revision.
+4. **Validate**: Battle again and verify whether the Pokémon's win rate when picked trends upward in the analytics.

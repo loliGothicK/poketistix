@@ -15,6 +15,8 @@ export function generateStaticParams() {
   return Array.from(slugs).map((slug) => ({ slug }));
 }
 
+export const instant = false;
+
 function getDoc(slug: string, locale: string) {
   return (
     allDocs.find((doc) => doc.slug === slug && doc.locale === locale) ||

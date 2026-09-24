@@ -1,158 +1,116 @@
 ---
 title: "Practical Workflow Guide"
-description: "Learn the end-to-end cycle from team building to battle recording and analytics."
+description: "A complete step-by-step competitive guide from set management and team notes to damage calcs, match logging, and analytics."
 order: 1
 group: "Basic"
 ---
 
 ## Overview
 
-Pokétistix is an integrated competitive battle toolkit designed to streamline team preparation, in-depth post-match reviews, and data-driven team optimization.
+Pokétistix is an integrated competitive ecosystem that accompanies your entire journey—from early theorycrafting and prep to post-match retrospectives and iterative team refinement.
 
-This guide walks you through the practical steps to execute the core competitive cycle:
+This guide outlines the **5-step core competitive cycle** designed to build, pilot, analyze, and continually evolve your teams with zero guesswork:
 
-```text
-[1. Build Team] ───> [2. Record Battle] ───> [3. Analyze Data] ───> [4. Iterate & Refine]
-  Team Builder          Battle Record Form       Analytics & Dashboard     EV / Move Adjustments
-```
+> **The Competitive Iteration Cycle**
+>
+> **Step 1: Set Management** ➔ **Step 2: Team Building** ➔ **Step 3: Damage Verification** ➔ **Step 4: Battle Logging** ➔ **Step 5: Analytics & Iteration** ➔ (_Feedback loop to Step 1 & 2_)
 
----
-
-## Step 1: Manage Teams in Team Builder
-
-Start by registering and configuring your competitive team in the [Team Builder](/docs/team-builder).
-
-### 1. Create a New Team
-
-1. Open **"Teams"** from the navigation menu.
-2. Click the **"New"** button at the top of the screen to generate a fresh team.
-3. Name your team (e.g., `Champions Season 1`). This name will be selectable when logging battle records later.
-4. If you already have a Pokepaste export, you can click **"Import"** to import directly via URL or paste text.
-
-### 2. Add Pokémon and Configure Specs
-
-1. Click any of the 6 slots to open the Pokémon selection dialog.
-2. Search by name or filter by type to choose your Pokémon.
-3. In the detail drawer, configure the following attributes:
-   - **Held Item**
-   - **Ability**
-   - **Nature**
-   - **Moves (up to 4)**: Choose moves with real-time visibility into type, power, accuracy, and priority.
-   - **Mega Evolution**: For Pokémon capable of Mega Evolution, use the "Mega Evolve" button to toggle forms.
-
-### 3. Configure EVs and Survival Tuning
-
-- **EV Bounds**:
-  - In Pokémon Champions format, stats are capped at **32 EVs per stat** and **66 total EVs** across all 6 stats. The UI enforces these limits in real time.
-- **Survival Tuning**:
-  - Click the "Survival Tuning" button on the EV tab to open an automatic bulk optimization modal.
-  - Specify the attacker's species, move, nature, held item, weather, and screens (Reflect / Light Screen) to calculate and apply the optimal HP, Defense, and Sp. Def spread to guarantee or maximize survival odds.
-
-### 4. Save Your Team
-
-- When authenticated, teams synchronize automatically to the cloud.
-- Click the **"Save"** button in the top right to persist your configuration.
+| Step                              | Core Tool                                                                 | Purpose & Actions                                                                          |
+| :-------------------------------- | :------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------- |
+| **Step 1: Set Management**        | [My Box](/docs/my-box)                                                    | Stock reusable Pokémon sets and specific EV spreads in a central library                   |
+| **Step 2: Team Building**         | [Team Builder](/docs/team-builder)                                        | Assemble 6-Pokémon squads, write strategy notes, and track revision history                |
+| **Step 3: Damage Verification**   | [Damage Calculator](/docs/damage-calc)                                    | Load sets directly from My Box to calculate KOs, survival benchmarks, and field modifiers  |
+| **Step 4: Battle Logging**        | [Battle Record](/docs/battle-record)                                      | Log matches, brings/leads, opponent teams, ratings, and tactical notes with speed          |
+| **Step 5: Analytics & Iteration** | [Battle Analytics](/docs/battle-analytics) / [Dashboard](/docs/dashboard) | Discover low-win-rate matchups, analyze lead synergies, and refine your team in Step 1 & 2 |
 
 ---
 
-## Step 2: Record Battles (Battle Record)
+## Step 1: Stocking Your Pokémon Sets in My Box
 
-After completing matches on the ranked ladder, record your results and selections in [Battle Record](/docs/battle-record).
+Before assembling teams, save your core trained Pokémon and specialized spreads in [My Box](/docs/my-box).
 
-### 1. Prepare a Season
-
-Battle records are organized and aggregated by season.
-
-1. Click **"New Season"** in the sidebar or top bar.
-2. Enter the season name, format (**Singles** or **Doubles**), regulation, and date range.
-
-### 2. Open the Battle Record Dialog
-
-- With your active season selected, click **"Record Battle"**.
-- On desktop, you can also press the **`N`** keyboard hotkey to open the dialog instantly.
-
-### 3. Select Your Team and Member Roles
-
-1. **Choose Your Team**:
-   - In the "Your Team" dropdown, select the team you created in Step 1. All 6 team members will load automatically.
-2. **Set Member Selection Roles**:
-   - Click or tap each Pokémon card to cycle through its battle status:
-     - **Unselected** (default border)
-     - **Back** (blue border + blue indicator dot)
-     - **Lead** (yellow border + yellow indicator dot)
-   - For Doubles, the header displays your current lead/back counts against the format limit (2 Leads, 2 Backs).
-
-### 4. Record the Opponent Team and Roles
-
-1. **Add Opponent Species**:
-   - Click the empty slot (`+` icon) to quickly search and add up to 6 opponent Pokémon.
-2. **Mark Opponent Selection**:
-   - Tap the opponent cards to cycle between **Lead (yellow)**, **Back (blue)**, and **Unselected**.
-3. **Add Known Match Intel**:
-   - Hover over an opponent card (or tap on mobile) and click the pencil icon to open the Opponent Details dialog.
-   - Note down revealed held items, abilities, moves, or tactical notes observed during the match.
-
-### 5. Record Result, Rating, Tags, and Notes
-
-- **Result**:
-  - Click **"WIN"**, **"LOSS"**, or **"DRAW"**, or press the **`W`**, **`L`**, or **`D`** hotkeys.
-- **Post-Match Rating**:
-  - Enter your new rating (e.g., `1650`). The rating delta from your previous match (e.g., `+16`) will be computed automatically.
-- **Taxonomy Tags**:
-  - Tag archetype elements and opponent gimmicks such as `trick-room`, `tailwind`, `weather-rain`, or `intimidate`. Custom tags are also supported.
-- **Match Notes**:
-  - Document key turning points, misplays, or unexpected sets.
-- **Save**:
-  - Press **`Ctrl + S`** (or **`Cmd + S`** on macOS) or click **"Save"** to submit the record.
+1. **Access My Box**: Navigate to "My Box" from the main navigation sidebar.
+2. **Configure Sets**:
+   - Customize Pokémon, Nature, Held Item, Ability, 4 moves, and Champions EV spreads (32 per stat cap, 66 total).
+   - Alternatively, import sets in bulk from Showdown text.
+3. **Build an Archetype Library**:
+   - Save diverse variations of staple Pokémon (e.g., "Tailwind Support Whimsicott", "Offensive Moonblast Whimsicott"). You can later load these sets into Team Builder and Damage Calculator with a single click.
 
 ---
 
-## Step 3: Inspect and Analyze Your Data
+## Step 2: Assembling Teams & Writing Strategy Notes
 
-As you accumulate battle records, Pokétistix unlocks multiple analytical views to review your performance.
+Assemble your 6-member squad in [Team Builder](/docs/team-builder) and codify your tactical thinking in Strategy Notes.
 
-### 1. Review Recent Matches in Battle Record (`/battle-record`)
+### 1. Roster Assembly with BOX Integration
 
-- View a chronological timeline of your matches with win/loss badges and rating trends.
-- Use the **Stats Bar** at the top to check your current rating, latest rating delta, overall win rate, and W/L/D bar breakdown.
-- Filter matches using the **"All"**, **"Win"**, **"Loss"**, and **"Draw"** tabs.
-- Click any match card to reopen the details, check your selections, and review opponent notes.
+- **Load from Box**: Click the **Load from Box** button on any empty slot or header to pull your pre-configured sets into the active team instantly.
+- **Fluid Search**: Use fast partial matching or direct Romaji keystrokes (such as `gabu`, `rizadon`, `sa-fugo-` when using Japanese) to find members swiftly.
 
-### 2. High-Level Meta Analysis in Battle Analytics (`/battle-analytics`)
+### 2. Documenting Tournament Strategy Notes
 
-Click **"Analytics"** in the top navigation to view aggregate statistics for the current season.
+Open the integrated **Strategy Notes** editor to document key gameplans in Markdown:
 
-- **Overall Stats**: Total matches, win percentage, and total wins/losses.
-- **Top Opponents**:
-  - A ranked list of the most frequent Pokémon encountered in the opponent's team.
-  - Visual progress bars show your specific win rate against each threat, helping you identify metagame trends and matchup vulnerabilities.
+- **Team Concept**: The overarching win condition (e.g., speed control, Hyper Offense, bulky pivot).
+- **Core Lead Pairs**: Your designated openers (e.g., "Primary Lead: Flutter Mane + Chi-Yu / Secondary: Urshifu + Ogerpon").
+- **Matchup Blueprints**: Tactical adjustments for key metagame threats (e.g., "vs. Trick Room: Taunt setter turn 1 + focus down damage dealer").
 
-### 3. Deep Custom Inspection with Dashboard (`/dashboard`)
+### 3. Change Tracking via Revision History
 
-On desktop devices, access the customizable **Dashboard** BI tool to construct tailored analytics workspaces.
-
-| Widget Template                         | Key Analytical Insight                                                                |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| **Win Rate Summary**                    | High-level overall win percentage at a glance                                         |
-| **Lead / Back Performance**             | Compares win rates when specific Pokémon are chosen as Leads vs Backs                 |
-| **Lead Matchup Matrix (Pivot Heatmap)** | Visualizes win rates for each combination of your Leads vs opponent Leads             |
-| **Win/Loss Cause Breakdown**            | Measures the statistical impact of specific opponent Pokémon or tags on your win rate |
-| **Rating History**                      | Line chart tracking rating trajectory and momentum over time                          |
-| **Recent Matches & Streaks**            | Shows recent form and active winning/losing streaks                                   |
-
-- **Dynamic Variables**: Use dropdown variable selectors to switch between seasons without modifying your dashboard layout.
+- Every tweak to EVs, items, or team members creates a distinct revision snapshot.
+- If an experimental adjustment fails in testing, inspect the semantic diffs and restore your previous championship-ready version with one click.
 
 ---
 
-## Step 4: Refine and Iterate Your Team
+## Step 3: Verifying Benchmarks in Damage Calculator
 
-Data analysis transforms raw match history into actionable team improvements:
+Before taking your team into ranked ladder or tournaments, verify critical survival benchmarks in the [Damage Calculator](/docs/damage-calc).
 
-1. **Patch Weak Matchups**:
-   - If the Win/Loss Cause Breakdown or Top Opponents list reveals a struggling matchup, revisit the Team Builder to adjust moves, swap held items, or replace a flex slot.
-2. **Update Bulk Spreads**:
-   - If match notes indicate that a key Pokémon was consistently knocked out by a specific attack, run the Survival Tuning tool to recalibrate your EV spreads.
-3. **Standardize Proven Leads**:
-   - Identify your highest win-rate lead pairs from the Pivot Heatmap and document them in your game plan.
+1. **Load Trained Sets Instantly**:
+   - Click **Load from Box** above either the Attacker or Defender column to inject your exact team member's stats, EVs, item, and moves.
+2. **Simulate Metagame Benchmarks**:
+   - Test against prevalent meta threats under authentic Double Battle conditions (0.75x spread damage reduction, Helping Hand, screens, and terrain modifiers).
+   - Verify vital damage thresholds: "Does my spread survive Timid Chi-Yu's Overheat in Sun?", "Does multi-target Rock Slide guarantee a 2HKO?".
+3. **Refine**:
+   - If a bulk threshold fails by a fraction of a percent, adjust Effort Values and re-save your updated team revision.
 
-By repeating this feedback loop, you build a resilient, battle-tested team backed by hard data.
+---
+
+## Step 4: Fast Match Logging (Battle Record)
+
+After completing matches on ladder or in tournament play, log your outcomes immediately in [Battle Record](/docs/battle-record).
+
+1. **Quick-Open Form**: Press the **`N`** keyboard shortcut to launch the match logger dialog.
+2. **Attach Active Team**: Select your active team to display its 6 members automatically.
+3. **Record Selections**:
+   - Click cards to toggle **Lead (Yellow)** / **Back (Blue)** / **Benched** (or use number keys `1`–`6`).
+4. **Log Opposing Team**:
+   - Add opponent Pokémon to empty slots and tag their starters/reserves.
+   - Click the pencil icon on opponent cards to note revealed items, moves, or critical misplays.
+5. **Score & Rating**:
+   - Press **`W`** (Win), **`L`** (Loss), or **`D`** (Draw), enter your post-match rating, and press **`Ctrl + S`** (`Cmd + S`) to save.
+6. **Active Party Panel**:
+   - The party panel at the top shows your team's live cumulative win rate badge, giving you instant feedback on team performance.
+
+---
+
+## Step 5: Data Analysis & Continuous Refinement
+
+Once you have logged a series of matches, review your analytical data in [Battle Analytics](/docs/battle-analytics) and [Dashboard](/docs/dashboard).
+
+### 1. Pokémon Pick Rates & Win Rate When Picked
+
+- **Identify Dead Weight**: Members with under 15% selection frequency likely suffer from redundant roles or bad positioning in the current meta.
+- **Find Your True MVP**: Spotlights Pokémon with staggering win rates when brought, helping you refine your standard lead protocols.
+
+### 2. Opponent Matchup Breakdown
+
+- Identify opposing Pokémon that cause your win percentage to plummet, pinpointing structural weaknesses in your composition.
+
+### 3. Closing the Loop: Iteration
+
+1. **Update Strategy Notes**: Revisit your team's notes in Team Builder and formulate clear counter-strategies for problematic matchups.
+2. **Adjust Moves & Spreads**: Re-calculate surviving lines in the Damage Calculator and adjust EVs.
+3. **Save as a New Revision**: Advance to the next version snapshot and continue testing.
+
+Following this cyclical workflow turns raw match experience into structured competitive mastery.

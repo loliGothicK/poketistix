@@ -1,62 +1,104 @@
 ---
 title: "Team Builder"
-description: "A tool to create and manage your Pokémon teams for competitive battling."
+description: "A comprehensive tool to create, manage, version-control, and document your competitive Pokémon teams."
 order: 2
 group: "Tools"
 ---
 
 ## Overview
 
-The Team Builder is your primary tool for constructing and managing Pokémon teams for competitive play.
-You can register up to 6 Pokémon per team and configure their items, abilities, moves, and EV spreads in detail.
-Teams configured here can be directly selected in [Battle Record](/docs/battle-record) to track selections and outcomes. See the [Practical Workflow Guide](/docs/workflow-guide) for an end-to-end walkthrough.
+The Team Builder is your central hub for designing and managing competitive Double Battle teams (calibrated for the Pokémon Champions format).
+You can register up to 6 Pokémon per team and customize items, abilities, moves, and EV spreads (with a 32-per-stat cap and 66 total cap).
 
-## Creating a Team
+Beyond basic roster management, it includes advanced features such as **Revision History** for visual diffs and one-click restores, a dedicated **Strategy Notes** Markdown workspace for tournament planning, and deep **BOX Integration** to load trained Pokémon in seconds.
+Teams created here connect seamlessly with [Battle Record](/docs/battle-record) and [Battle Analytics](/docs/battle-analytics).
 
-Click the **New** button at the top of the screen (or from the sidebar) to create a brand new team.
-You can rename your team at any time by clicking on the team name field.
+---
 
-## Adding Pokémon
+## Adding and Searching Pokémon
 
-Clicking on an empty slot in your team will open the search dialog.
+Click on any empty slot to open the Pokémon selection dialog.
 
-- Search by name (e.g., `Garchomp`)
-- Filter by type (e.g., `@type:Dragon`)
+### Search Capabilities
 
-Once a Pokémon is selected, it will be added to the slot and its details panel will open.
+- **Name and Substring Search**: Type any Pokémon name to filter the roster (e.g., `Garchomp`).
+- **Romaji & Hiragana Support**: When Japanese search is active, you can search using standard Hiragana (`がぶりあす`) as well as direct Romaji keystrokes (e.g., `gabu`, `rizadon`, `sa-fugo-`).
+- **Type Filtering**: Filter directly with type tags such as `@type:Dragon` or `@type:Steel`.
+- **Automatic Query Reset**: Switching slots or opening dialogs automatically clears previous queries and token chips, preventing accidental mismatching.
 
-## Basic Configuration
+### Loading from My Box (BOX Integration)
+
+Switch to the **BOX** tab in the selection dialog to browse your saved Pokémon sets from [My Box](/docs/my-box).
+
+- Inspect items, EVs, and move sets at a glance before selecting.
+- You can also click the **Load from Box** icon directly from an empty slot card or the slot detail header to load a trained set with a single click.
+
+---
+
+## Pokémon Configuration
 
 ### Item, Ability, and Nature
 
-For each slot, you can set the Pokémon's **Item**, **Ability**, and **Nature** from the details panel.
-If the Pokémon can Mega Evolve, a "Mega" button will be available to change its form.
+Configure your Pokémon's **Held Item**, **Ability**, and **Nature** from the slot inspector.
+For Pokémon capable of Mega Evolution, clicking the **Mega** button instantly switches their stats, typings, and ability to the Mega-Evolved form.
 
-### Selecting Moves
+### Move Selection
 
-Click the move slots (up to 4 times) to assign moves to your Pokémon.
-The move drawer provides detailed information such as Power, Accuracy, Type, and Priority to help you choose the best options.
+Click any of the 4 move slots to open the move selection drawer.
+Inspect move category (Physical, Special, Status), Base Power, Accuracy, Type, and Priority bracket before assigning.
 
-## EV Spreads
+### EV Spreads (Effort Values)
 
-Switch to the **EV Spreads** tab to configure Effort Values for each stat (up to a maximum of 32 per stat).
-The inputs are restricted so you cannot exceed the total limit of 66. The remaining EV count updates in real-time as you drag sliders or enter numbers.
+Use the sliders or numeric input fields under the **EVs** tab:
+
+- **Champions Standard**: EVs are capped at **32 per stat** and **66 in total** (Nature boosts are specified with `+` / `-`).
+- **Real-Time Validation**: Allocations exceeding the caps are prevented, and remaining EV points update in real-time.
+- **Bulk Optimization**: Use the built-in bulk adjustment utility to automatically compute optimal Defensive spreads (HP vs Def/SpD) to survive specific incoming damage benchmarks.
+
+---
+
+## Strategy Notes
+
+The **Strategy Notes** workspace allows you to document your strategic thinking in full Markdown directly alongside your team.
+
+### Typical Use Cases
+
+- **Build Rationale**: Core archetypes, synergy explanations, and win conditions.
+- **Lead Selections**: Standard lead pairs and backline plans (e.g., "Lead: Flutter Mane + Chi-Yu / Back: Urshifu + Chien-Pao").
+- **Matchup Guides**: Specific gameplans against common meta threats (Trick Room, Rain offense, Dondozo cores, etc.).
+
+Strategy notes are version-controlled alongside your Pokémon compositions.
+
+---
+
+## Revision History & Restore
+
+To ensure you can experiment freely without fear of losing previous iterations, the Team Builder tracks a complete **Revision History** for each team.
+
+### Key Features
+
+- **Automatic Versioning**: Every major adjustment (swapping members, reallocating EVs, tweaking moves) creates a distinct snapshot.
+- **Visual Differences**:
+  - **Semantic Diff**: Highlights changes to Pokémon, items, EVs, and moves in an intuitive side-by-side view (desktop).
+  - **Pokepaste Text Diff**: Shows line-by-line textual diffs in Showdown format.
+- **Mobile-Optimized**: A dedicated clean layout for reviewing historical versions on smartphone displays.
+- **One-Click Restore**: Click "Restore this version" on any historical snapshot to revert your entire team (including strategy notes) back to that exact state.
+
+---
 
 ## Import and Export
 
-| Action                        | Description                                              |
-| ----------------------------- | -------------------------------------------------------- |
-| **Import from Pokepaste URL** | Paste a Pokepaste link to load a team instantly.         |
-| **Import from Text**          | Directly paste Pokepaste-formatted text.                 |
-| **Copy to Clipboard**         | Copy the team in Pokepaste format.                       |
-| **Create Pokepaste**          | Publish your team to Pokepaste and get a shareable link. |
+| Action                        | Description                                                                |
+| :---------------------------- | :------------------------------------------------------------------------- |
+| **Import from Pokepaste URL** | Paste a Pokepaste link to load and parse a team instantly.                 |
+| **Import from Text**          | Paste raw Showdown / Pokepaste text to load a team instantly.              |
+| **Copy to Clipboard**         | Copy the active team in standard Pokepaste format to your clipboard.       |
+| **Create Pokepaste**          | Automatically publish your team to Pokepaste and receive a shareable link. |
 
-## Saving Your Team
+---
 
-Your team is automatically saved to the cloud if you are logged in, ensuring you can access it across devices.
-If you are using the app as a guest, data is saved locally to your browser's storage.
+## Saving and Sharing
 
-## Sharing Teams
-
-Click the **Share Team** button on the team details page to generate a shareable link.
-You can choose whether to include the exact stats and EV spreads in the shared version.
+- **Cloud Synchronization**: Authenticated users enjoy automatic cloud sync across all devices for teams, notes, and revision histories.
+- **Guest Storage**: Unauthenticated sessions are securely stored in your local browser storage.
+- **Shareable Links**: Generate a public link via the **Share Team** button with customizable privacy options (choose whether to disclose EV spreads).

@@ -1,63 +1,77 @@
 ---
 title: "Damage Calculator"
-description: "Calculate damage ranges and simulate exact battle scenarios."
+description: "Precise damage range and KO chance calculations for Double Battles with instant BOX integration."
 order: 4
 group: "Tools"
 ---
 
 ## Overview
 
-The Damage Calculator allows you to predict damage ranges and KO probabilities for any matchup.
-It is highly accurate and takes into account field conditions, weather, screens, and stat modifiers.
+The Damage Calculator lets you simulate exact damage rolls, HP percentage swings, and KO thresholds (guaranteed vs. chance to OHKO/2HKO) between any attacking and defending Pokémon under customizable battlefield conditions.
 
-## Basic Usage
+Engineered specifically for the Pokémon Champions format, it natively supports Double Battle mechanics—including multi-target damage spread (0.75x), Helping Hand boosts, Friend Guard mitigation, and the 32-EV limit per stat (66 total cap).
 
-1. Select the **Attacker** Pokémon.
-2. Select the **Move** to be used.
-3. Select the **Defender** Pokémon.
-4. The damage range and KO probability will be calculated automatically.
+---
 
-## Configuring Pokémon Stats
+## Instant BOX Loading (BOX Integration)
 
-You can configure the following for both the Attacker and Defender:
+Click the **Load from Box** button located above either the Attacker or Defender column to pull any trained Pokémon set directly from [My Box](/docs/my-box).
 
-| Field             | Description                               |
-| ----------------- | ----------------------------------------- |
-| Pokémon           | The target Pokémon (search by name)       |
-| EVs               | Effort Values for each stat (0–32)        |
-| Nature            | The nature modifying the Pokémon's stats  |
-| Item              | Damage-boosting items, Choice items, etc. |
-| Ability           | Abilities that affect damage calculations |
-| Stat Drops/Boosts | Rank modifiers from -6 to +6              |
-| Status Conditions | Burn, Paralysis, etc.                     |
+- **All-in-One Configuration**: Effort Values, Nature, Held Item, Ability, and the 4 known moves are applied instantly in one click.
+- **Frictionless Benchmarking**: Test real-world scenarios immediately without tedious manual entry (e.g., "Can my defensively trained Clefable survive Choice Specs Flutter Mane's Moonblast?", "Does my Landorus guarantee an OHKO on this target?").
 
-## Field Conditions
+---
 
-From the "Field" tab, you can set various environmental conditions:
+## Basic Workflow
 
-### Weather
+1. **Select Attacker**: Choose via name search (supports Hiragana/Romaji) or click **Load from Box**.
+2. **Pick a Move**: Choose from the Pokémon's assigned moves or search the full moveset library.
+3. **Select Defender**: Set the target Pokémon, defensive EV spread, and item (or load from Box).
+4. **Inspect Calculations**: Review damage rolls, percentage ranges, and lethal KO probabilities updated in real-time.
 
-- Sun / Rain / Snow / Sandstorm
+---
 
-### Terrain
+## Configuration Parameters
 
-- Electric / Grassy / Misty / Psychic
+Both Attacker and Defender sides provide full control over the following variables:
 
-### Screens & Others
+| Parameter                   | Details                                                                                    |
+| :-------------------------- | :----------------------------------------------------------------------------------------- |
+| **Pokémon**                 | Standard search, Mega Evolution forms, and alternate typings.                              |
+| **EVs (Effort Values)**     | 0 to 32 per stat, up to a total of 66 (Champions rules).                                   |
+| **IVs (Individual Values)** | 0 to 31 (useful for Min-Speed Trick Room sets or 0 Atk Foul Play optimization).            |
+| **Nature**                  | +10% positive and -10% negative stat modifiers.                                            |
+| **Held Item**               | Damage-boosting items (Choice items, Life Orb, Type-boosting plates) and recovery berries. |
+| **Ability**                 | Abilities affecting damage calculation (Scrappy, Huge Power, Multiscale, etc.).            |
+| **Stat Boosts / Drops**     | -6 to +6 stage multipliers for Attack, Defense, Sp. Atk, and Sp. Def.                      |
+| **Status Conditions**       | Burn (halves physical attack damage), Paralysis, Sleep, etc.                               |
 
-- Reflect / Light Screen / Aurora Veil
-- Helping Hand / Charge / Fairy Aura, etc.
+---
 
-## Understanding Results
+## Battlefield & Support Conditions
 
-The calculation results include the following data:
+Toggle Double Battle battleground states with a single click in the **Field** panel:
 
-- **Damage Range**: The minimum to maximum raw damage.
-- **HP %**: The minimum to maximum percentage of the defender's HP.
-- **KO Chance**: Guaranteed OHKO, possible OHKO, guaranteed 2HKO, etc.
-- **Damage Rolls**: All 16 possible random rolls for the move.
+### Weather & Terrains
 
-## Doubles Format
+- **Weather**: Sun (Fire 1.5x / Water 0.5x), Rain (Water 1.5x / Fire 0.5x), Snow (Ice Def 1.5x), Sandstorm (Rock SpD 1.5x).
+- **Terrains**: Grassy (Grass 1.3x / Earthquake halved), Electric (Electric 1.3x), Psychic (Psychic 1.3x), Misty (Dragon damage halved).
 
-You can toggle between **Single** and **Double** battles at the top of the screen.
-When set to Double, spread moves will correctly apply the 0.75x damage reduction modifier.
+### Screens & Reductions
+
+- **Aurora Veil / Reflect / Light Screen**: Calculated using accurate Double Battle multi-target reduction values.
+- **Friend Guard**: Reduces damage received by allies by 25% (0.75x multiplier).
+
+### Offense Enhancements
+
+- **Helping Hand**: Boosts base move damage by 1.5x.
+- **Battery / Power Spot**: Active ally damage amplifiers.
+
+---
+
+## Understanding the Results
+
+- **KO Probability**: Clear practical benchmarks such as "Guaranteed OHKO (100%)", "87.5% chance to OHKO", or "Guaranteed 2HKO".
+- **16 Damage Rolls**: Complete inspection of all 16 discrete RNG damage roll values.
+- **Visual Health Bar**: Dynamic colored HP meter showing remaining HP ranges.
+- **One-Click Text Copy**: Easily copy standardized damage calc results in Showdown format to share in team reports or discord.
