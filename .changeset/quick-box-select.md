@@ -14,6 +14,8 @@
 - team-builder: 構築経緯・基本選出・相手別プランを記録できる「戦略ノート」機能を追加
 - team-builder: 日本語選択時のポケモン選択検索において、ひらがな正規化および `wanakana` によるローマ字入力（`gabu`, `rizadon`, `sa-fugo-` 等）での検索に対応（日本語検索時の英語識別子を除外して誤一致を防止）
 - team-builder: ポケモン選択ダイアログ・技選択ドロワー・BOX読み込みダイアログにおいて、別スロットや別のポケモン・技を選択した際に検索キーワードや選択状態が残らないよう自動リセット処理を追加
+- battle-record: 対戦分析画面（`/battle-analytics`）にて使用ポケモン別の選出率・選出時勝率、使用パーティ別の戦績、相手ポケモン別勝率のタブ切り替え表示に対応
+- battle-record: 対戦記録画面（`/battle-record`）のパーティ表示（デスクトップ・モバイル）に選択中チームの通算勝率バッジを表示
 - blog: ユーザーフィードバックへの対応状況をまとめた記事およびFeedbackCardコンポーネントを追加
 - monitoring: Sentryクライアント向けのエラーフィルタリングを追加
 
@@ -35,6 +37,8 @@ Features:
 - team-builder: Optimized revision history dialog layout and diff view for mobile screens
 - team-builder: Supported Hiragana normalization and Romaji search inputs (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Pokémon and move selection when Japanese is active, excluding English identifiers to prevent false matches
 - team-builder: Automatically reset AutoComplete search queries and token chips in Pokémon selection, move selection, and BOX loader dialogs when opening, switching slots, or making a selection
+- battle-record: Added tabbed analytics in `/battle-analytics` to view pick rates and win rates for user's Pokémon, team performance, and opponent win rates
+- battle-record: Displayed active team win rate badge on party panels in `/battle-record`
 - blog: Added a user feedback response blog post and FeedbackCard component
 - monitoring: Added client-side error filtering for Sentry
 

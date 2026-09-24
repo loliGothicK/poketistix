@@ -348,7 +348,19 @@
       "winRate": "勝率",
       "total": "対戦数",
       "topOpponents": "対面の多い相手",
-      "wldShort": "{{w}}勝{{l}}敗{{d}}分"
+      "wldShort": "{{w}}勝{{l}}敗{{d}}分",
+      "tabs": {
+        "myPokemon": "使用ポケモン",
+        "teams": "使用パーティ",
+        "opponents": "相手ポケモン"
+      },
+      "myPokemonTitle": "使用ポケモンの選出率・勝率",
+      "teamsTitle": "使用パーティ別成績",
+      "selectionRate": "選出率",
+      "rosterTotal": "帯同数",
+      "selectedWinRate": "選出時勝率",
+      "rosterWinRate": "帯同時勝率",
+      "unassignedTeam": "未登録パーティ"
     }
   },
   "taxonomy": {

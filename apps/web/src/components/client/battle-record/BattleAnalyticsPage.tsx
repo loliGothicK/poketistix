@@ -14,6 +14,9 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import SportsMmaRounded from "@mui/icons-material/SportsMmaRounded";
@@ -24,10 +27,17 @@ import { useTranslation } from "react-i18next";
 import { isAuthenticatedAtom } from "@/store/auth";
 import { useSeasons } from "@/hooks/useSeasons";
 import { useBattleRecords } from "@/hooks/useBattleRecords";
+import { useTeamsData } from "@/hooks/useTeamsData";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { flexRowCenter } from "@/theme/sx";
-import { opponentStats, tally, winRatePercent } from "@/store/battle-record/analytics";
+import {
+  myPokemonStats,
+  opponentStats,
+  tally,
+  teamStats,
+  winRatePercent,
+} from "@/store/battle-record/analytics";
 import { getLatestSeason } from "@/store/battle-record/battleRecord";
 
 function StatCard({
@@ -73,10 +83,17 @@ export default function BattleAnalyticsPage() {
   }, [seasons, selectedSeasonId]);
   const activeSeasonId = activeSeason?.id ?? null;
 
+  const { teams } = useTeamsData();
+  const [analyticsTab, setAnalyticsTab] = useState<"myPokemon" | "teams" | "opponents">(
+    "myPokemon",
+  );
+
   const { records, isLoading: recordsLoading } = useBattleRecords({ seasonId: activeSeasonId });
 
   const overall = useMemo(() => tally(records), [records]);
   const opponents = useMemo(() => opponentStats(records), [records]);
+  const teamStatsList = useMemo(() => teamStats(records), [records]);
+  const myPokemonList = useMemo(() => myPokemonStats(records), [records]);
   const overallPercent = winRatePercent(overall);
 
   if (!isAuthenticated) {
@@ -169,15 +186,216 @@ export default function BattleAnalyticsPage() {
             </Grid>
           </Grid>
 
-          <Grid container spacing={3}>
-            {/* 対面ポケモン別成績 */}
-            <Grid size={{ xs: 12, md: 12 }}>
-              <SurfaceCard sx={{ p: 2.5, height: "100%" }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
+          <SurfaceCard sx={{ p: 2.5 }}>
+            <Tabs
+              value={analyticsTab}
+              onChange={(_, val) => setAnalyticsTab(val)}
+              sx={{ borderBottom: 1, borderColor: "divider", mb: 2.5 }}
+            >
+              <Tab label={t("battleRecord.analytics.tabs.myPokemon")} value="myPokemon" />
+              <Tab label={t("battleRecord.analytics.tabs.teams")} value="teams" />
+              <Tab label={t("battleRecord.analytics.tabs.opponents")} value="opponents" />
+            </Tabs>
+
+            {analyticsTab === "myPokemon" && (
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+                  {t("battleRecord.analytics.myPokemonTitle")}
+                </Typography>
+                {myPokemonList.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t("battleRecord.analytics.empty")}
+                  </Typography>
+                ) : (
+                  myPokemonList.map((item) => {
+                    const selectedWinPct = winRatePercent(item.selectedTally);
+                    const pickPct = Math.round(item.selectionRate * 100);
+                    return (
+                      <Stack
+                        key={item.pokemonSlug}
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.5}
+                        sx={{
+                          alignItems: { sm: "center" },
+                          justifyContent: "space-between",
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: "background.paperRaised",
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1.5}
+                          sx={{ alignItems: "center", minWidth: { sm: 200 } }}
+                        >
+                          <Avatar
+                            src={`/pokemon/${item.pokemonSlug}.png`}
+                            alt={item.pokemonSlug}
+                            sx={{
+                              width: 36,
+                              height: 36,
+                              bgcolor: alpha(theme.palette.primary.main, 0.08),
+                            }}
+                          />
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
+                              {i18n.exists(`pokemon.${item.pokemonSlug}.name`)
+                                ? t(`pokemon.${item.pokemonSlug}.name`)
+                                : item.pokemonSlug}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {t("battleRecord.analytics.selectionRate")}: {pickPct}% (
+                              {item.selectedCount}/{item.rosterTotal})
+                            </Typography>
+                          </Box>
+                        </Stack>
+
+                        <Box sx={{ flexGrow: 1, minWidth: { xs: "100%", sm: 140 }, px: { sm: 2 } }}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{ alignItems: "center", justifyContent: "space-between", mb: 0.5 }}
+                          >
+                            <Typography variant="caption" color="text.secondary">
+                              {t("battleRecord.analytics.selectedWinRate")}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                              {selectedWinPct === null ? "—" : `${selectedWinPct}%`}
+                            </Typography>
+                          </Stack>
+                          <LinearProgress
+                            variant="determinate"
+                            value={selectedWinPct ?? 0}
+                            sx={{ height: 6, borderRadius: 3 }}
+                          />
+                        </Box>
+
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            whiteSpace: "nowrap",
+                            minWidth: 64,
+                            textAlign: { xs: "left", sm: "right" },
+                          }}
+                        >
+                          {t("battleRecord.analytics.wldShort", {
+                            w: item.selectedTally.wins,
+                            l: item.selectedTally.losses,
+                            d: item.selectedTally.draws,
+                          })}
+                        </Typography>
+                      </Stack>
+                    );
+                  })
+                )}
+              </Stack>
+            )}
+
+            {analyticsTab === "teams" && (
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+                  {t("battleRecord.analytics.teamsTitle")}
+                </Typography>
+                {teamStatsList.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t("battleRecord.analytics.empty")}
+                  </Typography>
+                ) : (
+                  teamStatsList.map((item, idx) => {
+                    const teamObj = item.teamId ? teams.find((t) => t.id === item.teamId) : null;
+                    const teamName = teamObj?.name ?? t("battleRecord.analytics.unassignedTeam");
+                    const percent = winRatePercent(item);
+
+                    return (
+                      <Stack
+                        key={item.teamId ?? `unassigned-${idx}`}
+                        spacing={1.25}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: "background.paperRaised",
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={1}
+                          sx={{ alignItems: { sm: "center" }, justifyContent: "space-between" }}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                              {teamName}
+                            </Typography>
+                            {item.members.length > 0 && (
+                              <Stack
+                                direction="row"
+                                spacing={0.75}
+                                sx={{ mt: 0.5, flexWrap: "wrap" }}
+                              >
+                                {item.members.map((member, mIdx) => (
+                                  <Tooltip
+                                    key={`${member.identifier}-${mIdx}`}
+                                    title={
+                                      i18n.exists(`pokemon.${member.identifier}.name`)
+                                        ? t(`pokemon.${member.identifier}.name`)
+                                        : member.identifier
+                                    }
+                                    arrow
+                                  >
+                                    <Avatar
+                                      src={`/pokemon/${member.identifier}.png`}
+                                      alt={member.identifier}
+                                      sx={{
+                                        width: 28,
+                                        height: 28,
+                                        bgcolor: alpha(theme.palette.primary.main, 0.08),
+                                      }}
+                                    />
+                                  </Tooltip>
+                                ))}
+                              </Stack>
+                            )}
+                          </Box>
+
+                          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+                            <Box sx={{ minWidth: 80, textAlign: { xs: "left", sm: "right" } }}>
+                              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                                {percent === null ? "—" : `${percent}%`}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {t("battleRecord.analytics.wldShort", {
+                                  w: item.wins,
+                                  l: item.losses,
+                                  d: item.draws,
+                                })}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Stack>
+
+                        <LinearProgress
+                          variant="determinate"
+                          value={percent ?? 0}
+                          sx={{ height: 6, borderRadius: 3 }}
+                        />
+                      </Stack>
+                    );
+                  })
+                )}
+              </Stack>
+            )}
+
+            {analyticsTab === "opponents" && (
+              <Stack spacing={1.25}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
                   {t("battleRecord.analytics.topOpponents")}
                 </Typography>
-                <Stack spacing={1.25}>
-                  {opponents.slice(0, 12).map((opponent) => {
+                {opponents.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t("battleRecord.analytics.empty")}
+                  </Typography>
+                ) : (
+                  opponents.slice(0, 12).map((opponent) => {
                     const percent = winRatePercent(opponent);
                     return (
                       <Stack
@@ -233,11 +451,11 @@ export default function BattleAnalyticsPage() {
                         </Typography>
                       </Stack>
                     );
-                  })}
-                </Stack>
-              </SurfaceCard>
-            </Grid>
-          </Grid>
+                  })
+                )}
+              </Stack>
+            )}
+          </SurfaceCard>
         </Stack>
       )}
     </Box>

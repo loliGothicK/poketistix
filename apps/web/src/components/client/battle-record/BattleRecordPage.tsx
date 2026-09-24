@@ -40,7 +40,7 @@ import { useTeamsData } from "@/hooks/useTeamsData";
 import { saveTeamsToServer } from "@services/teams";
 import { championsPokemonByIdentifier } from "@/data/champions-pokemon";
 import { typeIcon } from "@/lib/image";
-import { tally } from "@/store/battle-record/analytics";
+import { tally, winRatePercent } from "@/store/battle-record/analytics";
 import { draftToInput, type BattleRecordDraft } from "./formState";
 import {
   type BattleRecord,
@@ -61,16 +61,43 @@ import { useHotkeys } from "react-hotkeys-hook";
 type ResultFilter = "all" | BattleResult;
 
 // デスクトップ用：元の詳細なパーティ表示
-function PartyPanel({ team }: { readonly team: Team | null }) {
+function PartyPanel({
+  team,
+  records = [],
+}: {
+  readonly team: Team | null;
+  readonly records?: readonly BattleRecord[];
+}) {
   const { t, i18n } = useTranslation();
 
   const members = (team?.members ?? []).filter((m): m is TrainedPokemon => m !== null);
 
+  const teamTally = useMemo(() => {
+    if (!team) return null;
+    return tally(records.filter((r) => r.teamId === team.id));
+  }, [team, records]);
+
+  const winPct = teamTally && teamTally.total > 0 ? winRatePercent(teamTally) : null;
+
   return (
     <Box>
-      <Typography variant="overline" sx={{ ...sectionLabel, letterSpacing: "0.12em" }}>
-        {t("battleRecord.party")}
-      </Typography>
+      <Stack
+        direction="row"
+        sx={{ alignItems: "center", justifyContent: "space-between", mb: 0.5 }}
+      >
+        <Typography variant="overline" sx={{ ...sectionLabel, letterSpacing: "0.12em" }}>
+          {t("battleRecord.party")}
+        </Typography>
+        {winPct !== null && teamTally && (
+          <Chip
+            size="small"
+            color={winPct >= 50 ? "success" : "default"}
+            variant="outlined"
+            label={`${winPct}% (${teamTally.wins}-${teamTally.losses})`}
+            sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }}
+          />
+        )}
+      </Stack>
       {members.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           {t("battleRecord.noParty")}
@@ -140,14 +167,27 @@ function PartyPanel({ team }: { readonly team: Team | null }) {
 }
 
 // モバイル用：アイコンのみの横並びパーティ表示
-function CompactPartyPanel({ team }: { readonly team: Team | null }) {
+function CompactPartyPanel({
+  team,
+  records = [],
+}: {
+  readonly team: Team | null;
+  readonly records?: readonly BattleRecord[];
+}) {
   const { t, i18n } = useTranslation();
   const members = (team?.members ?? []).filter((m): m is TrainedPokemon => m !== null);
+
+  const teamTally = useMemo(() => {
+    if (!team) return null;
+    return tally(records.filter((r) => r.teamId === team.id));
+  }, [team, records]);
+
+  const winPct = teamTally && teamTally.total > 0 ? winRatePercent(teamTally) : null;
 
   if (members.length === 0) return null;
 
   return (
-    <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
+    <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: "center", flexWrap: "wrap" }}>
       {members.map((member) => {
         const formName = `pokemon.${member.identifier}.formName`;
         const displayName = `${t(`pokemon.${member.identifier}.name`)} ${
@@ -178,6 +218,15 @@ function CompactPartyPanel({ team }: { readonly team: Team | null }) {
           </Tooltip>
         );
       })}
+      {winPct !== null && teamTally && (
+        <Chip
+          size="small"
+          color={winPct >= 50 ? "success" : "default"}
+          variant="outlined"
+          label={`${winPct}% (${teamTally.wins}-${teamTally.losses})`}
+          sx={{ height: 22, fontSize: "0.7rem", fontWeight: 700, ml: 0.5 }}
+        />
+      )}
     </Stack>
   );
 }
@@ -573,7 +622,7 @@ export default function BattleRecordPage() {
             sx={{ flex: 1 }}
           />
         </Stack>
-        <CompactPartyPanel team={activeTeam} />
+        <CompactPartyPanel team={activeTeam} records={records} />
       </Box>
 
       {/* 全体レイアウト (デスクトップ時は2カラム) */}
@@ -619,7 +668,7 @@ export default function BattleRecordPage() {
               ))}
             </Select>
           </FormControl>
-          <PartyPanel team={activeTeam} />
+          <PartyPanel team={activeTeam} records={records} />
         </SurfaceCard>
 
         {/* 右カラム：メインコンテンツ */}

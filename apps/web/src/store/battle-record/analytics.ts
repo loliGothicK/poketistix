@@ -1,5 +1,6 @@
 import { match } from "ts-pattern";
 import type { BattleRecord } from "./battleRecord";
+import type { TrainedPokemon } from "@/store/team/team";
 
 /** 勝敗の集計結果 */
 export interface RecordTally {
@@ -146,3 +147,186 @@ export const ratingTrend = (records: readonly BattleRecord[]): readonly RatingTr
       rating: record.rating as number,
       gameNumber: index + 1,
     }));
+
+/** 使用パーティ（チーム）ごとの成績 */
+export interface TeamStat extends RecordTally {
+  readonly teamId: string | null;
+  readonly members: readonly TrainedPokemon[];
+}
+
+/**
+ * 使用したチームごとの勝敗を集計する。
+ * teamId がある場合は teamId ごと、null の場合はメンバー構成ごとに集計。
+ * 試合数の多い順、同数なら勝率の高い順に並べる。
+ */
+export const teamStats = (records: readonly BattleRecord[]): readonly TeamStat[] => {
+  const acc = new Map<
+    string,
+    {
+      teamId: string | null;
+      members: readonly TrainedPokemon[];
+      wins: number;
+      losses: number;
+      draws: number;
+    }
+  >();
+
+  for (const record of records) {
+    const key =
+      record.teamId ??
+      (record.myTeam && record.myTeam.length > 0
+        ? `custom:${record.myTeam
+            .map((p) => p.identifier)
+            .slice()
+            .sort()
+            .join(",")}`
+        : "unassigned");
+
+    const current = acc.get(key) ?? {
+      teamId: record.teamId,
+      members: record.myTeam ?? [],
+      wins: 0,
+      losses: 0,
+      draws: 0,
+    };
+
+    if (current.members.length === 0 && record.myTeam && record.myTeam.length > 0) {
+      current.members = record.myTeam;
+    }
+
+    match(record.result)
+      .with("win", () => {
+        current.wins += 1;
+      })
+      .with("loss", () => {
+        current.losses += 1;
+      })
+      .with("draw", () => {
+        current.draws += 1;
+      })
+      .exhaustive();
+
+    acc.set(key, current);
+  }
+
+  return Array.from(acc.values())
+    .map((item) => ({
+      teamId: item.teamId,
+      members: item.members,
+      ...withWinRate(item.wins, item.losses, item.draws),
+    }))
+    .sort((a, b) => b.total - a.total || b.winRate - a.winRate);
+};
+
+/** 自チームの使用ポケモンごとの成績 */
+export interface MyPokemonStat {
+  readonly pokemonSlug: string;
+  /** パーティ帯同試合数 */
+  readonly rosterTotal: number;
+  /** 帯同時の勝敗集計 */
+  readonly rosterTally: RecordTally;
+  /** 選出回数 */
+  readonly selectedCount: number;
+  /** 選出率 (selectedCount / rosterTotal)。rosterTotal===0 のとき 0 */
+  readonly selectionRate: number;
+  /** 選出時の勝敗集計 */
+  readonly selectedTally: RecordTally;
+}
+
+/**
+ * 自チームのポケモンごとに、帯同時および選出時の勝率を集計する。
+ * 帯同試合数の多い順、同数なら選出率の高い順、勝率の高い順に並べる。
+ */
+export const myPokemonStats = (records: readonly BattleRecord[]): readonly MyPokemonStat[] => {
+  const acc = new Map<
+    string,
+    {
+      rosterWins: number;
+      rosterLosses: number;
+      rosterDraws: number;
+      selectedWins: number;
+      selectedLosses: number;
+      selectedDraws: number;
+      selectedCount: number;
+    }
+  >();
+
+  for (const record of records) {
+    if (!record.myTeam || record.myTeam.length === 0) continue;
+
+    const selectedSet = new Set(
+      record.mySelection && record.mySelection.length > 0 ? record.mySelection : [],
+    );
+
+    const seenInRecord = new Set<string>();
+
+    record.myTeam.forEach((pokemon, index) => {
+      const slug = pokemon.identifier;
+      if (seenInRecord.has(slug)) return;
+      seenInRecord.add(slug);
+
+      const current = acc.get(slug) ?? {
+        rosterWins: 0,
+        rosterLosses: 0,
+        rosterDraws: 0,
+        selectedWins: 0,
+        selectedLosses: 0,
+        selectedDraws: 0,
+        selectedCount: 0,
+      };
+
+      // 帯同時
+      match(record.result)
+        .with("win", () => {
+          current.rosterWins += 1;
+        })
+        .with("loss", () => {
+          current.rosterLosses += 1;
+        })
+        .with("draw", () => {
+          current.rosterDraws += 1;
+        })
+        .exhaustive();
+
+      // 選出時
+      if (selectedSet.has(index)) {
+        current.selectedCount += 1;
+        match(record.result)
+          .with("win", () => {
+            current.selectedWins += 1;
+          })
+          .with("loss", () => {
+            current.selectedLosses += 1;
+          })
+          .with("draw", () => {
+            current.selectedDraws += 1;
+          })
+          .exhaustive();
+      }
+
+      acc.set(slug, current);
+    });
+  }
+
+  return Array.from(acc.entries())
+    .map(([pokemonSlug, data]) => {
+      const rosterTally = withWinRate(data.rosterWins, data.rosterLosses, data.rosterDraws);
+      const selectedTally = withWinRate(data.selectedWins, data.selectedLosses, data.selectedDraws);
+      const selectionRate = rosterTally.total === 0 ? 0 : data.selectedCount / rosterTally.total;
+
+      return {
+        pokemonSlug,
+        rosterTotal: rosterTally.total,
+        rosterTally,
+        selectedCount: data.selectedCount,
+        selectionRate,
+        selectedTally,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.rosterTotal - a.rosterTotal ||
+        b.selectionRate - a.selectionRate ||
+        b.selectedTally.winRate - a.selectedTally.winRate,
+    );
+};

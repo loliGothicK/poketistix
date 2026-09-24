@@ -277,7 +277,19 @@
       "total": "Battles",
       "topOpponents": "Most faced opponents",
       "desktopOnly": "The dashboard is only available on desktop devices.",
-      "wldShort": "{{w}}W {{l}}L {{d}}D"
+      "wldShort": "{{w}}W {{l}}L {{d}}D",
+      "tabs": {
+        "myPokemon": "My Pokémon",
+        "teams": "Teams",
+        "opponents": "Opponents"
+      },
+      "myPokemonTitle": "My Pokémon Pick & Win Rates",
+      "teamsTitle": "Team Performance",
+      "selectionRate": "Pick Rate",
+      "rosterTotal": "Rostered",
+      "selectedWinRate": "Win rate when picked",
+      "rosterWinRate": "Roster win rate",
+      "unassignedTeam": "Unassigned Team"
     }
   },
   "taxonomy": {
