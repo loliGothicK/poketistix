@@ -112,7 +112,7 @@ draft: true
 <FeedbackCard
   title="チームのコンセプトや立ち回りメモを残す備考欄の追加"
   category="feature"
-  status="in_progress"
+  status="available"
   source="https://poketistix.mitama.io/ja/team-builder"
 >
   <FeedbackMessage>
@@ -121,8 +121,8 @@ draft: true
   <FeedbackReply>
     ご提案いただきありがとうございます！
 
-    対戦前の選出プランや立ち回りの注意点などをチームと一緒にメモとして残せる機能は、実戦において非常に有用であると考えております。
-    チームビルダー内に「戦略・コンセプトメモ」を自由に書き込める備考欄の追加を進めており、現在実装・UI調整を行っております。
+    チームビルダー内に、構築経緯・基本選出・相手別プランをMarkdown形式で自由に記録できる「戦略ノート」機能を追加いたしました。
+    チームの変更履歴（リビジョン履歴）とも連動しており、調整過程の思考プロセスをバージョンごとに保存・復元いただけます。
 
   </FeedbackReply>
 </FeedbackCard>
@@ -130,6 +130,7 @@ draft: true
 <FeedbackCard
   title="ポケモン検索の文字対応（ひらがな・ローマ字）および型登録・連携機能"
   category="feature"
+  status="available"
   source="https://poketistix.mitama.io/ja/docs"
 >
   <FeedbackMessage>
@@ -146,18 +147,18 @@ draft: true
   </FeedbackMessage>
   <FeedbackReply>
     温かい応援のお言葉と、使いやすさに直結する素晴らしいご提案をありがとうございます！
-    ご要望いただいた3点について、以下の通り対応状況・予定をご案内いたします。
+    ご要望いただいた3点すべてについて対応を完了いたしました。
 
-    <FeedbackItem title="1. ポケモン検索の文字対応" status="planned">
-      入力の手間を減らせるよう、ひらがな入力での検索に対応を予定しております（ローマ字検索については今後の対応を検討いたします）。
+    <FeedbackItem title="1. ポケモン検索の文字対応" status="available">
+      ひらがな正規化および `wanakana` によるローマ字入力（`gabu`、`rizadon`、`sa-fugo-` など）でのポケモン・技検索に対応いたしました。また、別スロットや別のポケモン・技を選択する際に前回の検索キーワードや選択状態が残らないよう、クリーンな自動リセット処理も導入いたしました。
     </FeedbackItem>
 
     <FeedbackItem title="2. 登録したポケモンをチームへ" status="available">
-      チームビルダーのポケモン選択画面にて、マイボックスに保存済みのポケモンから直接選択してチームへ追加する機能は、**すでに実装されており現在ご利用いただけます**。
+      チームビルダーのポケモン選択画面における「BOX」タブ、および空スロットやスロットヘッダーから直接、マイボックスに保存済みのポケモンをワンクリックで読み込めるようになりました。
     </FeedbackItem>
 
-    <FeedbackItem title="3. ダメージ計算での登録型ポケモンの選択" status="planned">
-      ダメージ計算機においても、登録済みの型を瞬時に選んで計算対象にセットできるよう、機能の追加を予定しております。
+    <FeedbackItem title="3. ダメージ計算での登録型ポケモンの選択" status="available">
+      ダメージ計算画面に「BOXから読み込む」ダイアログを追加いたしました。BOXに登録した努力値・持ち物・技構成のポケモンを瞬時に計算対象へ反映いただけます。
     </FeedbackItem>
 
   </FeedbackReply>

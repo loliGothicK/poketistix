@@ -114,7 +114,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
 <FeedbackCard
   title="Add Memo / Notes Field for Team Concepts and Matchup Strategies"
   category="feature"
-  status="in_progress"
+  status="available"
   source="https://poketistix.mitama.io/ja/team-builder"
 >
   <FeedbackMessage>
@@ -124,8 +124,8 @@ Here is a summary of the feedback, bug reports, and feature requests we received
   <FeedbackReply>
     Thank you for this valuable suggestion!
 
-    Being able to record team plans, lead selections, and counter-strategies alongside your team compositions is a vital part of tournament preparation.
-    We are actively developing this feature and are currently working on the UI and implementation of the strategy/concept notes field in the Team Builder.
+    We have added a dedicated "Strategy Notes" workspace to the Team Builder, allowing you to document team building thought processes, core gameplans, and matchup-specific strategies in Markdown.
+    It is also integrated with the Team Revision History, letting you track your notes alongside each iteration of your team.
 
   </FeedbackReply>
 </FeedbackCard>
@@ -133,6 +133,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
 <FeedbackCard
   title="Pokemon Search Character Support (Hiragana / Romaji) & Box Integration"
   category="feature"
+  status="available"
   source="https://poketistix.mitama.io/ja/docs"
 >
   <FeedbackMessage>
@@ -148,18 +149,18 @@ Here is a summary of the feedback, bug reports, and feature requests we received
   </FeedbackMessage>
   <FeedbackReply>
     Thank you for the warm feedback and concrete suggestions!
-    Here is our status and roadmap regarding the three requested points:
+    All three requested features are now fully implemented and available:
 
-    <FeedbackItem title="1. Pokemon Search Character Support" status="planned">
-      We plan to support Hiragana input for Pokemon search to streamline the input experience (Romaji search is currently being evaluated for feasibility).
+    <FeedbackItem title="1. Pokemon Search Character Support" status="available">
+      Supported Hiragana normalization and Romaji search queries (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Japanese Pokemon and move searches via `wanakana`. Furthermore, AutoComplete search fields now automatically reset their state when switching slots or selecting a Pokemon/move.
     </FeedbackItem>
 
     <FeedbackItem title="2. Add Registered Pokemon to Team" status="available">
-      Selecting your saved Pokemon from My Box directly in the Team Builder is **already fully supported and available to use today**.
+      Selecting your saved Pokemon from My Box directly in the Team Builder is supported via the rich "BOX" tab in the selection dialog, as well as one-click "Load from Box" actions on slots.
     </FeedbackItem>
 
-    <FeedbackItem title="3. Instant Selection in Damage Calculator" status="planned">
-      We plan to add the ability to instantly select and load your saved Pokemon sets into the Damage Calculator.
+    <FeedbackItem title="3. Instant Selection in Damage Calculator" status="available">
+      Added a "Load from Box" dialog to the Damage Calculator, enabling you to load your saved Pokemon sets (EVs, items, moves) with a single click.
     </FeedbackItem>
 
   </FeedbackReply>

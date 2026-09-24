@@ -12,8 +12,8 @@
 - team-builder: チームの変更履歴（リビジョン履歴）閲覧および過去バージョンの復元機能を追加。
 - team-builder: チームの変更履歴でセマンティック差分および Pokepaste テキスト差分の表示に対応（デスクトップのみ）
 - team-builder: 構築経緯・基本選出・相手別プランを記録できる「戦略ノート」機能を追加
-- team-builder: モバイル端末向けにリビジョン履歴ダイアログのレイアウトおよび差分表示を最適化
-- team-builder: 日本語選択時のポケモン選択検索において、ひらがな正規化および `wanakana` によるローマ字入力（`gabu`, `rizadon`, `sa-fugo-` 等）での検索に対応
+- team-builder: 日本語選択時のポケモン選択検索において、ひらがな正規化および `wanakana` によるローマ字入力（`gabu`, `rizadon`, `sa-fugo-` 等）での検索に対応（日本語検索時の英語識別子を除外して誤一致を防止）
+- team-builder: ポケモン選択ダイアログ・技選択ドロワー・BOX読み込みダイアログにおいて、別スロットや別のポケモン・技を選択した際に検索キーワードや選択状態が残らないよう自動リセット処理を追加
 - blog: ユーザーフィードバックへの対応状況をまとめた記事およびFeedbackCardコンポーネントを追加
 - monitoring: Sentryクライアント向けのエラーフィルタリングを追加
 
@@ -33,7 +33,8 @@ Features:
 - team-builder: Added team revision history and version restore functionality with semantic and Pokepaste diff views
 - team-builder: Added "Strategy Notes" workspace to document build process, core gameplans, and matchup plans
 - team-builder: Optimized revision history dialog layout and diff view for mobile screens
-- team-builder: Supported Hiragana normalization and Romaji search inputs (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Pokémon selection when Japanese is active
+- team-builder: Supported Hiragana normalization and Romaji search inputs (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Pokémon and move selection when Japanese is active, excluding English identifiers to prevent false matches
+- team-builder: Automatically reset AutoComplete search queries and token chips in Pokémon selection, move selection, and BOX loader dialogs when opening, switching slots, or making a selection
 - blog: Added a user feedback response blog post and FeedbackCard component
 - monitoring: Added client-side error filtering for Sentry
 
