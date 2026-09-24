@@ -28,6 +28,7 @@ import {
   type QueryFieldDefinition,
   type QueryToken,
 } from "@/components/common/queryable-autocomplete";
+import { matchSearchText } from "@/utils/text";
 import { useBoxData } from "@/hooks/useBoxData";
 import { useAtomValue } from "jotai";
 import { isAuthenticatedAtom } from "@/store/auth";
@@ -73,23 +74,27 @@ export function SelectPokemonDialog({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const [prevOpen, setPrevOpen] = useState(open);
   const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
+  const [searchKey, setSearchKey] = useState(0);
   if (open !== prevOpen || initialTab !== prevInitialTab) {
     setPrevOpen(open);
     setPrevInitialTab(initialTab);
     if (open) {
       setTab(initialTab ?? "master");
       setBoxSearch("");
+      setTokens([]);
+      setHighlightedIndex(0);
+      setSearchKey((k) => k + 1);
     }
   }
 
   // オートフォーカス用: Dialog が完全に開いた後に input を focus する
   const autocompleteInputRef = useRef<HTMLInputElement>(null);
   const boxSearchInputRef = useRef<HTMLInputElement>(null);
-
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
-  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const handleDialogEntered = () => {
     setHighlightedIndex(0);
@@ -134,17 +139,27 @@ export function SelectPokemonDialog({
     ];
   }, [pokemonOptions, translator]);
 
-  // Each pokemon is matched by name (identifier + localized name) and by type.
+  // Each pokemon is matched by name (localized name, and identifier in non-Japanese locales) and by type.
   const results = useMemo(() => {
-    const matched = pokemonOptions.filter((pokemon) =>
-      matchesQueryTokens(
+    const isJapanese = i18n.language?.startsWith("ja") ?? false;
+    const matched = pokemonOptions.filter((pokemon) => {
+      const name = translator(`pokemon.${pokemon.identifier}.name`);
+      const formName = i18n.exists(`pokemon.${pokemon.identifier}.formName`)
+        ? translator(`pokemon.${pokemon.identifier}.formName`)
+        : "";
+      const text = isJapanese
+        ? `${name} ${formName}`.trim()
+        : `${pokemon.identifier} ${name} ${formName}`.trim();
+
+      return matchesQueryTokens(
         {
-          text: `${pokemon.identifier} ${translator(`pokemon.${pokemon.identifier}.name`)} ${i18n.exists(`pokemon.${pokemon.identifier}.formName`) ? translator(`pokemon.${pokemon.identifier}.formName`) : ""}`,
+          text,
           fields: { type: [...pokemon.types] },
         },
         tokens,
-      ),
-    );
+        { isJapanese },
+      );
+    });
 
     return { matched, visible: matched.slice(0, MAX_RESULTS) };
   }, [pokemonOptions, tokens, translator, i18n]);
@@ -154,24 +169,27 @@ export function SelectPokemonDialog({
     if (excludedIdentifiers && excludedIdentifiers.length > 0) {
       result = result.filter((p) => !excludedIdentifiers.includes(p.identifier));
     }
-    const trimmed = boxSearch.trim().toLowerCase();
+    const trimmed = boxSearch.trim();
     if (!trimmed) return result;
+    const isJapanese = i18n.language?.startsWith("ja") ?? false;
+
     return result.filter((p) => {
-      const name = translator(`pokemon.${p.identifier}.name`).toLowerCase();
-      if (name.includes(trimmed) || p.identifier.toLowerCase().includes(trimmed)) return true;
+      const name = translator(`pokemon.${p.identifier}.name`);
+      const targetText = isJapanese ? name : `${p.identifier} ${name}`;
+      if (matchSearchText(targetText, trimmed, isJapanese)) return true;
 
       if (i18n.exists(`pokemon.${p.identifier}.formName`)) {
-        const formName = translator(`pokemon.${p.identifier}.formName`).toLowerCase();
-        if (formName.includes(trimmed)) return true;
+        const formName = translator(`pokemon.${p.identifier}.formName`);
+        if (matchSearchText(formName, trimmed, isJapanese)) return true;
       }
 
       // Item search
       if (p.item) {
         const item = itemById.get(p.item);
         if (item) {
-          const itemName = translator(`items.${item.identifier}.name`).toLowerCase();
-          if (itemName.includes(trimmed) || item.identifier.toLowerCase().includes(trimmed))
-            return true;
+          const itemName = translator(`items.${item.identifier}.name`);
+          const targetItem = isJapanese ? itemName : `${item.identifier} ${itemName}`;
+          if (matchSearchText(targetItem, trimmed, isJapanese)) return true;
         }
       }
 
@@ -180,9 +198,9 @@ export function SelectPokemonDialog({
         if (moveId !== null) {
           const m = moveById.get(moveId);
           if (m) {
-            const moveName = translator(`moves.${m.identifier}.name`).toLowerCase();
-            if (moveName.includes(trimmed) || m.identifier.toLowerCase().includes(trimmed))
-              return true;
+            const moveName = translator(`moves.${m.identifier}.name`);
+            const targetMove = isJapanese ? moveName : `${m.identifier} ${moveName}`;
+            if (matchSearchText(targetMove, trimmed, isJapanese)) return true;
           }
         }
       }
@@ -207,7 +225,23 @@ export function SelectPokemonDialog({
   }, [highlightedIndex]);
 
   const handleSelect = (pokemon: ChampionsPokemon) => {
+    setTokens([]);
+    setBoxSearch("");
+    setHighlightedIndex(0);
+    setSearchKey((k) => k + 1);
     onChange(pokemon.identifier);
+  };
+
+  const handleSelectBoxPokemon = (item: TrainedPokemon) => {
+    setTokens([]);
+    setBoxSearch("");
+    setHighlightedIndex(0);
+    setSearchKey((k) => k + 1);
+    if (onSelectFromBox) {
+      onSelectFromBox(item);
+    } else {
+      onChange(item.identifier);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -240,11 +274,7 @@ export function SelectPokemonDialog({
         if (item) {
           e.preventDefault();
           e.stopPropagation();
-          if (onSelectFromBox) {
-            onSelectFromBox(item);
-          } else {
-            onChange(item.identifier);
-          }
+          handleSelectBoxPokemon(item);
         }
       }
     }
@@ -322,6 +352,7 @@ export function SelectPokemonDialog({
           <>
             <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2, pb: 1.5 }}>
               <QueryableAutocomplete
+                key={searchKey}
                 fields={fields}
                 onTokensChange={setTokens}
                 label={translator("teamBuilder.query.label")}
@@ -570,13 +601,7 @@ export function SelectPokemonDialog({
                           itemRefs.current[index] = el;
                         }}
                         direction="row"
-                        onClick={() => {
-                          if (onSelectFromBox) {
-                            onSelectFromBox(pokemon);
-                          } else {
-                            onChange(pokemon.identifier);
-                          }
-                        }}
+                        onClick={() => handleSelectBoxPokemon(pokemon)}
                         onMouseEnter={() => setHighlightedIndex(index)}
                         sx={{
                           alignItems: "center",

@@ -168,4 +168,20 @@ describe("matchesQueryTokens", () => {
     expect(matchesQueryTokens(charizard, tokens)).toBe(true);
     expect(matchesQueryTokens({ text: "flareon", fields: { type: ["fire"] } }, tokens)).toBe(false);
   });
+
+  it("supports Japanese Hiragana, Katakana, and Romaji matching when isJapanese is true", () => {
+    const target = { text: "リザードン", fields: { type: ["fire", "flying"] } };
+    expect(matchesQueryTokens(target, [{ kind: "text", text: "リザ" }], { isJapanese: true })).toBe(true);
+    expect(matchesQueryTokens(target, [{ kind: "text", text: "りざ" }], { isJapanese: true })).toBe(true);
+    expect(matchesQueryTokens(target, [{ kind: "text", text: "riza-don" }], { isJapanese: true })).toBe(true);
+    expect(matchesQueryTokens(target, [{ kind: "text", text: "rizadon" }], { isJapanese: true })).toBe(true);
+    expect(matchesQueryTokens(target, [{ kind: "text", text: "pika" }], { isJapanese: true })).toBe(false);
+  });
+
+  it("does not match unrelated Japanese names when user types Japanese/Romaji (e.g. あーぼ does not match ユキノオー)", () => {
+    const abomasnow = { text: "ユキノオー", fields: { type: ["grass", "ice"] } };
+    expect(matchesQueryTokens(abomasnow, [{ kind: "text", text: "あーぼ" }], { isJapanese: true })).toBe(false);
+    expect(matchesQueryTokens(abomasnow, [{ kind: "text", text: "yukino" }], { isJapanese: true })).toBe(true);
+    expect(matchesQueryTokens(abomasnow, [{ kind: "text", text: "ゆき" }], { isJapanese: true })).toBe(true);
+  });
 });

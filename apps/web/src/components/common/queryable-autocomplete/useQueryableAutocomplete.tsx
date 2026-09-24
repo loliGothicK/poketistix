@@ -103,11 +103,20 @@ export function useQueryableAutocomplete({
     [suggestions],
   );
 
-  // Use a ref for onTokensChange so we don't have to put it in dependencies
   const onTokensChangeRef = useRef(onTokensChange);
   useEffect(() => {
     onTokensChangeRef.current = onTokensChange;
   }, [onTokensChange]);
+
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const inputValueRef = useRef(inputValue);
+  useEffect(() => {
+    inputValueRef.current = inputValue;
+  }, [inputValue]);
 
   const updateState = useCallback(
     (nextValue: string[], nextInputValue: string) => {
@@ -120,32 +129,23 @@ export function useQueryableAutocomplete({
 
   const addToken = useCallback(
     (token: string) => {
-      setValue((current) => {
-        const nextValue = current.includes(token) ? current : [...current, token];
-        // Note: we can't easily call updateState here with current state of inputValue
-        // without it being a dependency, but we know inputValue is being reset to "".
-        onTokensChangeRef.current?.(resolveActiveQueryTokens(nextValue, "", fields));
-        return nextValue;
-      });
+      const current = valueRef.current;
+      const nextValue = current.includes(token) ? current : [...current, token];
+      setValue(nextValue);
       setInputValue("");
+      onTokensChangeRef.current?.(resolveActiveQueryTokens(nextValue, "", fields));
     },
     [fields],
   );
 
-  const inputValueRef = useRef(inputValue);
-  useEffect(() => {
-    inputValueRef.current = inputValue;
-  }, [inputValue]);
-
   const removeToken = useCallback(
     (token: string) => {
-      setValue((current) => {
-        const nextValue = current.filter((entry) => entry !== token);
-        onTokensChangeRef.current?.(
-          resolveActiveQueryTokens(nextValue, inputValueRef.current, fields),
-        );
-        return nextValue;
-      });
+      const current = valueRef.current;
+      const nextValue = current.filter((entry) => entry !== token);
+      setValue(nextValue);
+      onTokensChangeRef.current?.(
+        resolveActiveQueryTokens(nextValue, inputValueRef.current, fields),
+      );
     },
     [fields],
   );
@@ -154,10 +154,9 @@ export function useQueryableAutocomplete({
     (_: SyntheticEvent, nextInputValue: string, reason: AutocompleteInputChangeReason) => {
       if (reason === "input" || reason === "clear") {
         setInputValue(nextInputValue);
-        setValue((current) => {
-          onTokensChangeRef.current?.(resolveActiveQueryTokens(current, nextInputValue, fields));
-          return current;
-        });
+        onTokensChangeRef.current?.(
+          resolveActiveQueryTokens(valueRef.current, nextInputValue, fields),
+        );
       }
     },
     [fields],
@@ -184,7 +183,7 @@ export function useQueryableAutocomplete({
         if (isCommittableInput(option, fields)) {
           addToken(option);
         } else {
-          updateState(value, option); // Uses `value` from render scope (which is safe as it's in a UI event handler, but we can also use functional updates if needed)
+          updateState(valueRef.current, option);
         }
         return;
       }
@@ -194,11 +193,11 @@ export function useQueryableAutocomplete({
         if (token) {
           addToken(token);
         } else {
-          updateState(value, option);
+          updateState(valueRef.current, option);
         }
       }
     },
-    [addToken, fields, updateState, value],
+    [addToken, fields, updateState],
   );
 
   const getAutocompleteProps = useCallback(

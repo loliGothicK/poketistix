@@ -394,6 +394,9 @@ importers:
       ulid:
         specifier: 3.0.2
         version: 3.0.2
+      wanakana:
+        specifier: ^5.3.1
+        version: 5.3.1
       zod-validation-error:
         specifier: 5.0.0
         version: 5.0.0(zod@4.6.5)
@@ -5569,6 +5572,10 @@ packages:
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
 
+  wanakana@5.3.1:
+    resolution: {integrity: sha512-OSDqupzTlzl2LGyqTdhcXcl6ezMiFhcUwLBP8YKaBIbMYW1wAwDvupw2T9G9oVaKT9RmaSpyTXjxddFPUcFFIw==}
+    engines: {node: '>=12'}
+
   watchpack@2.5.2:
     resolution: {integrity: sha512-6i/00NBjP4yGPs+caKSyRfpTF/8Torsu0MOW3mMzIbhgISFder8i7xbqgHlLMwJrdiN8ndBV3UA1/AfzPSr+jg==}
     engines: {node: '>=10.13.0'}
@@ -10526,6 +10533,8 @@ snapshots:
       - msw
 
   w3c-keyname@2.2.8: {}
+
+  wanakana@5.3.1: {}
 
   watchpack@2.5.2:
     dependencies:

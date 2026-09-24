@@ -13,6 +13,7 @@
 - team-builder: チームの変更履歴でセマンティック差分および Pokepaste テキスト差分の表示に対応（デスクトップのみ）
 - team-builder: 構築経緯・基本選出・相手別プランを記録できる「戦略ノート」機能を追加
 - team-builder: モバイル端末向けにリビジョン履歴ダイアログのレイアウトおよび差分表示を最適化
+- team-builder: 日本語選択時のポケモン選択検索において、ひらがな正規化および `wanakana` によるローマ字入力（`gabu`, `rizadon`, `sa-fugo-` 等）での検索に対応
 - blog: ユーザーフィードバックへの対応状況をまとめた記事およびFeedbackCardコンポーネントを追加
 - monitoring: Sentryクライアント向けのエラーフィルタリングを追加
 
@@ -32,6 +33,7 @@ Features:
 - team-builder: Added team revision history and version restore functionality with semantic and Pokepaste diff views
 - team-builder: Added "Strategy Notes" workspace to document build process, core gameplans, and matchup plans
 - team-builder: Optimized revision history dialog layout and diff view for mobile screens
+- team-builder: Supported Hiragana normalization and Romaji search inputs (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Pokémon selection when Japanese is active
 - blog: Added a user feedback response blog post and FeedbackCard component
 - monitoring: Added client-side error filtering for Sentry
 

@@ -85,6 +85,7 @@
     "strip-markdown": "6.0.0",
     "ts-pattern": "5.9.0",
     "ulid": "3.0.2",
+    "wanakana": "^5.3.1",
     "zod-validation-error": "5.0.0"
   },
   "devDependencies": {

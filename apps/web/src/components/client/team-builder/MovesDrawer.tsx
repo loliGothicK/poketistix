@@ -63,7 +63,7 @@ export function MoveSelectionDrawer({
   battleData,
   isError,
 }: MoveSelectionDrawerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const theme = useTheme();
   const { mode } = useColorScheme();
 
@@ -94,11 +94,20 @@ export function MoveSelectionDrawer({
     [t],
   );
 
-  // スロットが切り替わった時にクエリをリセットする (derived state pattern)
+  // スロットや対象ポケモン、開閉状態が切り替わった時にクエリをリセットする (derived state pattern)
   const [prevActiveSlot, setPrevActiveSlot] = useState(activeSlot);
-  if (prevActiveSlot !== activeSlot) {
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevPokemonId, setPrevPokemonId] = useState(pokemon.id);
+  const [searchKey, setSearchKey] = useState(0);
+
+  if (prevActiveSlot !== activeSlot || prevOpen !== open || prevPokemonId !== pokemon.id) {
     setPrevActiveSlot(activeSlot);
-    setTokens([]);
+    setPrevOpen(open);
+    setPrevPokemonId(pokemon.id);
+    if (open) {
+      setTokens([]);
+      setSearchKey((k) => k + 1);
+    }
   }
 
   // Drawer が開いたとき / スロットが切り替わったときに検索入力にフォーカス
@@ -109,7 +118,7 @@ export function MoveSelectionDrawer({
       autocompleteInputRef.current?.focus();
     }, 250);
     return () => clearTimeout(id);
-  }, [open, activeSlot]);
+  }, [open, activeSlot, searchKey]);
 
   // Drawerに表示する技リストのフィルタリング
   const availableMoves = useMemo((): readonly MoveEntry[] => {
@@ -125,19 +134,25 @@ export function MoveSelectionDrawer({
         if (ongoing.moves.some((m, index) => m === move.id && index !== activeSlot)) return false;
         if (tokens.length === 0) return true;
 
+        const isJapanese = i18n.language?.startsWith("ja") ?? false;
+        const name = t(`moves.${move.identifier}.name`);
+        const text = isJapanese ? name : `${move.identifier} ${name}`;
+
         return matchesQueryTokens(
           {
-            text: `${move.identifier} ${t(`moves.${move.identifier}.name`)}`,
+            text,
             fields: {
               type: [move.type],
               category: [move.category],
             },
           },
           tokens,
+          { isJapanese },
         );
       });
 
     if (!isError && !!battleData && battleData.isOk()) {
+      const isJapanese = i18n.language?.startsWith("ja") ?? false;
       const popularMoves: MoveEntry[] = battleData.value.moves
         .filter((info) => {
           if (!moveByIdentifier.has(info.name)) {
@@ -152,15 +167,19 @@ export function MoveSelectionDrawer({
           percentage: info.percentage,
         }))
         .filter((move) => {
+          const name = t(`moves.${move.identifier}.name`);
+          const text = isJapanese ? name : `${move.identifier} ${name}`;
+
           return matchesQueryTokens(
             {
-              text: `${move.identifier} ${t(`moves.${move.identifier}.name`)}`,
+              text,
               fields: {
                 type: [move.type],
                 category: [move.category],
               },
             },
             tokens,
+            { isJapanese },
           );
         });
 
@@ -170,7 +189,7 @@ export function MoveSelectionDrawer({
     }
 
     return available;
-  }, [activeSlot, pokemon.moves, ongoing.moves, tokens, t, battleData, isError]);
+  }, [activeSlot, pokemon.moves, ongoing.moves, tokens, t, i18n, battleData, isError]);
 
   return (
     <Drawer
@@ -206,7 +225,11 @@ export function MoveSelectionDrawer({
                 <Button
                   key={idx}
                   variant={activeSlot === idx ? "contained" : "outlined"}
-                  onClick={() => onChangeSlot(idx)}
+                  onClick={() => {
+                    setTokens([]);
+                    setSearchKey((k) => k + 1);
+                    onChangeSlot(idx);
+                  }}
                 >
                   {ongoing.moves[idx]
                     ? t(`moves.${moveById.get(ongoing.moves[idx]!)?.identifier}.name`)
@@ -216,6 +239,7 @@ export function MoveSelectionDrawer({
             </ButtonGroup>
 
             <QueryableAutocomplete
+              key={searchKey}
               fields={fields}
               onTokensChange={setTokens}
               placeholder={t("teamBuilder.query.label")}
@@ -229,7 +253,11 @@ export function MoveSelectionDrawer({
             {/* 「技を消す」オプション */}
             {ongoing.moves[activeSlot] && (
               <ListItemButton
-                onClick={() => onSelectMove(null)}
+                onClick={() => {
+                  setTokens([]);
+                  setSearchKey((k) => k + 1);
+                  onSelectMove(null);
+                }}
                 sx={{
                   borderBottom: `2px solid ${theme.palette.divider}`,
                   bgcolor: alpha(theme.palette.error.main, 0.05),
@@ -250,7 +278,11 @@ export function MoveSelectionDrawer({
                   <ListItemButton
                     key={move.identifier}
                     selected={isSelected}
-                    onClick={() => onSelectMove(move.id)}
+                    onClick={() => {
+                      setTokens([]);
+                      setSearchKey((k) => k + 1);
+                      onSelectMove(move.id);
+                    }}
                     sx={{
                       borderBottom: `1px solid ${theme.palette.dividerSoft}`,
                       p: 0,

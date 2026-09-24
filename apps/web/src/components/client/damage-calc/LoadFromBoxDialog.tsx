@@ -31,6 +31,7 @@ import { natureObjectToString } from "@/data/nature";
 import { itemSprite } from "@/lib/image";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { TFunction } from "i18next";
+import { matchSearchText } from "@/utils/text";
 
 type LoadFromBoxDialogProps = {
   readonly open: boolean;
@@ -77,21 +78,33 @@ export function LoadFromBoxDialog({ open, onClose, onSelect }: LoadFromBoxDialog
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    if (open) {
+      setSearch("");
+      setHighlightedIndex(0);
+    }
+  }
+
   const filteredBox = useMemo(() => {
     if (!box || box.length === 0) return [];
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return box;
+    const isJapanese = i18n.language?.startsWith("ja") ?? false;
 
     return box.filter((p) => {
-      const name = t(`pokemon.${p.identifier}.name`).toLowerCase();
-      if (name.includes(q) || p.identifier.toLowerCase().includes(q)) return true;
+      const name = t(`pokemon.${p.identifier}.name`);
+      const targetName = isJapanese ? name : `${p.identifier} ${name}`;
+      if (matchSearchText(targetName, q, isJapanese)) return true;
 
       // Item search
       if (p.item) {
         const item = itemById.get(p.item);
         if (item) {
-          const itemName = t(`items.${item.identifier}.name`).toLowerCase();
-          if (itemName.includes(q) || item.identifier.toLowerCase().includes(q)) return true;
+          const itemName = t(`items.${item.identifier}.name`);
+          const targetItem = isJapanese ? itemName : `${item.identifier} ${itemName}`;
+          if (matchSearchText(targetItem, q, isJapanese)) return true;
         }
       }
 
@@ -100,15 +113,16 @@ export function LoadFromBoxDialog({ open, onClose, onSelect }: LoadFromBoxDialog
         if (moveId !== null) {
           const m = moveById.get(moveId);
           if (m) {
-            const moveName = t(`moves.${m.identifier}.name`).toLowerCase();
-            if (moveName.includes(q) || m.identifier.toLowerCase().includes(q)) return true;
+            const moveName = t(`moves.${m.identifier}.name`);
+            const targetMove = isJapanese ? moveName : `${m.identifier} ${moveName}`;
+            if (matchSearchText(targetMove, q, isJapanese)) return true;
           }
         }
       }
 
       return false;
     });
-  }, [box, search, t]);
+  }, [box, search, t, i18n]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (filteredBox.length === 0) return;
@@ -130,6 +144,8 @@ export function LoadFromBoxDialog({ open, onClose, onSelect }: LoadFromBoxDialog
       e.preventDefault();
       const selected = filteredBox[highlightedIndex];
       if (selected) {
+        setSearch("");
+        setHighlightedIndex(0);
         onSelect(selected);
         onClose();
       }
@@ -252,6 +268,8 @@ export function LoadFromBoxDialog({ open, onClose, onSelect }: LoadFromBoxDialog
                         }}
                         direction="row"
                         onClick={() => {
+                          setSearch("");
+                          setHighlightedIndex(0);
                           onSelect(pokemon);
                           onClose();
                         }}

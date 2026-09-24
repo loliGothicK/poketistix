@@ -17,7 +17,7 @@
  * result set live, which is the expected behaviour for a name search.
  */
 
-import { normalizeForSearch } from "@/utils/text";
+import { matchSearchText, normalizeForSearch } from "@/utils/text";
 
 export const QUERY_PREFIX = "@";
 export const QUERY_SEPARATOR = ":";
@@ -283,18 +283,24 @@ export interface QueryMatchTarget {
   readonly fields: Readonly<Record<string, readonly string[]>>;
 }
 
+export interface MatchesQueryTokensOptions {
+  readonly isJapanese?: boolean;
+}
+
 /**
  * Applies the given tokens to a target as an AND filter: every token must match.
- * Text tokens match by case-insensitive substring; field tokens match when the
- * target carries the exact value under that field key.
+ * Text tokens match by case-insensitive substring (with optional Japanese Hiragana/Romaji support);
+ * field tokens match when the target carries the exact value under that field key.
  */
 export function matchesQueryTokens(
   target: QueryMatchTarget,
   tokens: readonly QueryToken[],
+  options?: MatchesQueryTokensOptions,
 ): boolean {
+  const isJapanese = options?.isJapanese ?? false;
   return tokens.every((token) => {
     if (token.kind === "text") {
-      return normalize(target.text).includes(normalize(token.text));
+      return matchSearchText(target.text, token.text, isJapanese);
     }
 
     const values = target.fields[token.key] ?? [];
