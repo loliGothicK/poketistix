@@ -12,15 +12,18 @@ type PageParams = {
   readonly slug: string;
 };
 
+const isDev = process.env.NODE_ENV !== "production";
+const isPostVisible = (p: { readonly draft: boolean }) => isDev || !p.draft;
+
 export function generateStaticParams() {
-  const slugs = new Set(allPosts.filter((post) => !post.draft).map((post) => post.slug));
+  const slugs = new Set(allPosts.filter(isPostVisible).map((post) => post.slug));
   return Array.from(slugs).map((slug) => ({ slug }));
 }
 
 function getPost(slug: string, locale: string) {
   return (
-    allPosts.find((post) => post.slug === slug && post.locale === locale && !post.draft) ||
-    allPosts.find((post) => post.slug === slug && !post.draft)
+    allPosts.find((post) => post.slug === slug && post.locale === locale && isPostVisible(post)) ||
+    allPosts.find((post) => post.slug === slug && isPostVisible(post))
   );
 }
 
@@ -79,13 +82,13 @@ export default function BlogPostPage({ params }: { readonly params: Promise<Page
 
 async function BlogPostContent({ params }: { readonly params: Promise<PageParams> }) {
   const { lang, slug } = await params;
-  const postsForSlug = allPosts.filter((post) => post.slug === slug && !post.draft);
+  const postsForSlug = allPosts.filter((post) => post.slug === slug && isPostVisible(post));
 
   if (postsForSlug.length === 0) {
     notFound();
   }
 
-  const uniqueSlugs = Array.from(new Set(allPosts.filter((p) => !p.draft).map((p) => p.slug)));
+  const uniqueSlugs = Array.from(new Set(allPosts.filter(isPostVisible).map((p) => p.slug)));
   const sidebarItemsEn = uniqueSlugs
     .map((s) => getPost(s, "en"))
     .filter((p) => p !== undefined)
@@ -102,6 +105,7 @@ async function BlogPostContent({ params }: { readonly params: Promise<PageParams
     description: p.description,
     date: p.date.toISOString(),
     tags: p.tags,
+    draft: p.draft,
     headings: p.headings ?? [],
     mdx: p.mdx,
   }));

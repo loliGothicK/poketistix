@@ -25,17 +25,18 @@ export async function generateMetadata({
   });
 }
 
+const isDev = process.env.NODE_ENV !== "production";
+const isPostVisible = (p: { readonly draft: boolean }) => isDev || !p.draft;
+
 export default function BlogIndexPage() {
-  const uniqueSlugs = Array.from(
-    new Set(allPosts.filter((post) => !post.draft).map((p) => p.slug)),
-  );
+  const uniqueSlugs = Array.from(new Set(allPosts.filter(isPostVisible).map((p) => p.slug)));
 
   const postsEn = uniqueSlugs
-    .map((s) => allPosts.find((p) => p.slug === s && p.locale === "en" && !p.draft))
+    .map((s) => allPosts.find((p) => p.slug === s && p.locale === "en" && isPostVisible(p)))
     .filter((p) => p !== undefined)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const postsJa = uniqueSlugs
-    .map((s) => allPosts.find((p) => p.slug === s && p.locale === "ja" && !p.draft))
+    .map((s) => allPosts.find((p) => p.slug === s && p.locale === "ja" && isPostVisible(p)))
     .filter((p) => p !== undefined)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -51,6 +52,7 @@ export default function BlogIndexPage() {
       description: p.description,
       date: p.date.toISOString(),
       tags: p.tags,
+      draft: p.draft,
     })),
     ja: postsJa.map((p) => ({
       slug: p.slug,
@@ -58,6 +60,7 @@ export default function BlogIndexPage() {
       description: p.description,
       date: p.date.toISOString(),
       tags: p.tags,
+      draft: p.draft,
     })),
   };
 

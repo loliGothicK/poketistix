@@ -1,0 +1,184 @@
+---
+title: "User Feedback Responses (September 2026)"
+description: "A summary of responses and current progress regarding user feedback, bug reports, and feature requests submitted in September 2026."
+date: "2026-09-24"
+tags: ["feedback"]
+draft: true
+---
+
+Thank you for using Pokétistix.
+Here is a summary of the feedback, bug reports, and feature requests we received in September 2026, along with responses and current progress from the development team.
+
+---
+
+## [ERROR] Bug Reports & Data Issues
+
+<FeedbackCard
+  title="Low Base Stats for Floette (Eternal Flower)"
+  category="calculation"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/team-builder"
+>
+  <FeedbackMessage>
+    [CALCULATION] フラエッテ(えいえんのはな)の種族値が低いようにみえます。かんちがいだったらすみません。ご確認よろしくお願いします。
+    *(Floette Eternal Flower's base stats seem low. Please check if this is an issue.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for bringing this to our attention!
+
+    Upon investigation, the base stats of standard Floette were erroneously referenced in the team builder and internal datasets.
+    We have corrected the data to reflect Eternal Flower Floette's accurate base stats (`H74-A65-B67-C125-D128-S92`, BST 551).
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Match History Registration Fails or Data Disappears"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録を登録後、データが一覧に反映されたと思ったらすぐにデータが消える。新規データを登録できない。
+    *(After registering a match record, it appears in the list briefly and then disappears immediately. Cannot register new data.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    We apologize for the inconvenience.
+
+    A race condition occurred during match record synchronization where optimistic updates were prematurely rolled back under specific network conditions.
+    We have revised the cache revalidation and local state reconciliation logic so that newly created entries reliably persist in the UI.
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Cannot Record Match History"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録できない
+    *(Cannot record battle matches)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for the report.
+
+    Certain input patterns caused form validation errors and submission failures. We have enhanced input handling and validation feedback to ensure match records can be submitted reliably.
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Cannot Delete Season Records from Match History"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録につきまして、作成したシーズン記録を削除する際、赤いゴミ箱のマークを押しても、反映されませんでした。ご確認いただけますと幸いです。
+    *(When trying to delete a created season record by clicking the red trash icon, nothing happened.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for reporting this issue!
+
+    An event propagation glitch in the season management dialog prevented the deletion request from triggering properly.
+    This was resolved in v0.6.2, and clicking the red trash icon now successfully deletes season records as expected.
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Match History Not Saving Reliably When Navigating Pages"
+  category="other"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [OTHER] 対戦記録を保存したのに保存されず消えてしまう（ページ切り替えなどすると保存できたりできなかったりする）
+    *(Saved match records disappear or fail to save when navigating between pages.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    We apologize for the inconvenience.
+
+    Navigating away during background sync occasionally triggered cleanup aborts before data was persisted.
+    We have reinforced asynchronous write guarantees during page navigation to ensure seamless persistence.
+
+  </FeedbackReply>
+</FeedbackCard>
+
+---
+
+## [FEATURE] Feature Requests
+
+<FeedbackCard
+  title="Add Memo / Notes Field for Team Concepts and Matchup Strategies"
+  category="feature"
+  status="in_progress"
+  source="https://poketistix.mitama.io/ja/team-builder"
+>
+  <FeedbackMessage>
+    [FEATURE] 作成したチームのコンセプトや立ち回りのメモなどを残す備考欄があると嬉しいです。
+    *(It would be great to have a notes/memo field to write down team concepts and playstyle strategies.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for this valuable suggestion!
+
+    Being able to record team plans, lead selections, and counter-strategies alongside your team compositions is a vital part of tournament preparation.
+    We are actively developing this feature and are currently working on the UI and implementation of the strategy/concept notes field in the Team Builder.
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Pokemon Search Character Support (Hiragana / Romaji) & Box Integration"
+  category="feature"
+  source="https://poketistix.mitama.io/ja/docs"
+>
+  <FeedbackMessage>
+    Thank you for this very useful site. A few suggestions while using it:
+
+    - **Pokemon Search Character Support**
+      Support Hiragana and Romaji when searching Pokemon.
+    - **Add Registered Pokemon to Team**
+      Allow selecting registered Pokemon when picking Pokemon in a team.
+    - **Instant Selection in Damage Calc**
+      Instantly select registered Pokemon sets during damage calculations.
+
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for the warm feedback and concrete suggestions!
+    Here is our status and roadmap regarding the three requested points:
+
+    <FeedbackItem title="1. Pokemon Search Character Support" status="planned">
+      We plan to support Hiragana input for Pokemon search to streamline the input experience (Romaji search is currently being evaluated for feasibility).
+    </FeedbackItem>
+
+    <FeedbackItem title="2. Add Registered Pokemon to Team" status="available">
+      Selecting your saved Pokemon from My Box directly in the Team Builder is **already fully supported and available to use today**.
+    </FeedbackItem>
+
+    <FeedbackItem title="3. Instant Selection in Damage Calculator" status="planned">
+      We plan to add the ability to instantly select and load your saved Pokemon sets into the Damage Calculator.
+    </FeedbackItem>
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="Winrate Statistics by Team and Individual Pokemon"
+  category="feature"
+  status="planned"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [FEATURE] 使用パーティごとの勝率や使用ポケモンごとの勝率を見れるとありがたいです
+    *(I'd appreciate being able to see win rates per team used and per Pokemon used.)*
+  </FeedbackMessage>
+  <FeedbackReply>
+    Thank you for the feature request!
+
+    We are working on expanded analytics (`/battle-analytics`) that aggregate match data into visual charts, tracking overall win rates per team and individual selection/win performance across seasons.
+
+  </FeedbackReply>
+</FeedbackCard>

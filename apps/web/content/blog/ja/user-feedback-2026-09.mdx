@@ -1,0 +1,182 @@
+---
+title: "ユーザーフィードバック対応 (2026年9月)"
+description: "2026年9月にユーザーの皆様からお寄せいただいたご意見・不具合報告への回答と対応状況のまとめです。"
+date: "2026-09-24"
+tags: ["feedback"]
+draft: true
+---
+
+いつも Pokétistix をご利用いただきありがとうございます。
+2026年9月にユーザーの皆様からお寄せいただいたフィードバック（不具合報告・機能要望など）への対応状況と開発チームからの回答をまとめました。
+
+---
+
+## [ERROR] 不具合報告・データ誤り
+
+<FeedbackCard
+  title="フラエッテ（えいえんのはな）の種族値の誤り"
+  category="calculation"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/team-builder"
+>
+  <FeedbackMessage>
+    [CALCULATION] フラエッテ(えいえんのはな)の種族値が低いようにみえます。かんちがいだったらすみません。ご確認よろしくお願いします。
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご報告いただきありがとうございます！
+
+    調査したところ、チームビルダーおよび内部データにおいて通常フラエッテの種族値が誤って参照されてしまっておりました。
+    フラエッテ（えいえんのはな）の正規種族値（`H74-A65-B67-C125-D128-S92`、合計551）に修正いたしました。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="対戦記録を登録後、データが一覧から消える・新規登録できない"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録を登録後、データが一覧に反映されたと思ったらすぐにデータが消える。新規データを登録できない。
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご不便をおかけして大変申し訳ありません。
+
+    対戦記録一覧の取得・キャッシュ同期において、特定条件下で楽観的更新（Optimistic Update）がロールバックされてしまう不具合が発生しておりました。
+    キャッシュの再検証およびローカルステートの整合性ロジックを改修し、登録データが確実に一覧へ保持・反映されるよう修正いたしました。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="対戦記録の新規保存が正常に行えない"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録できない
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご報告ありがとうございます。
+
+    一部の入力パターンにおいてフォーム送信時のバリデーションエラーや通信の失敗が発生しておりました。
+    入力バリデーションおよびエラーハンドリングを改善し、安定して記録を保存できるよう改修を行いました。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="シーズン記録削除時にゴミ箱アイコンを押しても反映されない"
+  category="error"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [ERROR] 対戦記録につきまして、作成したシーズン記録を削除する際、赤いゴミ箱のマークを押しても、反映されませんでした。
+    ご確認いただけますと幸いです。
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご報告いただきありがとうございます！
+
+    シーズン選択メニュー内の削除ダイアログおよびイベント伝播の不具合により、削除リクエストが正しく発火していませんでした。
+    こちら v0.6.2 にて修正を行い、現在は赤いゴミ箱アイコンから正常にシーズン記録を削除いただけます。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="対戦記録の保存がページ切り替え等で消えてしまう・保存が不安定"
+  category="other"
+  status="fixed"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [OTHER] 対戦記録を保存したのに保存されず消えてしまう
+    （ページ切り替えなどすると保存できたりできなかったりする）
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご不便をおかけして申し訳ありません。
+
+    ページ遷移時のクリーンアップ処理と非同期保存のタイミングが競合し、特定の手順で保存処理がキャンセルされてしまう不具合が発生しておりました。
+    ページ切り替え時にもバックグラウンドで保存処理を確実に完了させるようライフサイクル処理を改修いたしました。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+---
+
+## [FEATURE] 機能要望
+
+<FeedbackCard
+  title="チームのコンセプトや立ち回りメモを残す備考欄の追加"
+  category="feature"
+  status="in_progress"
+  source="https://poketistix.mitama.io/ja/team-builder"
+>
+  <FeedbackMessage>
+    [FEATURE] 作成したチームのコンセプトや立ち回りのメモなどを残す備考欄があると嬉しいです。
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご提案いただきありがとうございます！
+
+    対戦前の選出プランや立ち回りの注意点などをチームと一緒にメモとして残せる機能は、実戦において非常に有用であると考えております。
+    チームビルダー内に「戦略・コンセプトメモ」を自由に書き込める備考欄の追加を進めており、現在実装・UI調整を行っております。
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="ポケモン検索の文字対応（ひらがな・ローマ字）および型登録・連携機能"
+  category="feature"
+  source="https://poketistix.mitama.io/ja/docs"
+>
+  <FeedbackMessage>
+    とても有用なサイトをありがとうございます。
+    使わせていただく中で、気になった点をいくつかあげさせていただきます。
+
+    - **ポケモン検索の文字対応**
+      ポケモンを検索する際に、ひらがなやローマ字に対応していただきたいです。
+    - **登録したポケモンをチームへ**
+      チームでポケモンを選択する際に、登録したポケモンを選べるようにしていただきたいです。
+    - **ダメージ計算での型選択**
+      ダメージ計算の際にも、登録した型のポケモンを瞬時に選べるようにしていただきたいです。
+
+  </FeedbackMessage>
+  <FeedbackReply>
+    温かい応援のお言葉と、使いやすさに直結する素晴らしいご提案をありがとうございます！
+    ご要望いただいた3点について、以下の通り対応状況・予定をご案内いたします。
+
+    <FeedbackItem title="1. ポケモン検索の文字対応" status="planned">
+      入力の手間を減らせるよう、ひらがな入力での検索に対応を予定しております（ローマ字検索については今後の対応を検討いたします）。
+    </FeedbackItem>
+
+    <FeedbackItem title="2. 登録したポケモンをチームへ" status="available">
+      チームビルダーのポケモン選択画面にて、マイボックスに保存済みのポケモンから直接選択してチームへ追加する機能は、**すでに実装されており現在ご利用いただけます**。
+    </FeedbackItem>
+
+    <FeedbackItem title="3. ダメージ計算での登録型ポケモンの選択" status="planned">
+      ダメージ計算機においても、登録済みの型を瞬時に選んで計算対象にセットできるよう、機能の追加を予定しております。
+    </FeedbackItem>
+
+  </FeedbackReply>
+</FeedbackCard>
+
+<FeedbackCard
+  title="パーティ別・ポケモン別の勝率分析表示"
+  category="feature"
+  status="planned"
+  source="https://poketistix.mitama.io/ja/battle-record"
+>
+  <FeedbackMessage>
+    [FEATURE] 使用パーティごとの勝率や使用ポケモンごとの勝率を見れるとありがたいです
+  </FeedbackMessage>
+  <FeedbackReply>
+    ご要望ありがとうございます！
+
+    登録された対戦記録をもとに、「どのパーティが最も勝率が高いか」「どのポケモンを選出した際の勝率が高いか」を可視化する分析機能（`/battle-analytics`）を計画しております。
+    シーズンや対戦ルールごとの絞り込みも含めて、より詳細なスタッツを確認できるよう機能追加を進めてまいります。
+
+  </FeedbackReply>
+</FeedbackCard>

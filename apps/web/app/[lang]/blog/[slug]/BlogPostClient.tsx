@@ -17,7 +17,9 @@ import {
 } from "@/components/client/content/TableOfContents";
 import type { BreadcrumbItem } from "@/components/client/content/ContentLayoutContext";
 import {
+  FeedbackBadge,
   FeedbackCard,
+  FeedbackItem,
   FeedbackMessage,
   FeedbackReply,
 } from "@/components/client/content/FeedbackCard";
@@ -27,6 +29,9 @@ const mdxComponents = {
   FeedbackMessage,
   FeedbackReply,
   FeedbackResponse: FeedbackReply,
+  FeedbackBadge,
+  FeedbackStatusBadge: FeedbackBadge,
+  FeedbackItem,
 };
 
 type LocalizedSidebar = {
