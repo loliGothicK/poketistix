@@ -9,10 +9,19 @@
     "./*": "./*"
   },
   "scripts": {
-    "check": "cargo check",
+    "lint": "cargo clippy -- -D warnings && oxlint --type-aware --type-check .",
+    "lint:fix": "cargo clippy --fix --allow-dirty --allow-staged -- -D warnings && oxlint --fix-dangerously .",
+    "fmt": "cargo fmt && oxfmt .",
+    "fmt:check": "cargo fmt -- --check && oxfmt --check .",
+    "check": "cargo check && pnpm exec tsc --noEmit",
+    "pretty": "pnpm run check && pnpm run lint:fix && pnpm run fmt",
     "renovate": "cargo upgrade -i"
   },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint-plugin-eslint": "1.81.0",
+    "oxlint-tsgolint": "catalog:",
+    "typescript": "catalog:"
   }
 }

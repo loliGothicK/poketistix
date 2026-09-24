@@ -5,16 +5,9 @@ export default defineConfig({
   printWidth: 100,
   overrides: [
     {
-      files: ["*.test.js", "*.spec.ts"],
+      files: ["*.test.ts", "*.spec.ts"],
       options: {
         printWidth: 120,
-      },
-    },
-    {
-      files: ["*.md", "*.html"],
-      excludeFiles: ["*.min.js"],
-      options: {
-        tabWidth: 4,
       },
     },
   ],

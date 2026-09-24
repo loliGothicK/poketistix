@@ -1,8 +1,8 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  plugins: ["typescript", "oxc", "unicorn", "react", "nextjs"],
-  ignorePatterns: ["tests/champions-mod/**/*"],
+  plugins: ["typescript", "oxc", "unicorn"],
+  ignorePatterns: [],
   options: {
     denyWarnings: true,
     typeAware: true,

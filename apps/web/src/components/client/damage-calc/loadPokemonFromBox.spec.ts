@@ -7,7 +7,7 @@ import { moveByIdentifier } from "@/data/moves";
 
 describe("loadPokemonFromBox", () => {
   const garchompAbility = abilityByIdentifier.get("rough-skin")!;
-  const choiceBand = itemByIdentifier.get("choice-band")!;
+  const lifeOrb = itemByIdentifier.get("life-orb")!;
   const earthquake = moveByIdentifier.get("earthquake")!;
   const swordsDance = moveByIdentifier.get("swords-dance")!;
 
@@ -16,7 +16,7 @@ describe("loadPokemonFromBox", () => {
     identifier: "garchomp",
     slug: "garchomp",
     ability: garchompAbility.id,
-    item: choiceBand.id,
+    item: lifeOrb.id,
     gender: { fixed: false },
     nature: { plus: "atk", minus: "spa" }, // Adamant
     moves: [swordsDance.id, earthquake.id, null, null],
@@ -35,7 +35,7 @@ describe("loadPokemonFromBox", () => {
 
     expect(result.identifier).toBe("garchomp");
     expect(result.ability).toBe("rough-skin");
-    expect(result.item).toBe("choice-band");
+    expect(result.item).toBe("life-orb");
     expect(result.evHp).toBe(4);
     expect(result.evAtk).toBe(32);
     expect(result.evSpe).toBe(32);
@@ -54,7 +54,7 @@ describe("loadPokemonFromBox", () => {
 
     expect(result.identifier).toBe("garchomp");
     expect(result.ability).toBe("rough-skin");
-    expect(result.item).toBe("choice-band");
+    expect(result.item).toBe("life-orb");
     expect(result.evHp).toBe(4);
     expect(result.evAtk).toBe(32);
     expect(result.evSpe).toBe(32);

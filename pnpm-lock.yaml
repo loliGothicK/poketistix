@@ -497,6 +497,18 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.4.1
+      oxfmt:
+        specifier: 'catalog:'
+        version: 0.66.0
+      oxlint-plugin-eslint:
+        specifier: 1.81.0
+        version: 1.81.0
+      oxlint-tsgolint:
+        specifier: 'catalog:'
+        version: 7.0.2001
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/engine:
     dependencies:

@@ -5,14 +5,6 @@
         "slug": "charizard",
         "add_moves": [163]
       },
-      "53": {
-        "slug": "persian",
-        "add_moves": [163]
-      },
-      "83": {
-        "slug": "farfetchd",
-        "add_moves": [163]
-      },
       "127": {
         "slug": "pinsir",
         "add_moves": [163]
@@ -51,10 +43,6 @@
       },
       "359": {
         "slug": "absol",
-        "add_moves": [163]
-      },
-      "373": {
-        "slug": "salamence",
         "add_moves": [163]
       },
       "445": {
@@ -105,20 +93,8 @@
         "slug": "barbaracle",
         "add_moves": [163]
       },
-      "768": {
-        "slug": "golisopod",
-        "add_moves": [163]
-      },
       "778": {
         "slug": "mimikyu",
-        "add_moves": [163]
-      },
-      "863": {
-        "slug": "perrserker",
-        "add_moves": [163]
-      },
-      "865": {
-        "slug": "sirfetchd",
         "add_moves": [163]
       },
       "900": {
@@ -146,64 +122,8 @@
         "slug": "aegislash-blade",
         "add_moves": [163]
       },
-      "10034": {
-        "slug": "charizard-mega-x",
-        "add_moves": [163]
-      },
-      "10035": {
-        "slug": "charizard-mega-y",
-        "add_moves": [163]
-      },
-      "10050": {
-        "slug": "blaziken-mega",
-        "add_moves": [163]
-      },
-      "10056": {
-        "slug": "banette-mega",
-        "add_moves": [163]
-      },
-      "10057": {
-        "slug": "absol-mega",
-        "add_moves": [163]
-      },
-      "10058": {
-        "slug": "garchomp-mega",
-        "add_moves": [163]
-      },
-      "10065": {
-        "slug": "sceptile-mega",
-        "add_moves": [163]
-      },
-      "10089": {
-        "slug": "salamence-mega",
-        "add_moves": [163]
-      },
-      "10108": {
-        "slug": "alolan-persian",
-        "add_moves": [163]
-      },
       "10236": {
         "slug": "hisuian-samurott",
-        "add_moves": [163]
-      },
-      "10297": {
-        "slug": "malamar-mega",
-        "add_moves": [163]
-      },
-      "10298": {
-        "slug": "barbaracle-mega",
-        "add_moves": [163]
-      },
-      "10307": {
-        "slug": "absol-mega-z",
-        "add_moves": [163]
-      },
-      "10309": {
-        "slug": "garchomp-mega-z",
-        "add_moves": [163]
-      },
-      "10316": {
-        "slug": "golisopod-mega",
         "add_moves": [163]
       }
     }

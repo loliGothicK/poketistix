@@ -685,9 +685,7 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
     let patches_json: Value =
         serde_json::from_str(patches_str).expect("Failed to parse patches.json");
 
-    // Collect base moves by identifier
-    let mut base_moves_map: std::collections::HashMap<String, (u64, Vec<u32>)> =
-        std::collections::HashMap::new();
+    let mut pokemon_entries = Vec::new();
 
     if let Some(arr) = pokemon_json["data"].as_array() {
         let mut base_pokemon_by_id: std::collections::HashMap<u64, &Value> =
@@ -721,22 +719,18 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
                     .collect()
             };
 
-            base_moves_map.insert(identifier, (id, moves));
+            pokemon_entries.push((id, identifier, species_id, moves));
         }
     }
 
-    // Prepare match arms for get_pokemon_moves(slug: &str, reg: Regulation) -> Option<&'static [u32]>
-    let mut move_arms = Vec::new();
+    let mc_patches_opt = patches_json.get("M-C").and_then(|v| v.get("pokemon"));
 
-    for (slug, (id, base_moves)) in &base_moves_map {
-        let clean_slug = slug.replace("-", "").to_lowercase();
-
-        // MA and MB currently have no move patches, so they use base_moves
-        let ma_mb_moves = base_moves.clone();
-
-        // Compute MC moves applying patches.json
+    // First compute MC moves applying direct patches
+    let mut mc_moves_by_id: std::collections::HashMap<u64, Vec<u32>> =
+        std::collections::HashMap::new();
+    for (id, _identifier, _species_id, base_moves) in &pokemon_entries {
         let mut mc_moves = base_moves.clone();
-        if let Some(mc_patches) = patches_json.get("M-C").and_then(|v| v.get("pokemon")) {
+        if let Some(mc_patches) = mc_patches_opt {
             let id_str = id.to_string();
             if let Some(p) = mc_patches.get(&id_str) {
                 if let Some(remove) = p.get("remove_moves").and_then(|v| v.as_array()) {
@@ -755,6 +749,31 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
                 }
             }
         }
+        mc_moves_by_id.insert(*id, mc_moves);
+    }
+
+    // Inherit MC moves from base species for Mega forms that do not have an explicit patch
+    for (id, identifier, species_id, _base_moves) in &pokemon_entries {
+        if identifier.contains("-mega")
+            && let Some(sid) = species_id
+        {
+            let has_patch =
+                mc_patches_opt.is_some_and(|patches| patches.get(id.to_string()).is_some());
+            if !has_patch && let Some(base_mc) = mc_moves_by_id.get(sid).cloned() {
+                mc_moves_by_id.insert(*id, base_mc);
+            }
+        }
+    }
+
+    // Prepare match arms for get_pokemon_moves(slug: &str, reg: Regulation) -> Option<&'static [u32]>
+    let mut move_arms = Vec::new();
+
+    for (id, identifier, _species_id, base_moves) in &pokemon_entries {
+        let clean_slug = identifier.replace("-", "").to_lowercase();
+
+        // MA and MB currently have no move patches, so they use base_moves
+        let ma_mb_moves = base_moves;
+        let mc_moves = mc_moves_by_id.get(id).unwrap();
 
         // Generate arms
         let ma_mb_tokens = quote! { &[#(#ma_mb_moves),*] };
@@ -806,8 +825,8 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
 
     // Map id to clean_slug
     let mut id_to_slug = std::collections::HashMap::new();
-    for (slug, (id, _)) in &base_moves_map {
-        let clean_slug = slug.replace("-", "").to_lowercase();
+    for (id, identifier, _, _) in &pokemon_entries {
+        let clean_slug = identifier.replace("-", "").to_lowercase();
         id_to_slug.insert(*id, clean_slug);
     }
 

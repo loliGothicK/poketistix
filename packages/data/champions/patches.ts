@@ -48,30 +48,30 @@ export function resolvePokemonInheritance(rawList: readonly RawPokemonEntry[]): 
     const types =
       entry.types === "inherit"
         ? base && base.types !== "inherit"
-          ? [...base.types]
+          ? base.types.slice()
           : []
-        : [...entry.types];
+        : entry.types.slice();
 
     const abilities =
       entry.abilities === "inherit"
         ? base && base.abilities !== "inherit"
-          ? [...base.abilities]
+          ? base.abilities.slice()
           : []
-        : [...entry.abilities];
+        : entry.abilities.slice();
 
     const status =
       entry.status === "inherit"
         ? base && base.status !== "inherit"
-          ? ([...base.status] as [number, number, number, number, number, number])
+          ? (base.status.slice() as [number, number, number, number, number, number])
           : ([0, 0, 0, 0, 0, 0] as [number, number, number, number, number, number])
-        : ([...entry.status] as [number, number, number, number, number, number]);
+        : (entry.status.slice() as [number, number, number, number, number, number]);
 
     const moves =
       entry.moves === "inherit"
         ? base && base.moves !== "inherit"
-          ? [...base.moves]
+          ? base.moves.slice()
           : []
-        : [...entry.moves];
+        : entry.moves.slice();
 
     return {
       ...entry,
@@ -91,7 +91,7 @@ const resolvedBasePokemonData = resolvePokemonInheritance(pokemonData.data);
  */
 export function applyRegulationPatchToPokemonList(
   baseList: readonly ResolvedPokemon[],
-  regulation?: Regulation | string,
+  regulation?: Regulation,
 ): ResolvedPokemon[] {
   if (!regulation || !patches[regulation]?.pokemon) {
     return [...baseList];
@@ -99,7 +99,7 @@ export function applyRegulationPatchToPokemonList(
 
   const regPatches = patches[regulation].pokemon!;
 
-  return baseList.map((pokemon) => {
+  const patchedList = baseList.map((pokemon) => {
     const patch = regPatches[String(pokemon.id)];
     if (!patch) {
       return pokemon;
@@ -123,12 +123,32 @@ export function applyRegulationPatchToPokemonList(
       moves,
     };
   });
+
+  const byId = new Map<number, ResolvedPokemon>();
+  for (const p of patchedList) {
+    byId.set(p.id, p);
+  }
+
+  return patchedList.map((pokemon) => {
+    if (pokemon.identifier.includes("-mega") && pokemon.species_id) {
+      if (!regPatches[String(pokemon.id)]) {
+        const base = byId.get(pokemon.species_id);
+        if (base) {
+          return {
+            ...pokemon,
+            moves: [...base.moves],
+          };
+        }
+      }
+    }
+    return pokemon;
+  });
 }
 
 // Cached patched data by regulation
 const pokemonDataCache = new Map<string, ResolvedPokemon[]>();
 
-export function getPokemonData(regulation?: Regulation | string): ResolvedPokemon[] {
+export function getPokemonData(regulation?: Regulation): ResolvedPokemon[] {
   const regKey = regulation ?? "base";
   const cached = pokemonDataCache.get(regKey);
   if (cached) {
@@ -145,7 +165,7 @@ export function getPokemonData(regulation?: Regulation | string): ResolvedPokemo
  */
 export function getPokemonMoves(
   pokemonIdOrSlug: number | string,
-  regulation?: Regulation | string,
+  regulation?: Regulation,
 ): readonly number[] {
   const list = getPokemonData(regulation);
   const found = list.find((p) =>
@@ -162,7 +182,7 @@ export function getPokemonMoves(
 export function isMoveAllowedForPokemon(
   pokemonIdOrSlug: number | string,
   moveId: number,
-  regulation?: Regulation | string,
+  regulation?: Regulation,
 ): boolean {
   const moves = getPokemonMoves(pokemonIdOrSlug, regulation);
   return moves.includes(moveId);
@@ -173,7 +193,7 @@ export function isMoveAllowedForPokemon(
  */
 export function isPokemonAllowedInRegulation(
   pokemonId: number,
-  regulation: Regulation | string = "M-C",
+  regulation: Regulation = "M-C",
 ): boolean {
   switch (regulation) {
     case "M-A":
