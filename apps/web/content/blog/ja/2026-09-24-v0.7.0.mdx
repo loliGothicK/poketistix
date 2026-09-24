@@ -6,22 +6,25 @@ tags: ["release"]
 draft: false
 ---
 
-### 新機能・変更点
+### ✨ 新機能・改善点
 
-- [`9e9fd6c`](https://github.com/loliGothicK/poketistix/commit/9e9fd6cc9418550da60e68e2f4647d2fe927a730) Thanks [@loliGothicK](https://github.com/loliGothicK)! - Features:
-  - damage-calc: Added a dialog to quickly load trained Pokémon directly from the BOX
-  - team-builder: Enhanced the BOX tab in the Pokémon selection dialog with item, EV, and move details, plus multi-field search
-  - team-builder: Added direct "Load from Box" actions to empty slots and the slot detail header
-  - team-builder: Added team revision history and version restore functionality with semantic and Pokepaste diff views
-  - team-builder: Added "Strategy Notes" workspace to document build process, core gameplans, and matchup plans
-  - team-builder: Optimized revision history dialog layout and diff view for mobile screens
-  - team-builder: Supported Hiragana normalization and Romaji search inputs (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Pokémon and move selection when Japanese is active, excluding English identifiers to prevent false matches
-  - team-builder: Automatically reset AutoComplete search queries and token chips in Pokémon selection, move selection, and BOX loader dialogs when opening, switching slots, or making a selection
-  - battle-record: Added tabbed analytics in `/battle-analytics` to view pick rates and win rates for user's Pokémon, team performance, and opponent win rates
-  - battle-record: Displayed active team win rate badge on party panels in `/battle-record`
-  - blog: Added a user feedback response blog post and FeedbackCard component
-  - monitoring: Added client-side error filtering for Sentry
-    Fixes:
-  - data: Fixed base stats for Floette (Eternal Flower)
-  - battle-record: Fixed match history display and team selection behavior
-  - team-builder: Fixed CORS error (`TypeError: Load failed`) during Pokepaste URL import with a server-side proxy, automatic URL/ID parsing, and user-friendly error diagnostics
+- [`9e9fd6c`](https://github.com/loliGothicK/poketistix/commit/9e9fd6cc9418550da60e68e2f4647d2fe927a730) Thanks [@loliGothicK](https://github.com/loliGothicK)!:
+  - **ダメージ計算機 (`damage-calc`)**: BOXに登録・育成済みのポケモンをワンクリックで計算対象に瞬時に読み込めるダイアログを追加
+  - **チームビルダー (`team-builder`)**:
+    - ポケモン選択ダイアログの「BOX」タブをリッチ化し、持ち物・努力値・技構成の確認や、複数フィールドでの絞り込み検索・直接選択に対応
+    - 空スロットやスロットヘッダーから直接BOXのポケモンを読み込める「BOXから読み込む」アクションを追加
+    - チーム変更履歴（リビジョン履歴）閲覧および過去バージョンの復元機能を追加（セマンティック差分および Pokepaste テキスト差分の表示に対応 ※デスクトップ向け）
+    - チーム変更履歴ダイアログのレイアウトおよび差分表示をモバイル画面向けに最適化
+    - 構築経緯・基本選出・相手別プランなどをMarkdown形式で記録できる「戦略ノート」ワークスペースを追加
+    - 日本語設定時のポケモン・技選択において、ひらがな正規化およびローマ字入力（`gabu`、`rizadon`、`sa-fugo-` など）での検索に対応（日本語検索時に英語識別子を除外し、意図しない誤一致を防止）
+    - ポケモン選択・技選択・BOX読み込みダイアログを開き直した際や、スロット切り替え・選択決定時に前回の検索キーワードやチップが残らないよう自動リセット処理を追加
+  - **対戦記録・対戦分析 (`battle-record`)**:
+    - 対戦分析画面（`/battle-analytics`）にタブ切り替えを追加し、使用ポケモン別の選出率・選出時勝率、使用チーム別の戦績、相手ポケモン別勝率の確認に対応
+    - 対戦記録画面（`/battle-record`）のパーティ表示に、現在選択中チームの通算勝率バッジを表示
+
+### 🐛 バグ修正
+
+- [`9e9fd6c`](https://github.com/loliGothicK/poketistix/commit/9e9fd6cc9418550da60e68e2f4647d2fe927a730) Thanks [@loliGothicK](https://github.com/loliGothicK)!:
+  - **データ (`data`)**: フラエッテ（えいえんのはな）の種族値を修正
+  - **対戦記録 (`battle-record`)**: 対戦記録の表示・保存およびチームセレクターの挙動を修正
+  - **チームビルダー (`team-builder`)**: Pokepaste の URL インポート時に発生していた CORS エラー（`TypeError: Load failed`）および存在しない URL 入力時の例外を修正（サーバープロキシ経由の取得、URL/ID の自動抽出、エラー診断に対応）

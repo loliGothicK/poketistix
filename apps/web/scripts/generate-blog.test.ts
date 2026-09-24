@@ -31,19 +31,19 @@ describe("generate-blog", () => {
 
     const { ja, en } = parseChangelogSection(changelogText);
 
-    expect(ja).toContain("### 新機能・変更点");
+    expect(ja).toContain("### ✨ 新機能・変更点");
     expect(ja).toContain("- 5b8aa0d: クイズ結果のシェア機能を追加");
     expect(ja).toContain("  - 正解率とタイムの共有");
     expect(ja).toContain("  - OGP画像の自動生成");
-    expect(ja).toContain("### パッチ・修正");
+    expect(ja).toContain("### 🐛 パッチ・修正");
     expect(ja).toContain("- 1234567: バグ修正");
     expect(ja).not.toContain("Add quiz result sharing feature");
 
-    expect(en).toContain("### Minor Changes");
+    expect(en).toContain("### ✨ Minor Changes");
     expect(en).toContain("- 5b8aa0d: Add quiz result sharing feature");
     expect(en).toContain("  - Share accuracy and time");
     expect(en).toContain("  - Automatically generate OGP images");
-    expect(en).toContain("### Patch Changes");
+    expect(en).toContain("### 🐛 Patch Changes");
     expect(en).toContain("- 1234567: Bug fixes");
     expect(en).not.toContain("クイズ結果のシェア機能を追加");
   });
@@ -62,12 +62,12 @@ describe("generate-blog", () => {
 
     const { ja, en } = parseChangelogSection(changelogText);
 
-    expect(ja).toContain("### パッチ・修正");
+    expect(ja).toContain("### 🐛 パッチ・修正");
     expect(ja).toContain("- 5b8aa0d: バグ修正:");
     expect(ja).toContain("  - team builder: ニャオニクスナイトの修正");
     expect(ja).not.toContain("Fixed Meowsticite bug");
 
-    expect(en).toContain("### Patch Changes");
+    expect(en).toContain("### 🐛 Patch Changes");
     expect(en).toContain("- 5b8aa0d: Fixes:");
     expect(en).toContain("  - team builder: Fixed Meowsticite bug");
     expect(en).not.toContain("ニャオニクスナイトの修正");
@@ -98,7 +98,7 @@ describe("generate-blog", () => {
 
     const { ja, en } = parseChangelogSection(multiEntryChangelog);
 
-    expect(ja).toContain("### パッチ・修正");
+    expect(ja).toContain("### 🐛 パッチ・修正");
     expect(ja).toContain(
       "- [#12](https://github.com/example/pull/12) [`5b8aa0d`](https://github.com/example/commit/5b8aa0d) Thanks [@alice]! - バグ修正1:",
     );
@@ -113,7 +113,7 @@ describe("generate-blog", () => {
     expect(ja).not.toContain("Fixes 2:");
     expect(ja).not.toContain("Fix 3");
 
-    expect(en).toContain("### Patch Changes");
+    expect(en).toContain("### 🐛 Patch Changes");
     expect(en).toContain(
       "- [#12](https://github.com/example/pull/12) [`5b8aa0d`](https://github.com/example/commit/5b8aa0d) Thanks [@alice]! - Fixes 1:",
     );
@@ -143,14 +143,14 @@ describe("generate-blog", () => {
 
     const { ja, en } = parseChangelogSection(legacyText);
 
-    expect(ja).toContain("### 新機能");
+    expect(ja).toContain("### ✨ 新機能");
     expect(ja).toContain("- add quizzes ([5b8aa0d]");
-    expect(ja).toContain("### バグ修正");
+    expect(ja).toContain("### 🐛 バグ修正");
     expect(ja).toContain("- damage fix ([623d668]");
 
-    expect(en).toContain("### Features");
+    expect(en).toContain("### ✨ Features");
     expect(en).toContain("- add quizzes ([5b8aa0d]");
-    expect(en).toContain("### Bug Fixes");
+    expect(en).toContain("### 🐛 Bug Fixes");
     expect(en).toContain("- damage fix ([623d668]");
   });
 
@@ -281,8 +281,10 @@ Bug fixes
       ];
 
       const formatted = formatJaStaging(staged);
-      expect(formatted).toContain("### 新機能・変更点\n\n- fedcba9: 新機能C");
-      expect(formatted).toContain("### パッチ・修正\n\n- 1234567: バグ修正A\n- 89abcde: バグ修正B");
+      expect(formatted).toContain("### ✨ 新機能・変更点\n\n- fedcba9: 新機能C");
+      expect(formatted).toContain(
+        "### 🐛 パッチ・修正\n\n- 1234567: バグ修正A\n- 89abcde: バグ修正B",
+      );
     });
   });
 });

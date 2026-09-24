@@ -6,13 +6,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const changelogPath = path.resolve(__dirname, "../CHANGELOG.md");
 const blogBaseDir = path.resolve(__dirname, "../content/blog");
 
-const categoryTranslations: Record<string, string> = {
-  "major changes": "メジャーアップデート",
-  "minor changes": "新機能・変更点",
-  "patch changes": "パッチ・修正",
-  features: "新機能",
-  "bug fixes": "バグ修正",
+const categoryHeaders: Record<string, { ja: string; en: string }> = {
+  "major changes": { ja: "### 🚀 メジャーアップデート", en: "### 🚀 Major Updates" },
+  "minor changes": { ja: "### ✨ 新機能・変更点", en: "### ✨ Minor Changes" },
+  "patch changes": { ja: "### 🐛 パッチ・修正", en: "### 🐛 Patch Changes" },
+  features: { ja: "### ✨ 新機能", en: "### ✨ Features" },
+  "bug fixes": { ja: "### 🐛 バグ修正", en: "### 🐛 Bug Fixes" },
 };
+
+export function normalizeCategory(title: string): string {
+  return title
+    .replace(/^[\p{Emoji}\p{Extended_Pictographic}\uFE0F\s]+/u, "")
+    .trim()
+    .toLowerCase();
+}
 
 export type ParsedRelease = {
   readonly version: string;
@@ -291,12 +298,13 @@ export function parseChangelogSection(sectionText: string): { ja: string; en: st
       }
 
       if (entryLines.length > 0) {
-        let title = `### ${cat.rawTitle}`;
+        const key = normalizeCategory(cat.rawTitle);
+        const headerConfig = categoryHeaders[key];
+        let title: string;
         if (targetLang === "ja") {
-          const translated = categoryTranslations[cat.rawTitle.toLowerCase()];
-          if (translated) {
-            title = `### ${translated}`;
-          }
+          title = headerConfig?.ja ?? `### ${cat.rawTitle}`;
+        } else {
+          title = headerConfig?.en ?? `### ${cat.rawTitle}`;
         }
         sections.push(`${title}\n\n${entryLines.join("\n")}`);
       }
@@ -393,13 +401,13 @@ export function formatJaStaging(entries: Array<{ type: string; line: string }>):
   const output: string[] = [];
 
   if (sections.major.length > 0) {
-    output.push(`### メジャーアップデート\n\n${sections.major.join("\n")}`);
+    output.push(`### 🚀 メジャーアップデート\n\n${sections.major.join("\n")}`);
   }
   if (sections.minor.length > 0) {
-    output.push(`### 新機能・変更点\n\n${sections.minor.join("\n")}`);
+    output.push(`### ✨ 新機能・変更点\n\n${sections.minor.join("\n")}`);
   }
   if (sections.patch.length > 0) {
-    output.push(`### パッチ・修正\n\n${sections.patch.join("\n")}`);
+    output.push(`### 🐛 パッチ・修正\n\n${sections.patch.join("\n")}`);
   }
 
   return output.join("\n\n").trim();
