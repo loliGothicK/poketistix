@@ -114,7 +114,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
 <FeedbackCard
   title="Add Memo / Notes Field for Team Concepts and Matchup Strategies"
   category="feature"
-  status="available"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/team-builder"
 >
   <FeedbackMessage>
@@ -124,7 +124,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
   <FeedbackReply>
     Thank you for this valuable suggestion!
 
-    We have added a dedicated "Strategy Notes" workspace to the Team Builder, allowing you to document team building thought processes, core gameplans, and matchup-specific strategies in Markdown.
+    In v0.7.0, we added a dedicated "Strategy Notes" workspace to the Team Builder, allowing you to document team building thought processes, core gameplans, and matchup-specific strategies directly alongside your team.
     It is also integrated with the Team Revision History, letting you track your notes alongside each iteration of your team.
 
   </FeedbackReply>
@@ -133,7 +133,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
 <FeedbackCard
   title="Pokemon Search Character Support (Hiragana / Romaji) & Box Integration"
   category="feature"
-  status="available"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/docs"
 >
   <FeedbackMessage>
@@ -149,18 +149,18 @@ Here is a summary of the feedback, bug reports, and feature requests we received
   </FeedbackMessage>
   <FeedbackReply>
     Thank you for the warm feedback and concrete suggestions!
-    All three requested features are now fully implemented and available:
+    Here is our status and update for each of the requested items:
 
-    <FeedbackItem title="1. Pokemon Search Character Support" status="available">
-      Supported Hiragana normalization and Romaji search queries (e.g. `gabu`, `rizadon`, `sa-fugo-`) for Japanese Pokemon and move searches via `wanakana`. Furthermore, AutoComplete search fields now automatically reset their state when switching slots or selecting a Pokemon/move.
+    <FeedbackItem title="1. Pokemon Search Character Support" status="fixed">
+      In v0.7.0, we supported searching Pokémon and moves using Hiragana as well as Romaji queries (e.g. `gabu`, `rizadon`, `sa-fugo-`). Furthermore, search fields now automatically reset their state when switching slots or selecting a Pokemon/move.
     </FeedbackItem>
 
     <FeedbackItem title="2. Add Registered Pokemon to Team" status="available">
-      Selecting your saved Pokemon from My Box directly in the Team Builder is supported via the rich "BOX" tab in the selection dialog, as well as one-click "Load from Box" actions on slots.
+      This capability was already available prior to this release. You can select your saved Pokemon from My Box directly in the Team Builder via the "BOX" tab in the selection dialog, as well as one-click "Load from Box" actions on slots (with v0.7.0 further enhancing visibility of items, EVs, and moves).
     </FeedbackItem>
 
-    <FeedbackItem title="3. Instant Selection in Damage Calculator" status="available">
-      Added a "Load from Box" dialog to the Damage Calculator, enabling you to load your saved Pokemon sets (EVs, items, moves) with a single click.
+    <FeedbackItem title="3. Instant Selection in Damage Calculator" status="fixed">
+      In v0.7.0, we added a "Load from Box" dialog to the Damage Calculator, enabling you to load your saved Pokemon sets (EVs, items, moves) with a single click.
     </FeedbackItem>
 
   </FeedbackReply>
@@ -169,7 +169,7 @@ Here is a summary of the feedback, bug reports, and feature requests we received
 <FeedbackCard
   title="Winrate Statistics by Team and Individual Pokemon"
   category="feature"
-  status="planned"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/battle-record"
 >
   <FeedbackMessage>
@@ -177,9 +177,10 @@ Here is a summary of the feedback, bug reports, and feature requests we received
     *(I'd appreciate being able to see win rates per team used and per Pokemon used.)*
   </FeedbackMessage>
   <FeedbackReply>
-    Thank you for the feature request!
+    Thank you for this feature request!
 
-    We are working on expanded analytics (`/battle-analytics`) that aggregate match data into visual charts, tracking overall win rates per team and individual selection/win performance across seasons.
+    In v0.7.0, we added a tabbed analytics interface to `/battle-analytics`, enabling you to inspect pick rates and win rates for each of your brought Pokémon, performance stats (win rate and record breakdown) by registered team, and win rates against specific opponent species.
+    We also added a live cumulative win rate badge directly on the active team panel in `/battle-record`.
 
   </FeedbackReply>
 </FeedbackCard>

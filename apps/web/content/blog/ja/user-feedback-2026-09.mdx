@@ -112,7 +112,7 @@ draft: false
 <FeedbackCard
   title="チームのコンセプトや立ち回りメモを残す備考欄の追加"
   category="feature"
-  status="available"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/team-builder"
 >
   <FeedbackMessage>
@@ -121,7 +121,7 @@ draft: false
   <FeedbackReply>
     ご提案いただきありがとうございます！
 
-    チームビルダー内に、構築経緯・基本選出・相手別プランをMarkdown形式で自由に記録できる「戦略ノート」機能を追加いたしました。
+    v0.7.0 にて、チームビルダー内に構築経緯・基本コンセプト・相手別プランを記録できる「戦略ノート」機能を追加いたしました。
     チームの変更履歴（リビジョン履歴）とも連動しており、調整過程の思考プロセスをバージョンごとに保存・復元いただけます。
 
   </FeedbackReply>
@@ -130,7 +130,7 @@ draft: false
 <FeedbackCard
   title="ポケモン検索の文字対応（ひらがな・ローマ字）および型登録・連携機能"
   category="feature"
-  status="available"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/docs"
 >
   <FeedbackMessage>
@@ -147,18 +147,18 @@ draft: false
   </FeedbackMessage>
   <FeedbackReply>
     温かい応援のお言葉と、使いやすさに直結する素晴らしいご提案をありがとうございます！
-    ご要望いただいた3点すべてについて対応を完了いたしました。
+    ご要望いただいた点について、以下の通り対応およびご案内をいたします。
 
-    <FeedbackItem title="1. ポケモン検索の文字対応" status="available">
-      ひらがな正規化および `wanakana` によるローマ字入力（`gabu`、`rizadon`、`sa-fugo-` など）でのポケモン・技検索に対応いたしました。また、別スロットや別のポケモン・技を選択する際に前回の検索キーワードや選択状態が残らないよう、クリーンな自動リセット処理も導入いたしました。
+    <FeedbackItem title="1. ポケモン検索の文字対応" status="fixed">
+      v0.7.0 にて、ひらがなやローマ字入力（`gabu`、`rizadon`、`sa-fugo-` など）でのポケモン・技検索に対応いたしました。また、別スロットや別のポケモン・技を選択する際に前回の検索キーワードや選択状態が残らないよう、自動リセット処理も導入いたしました。
     </FeedbackItem>
 
     <FeedbackItem title="2. 登録したポケモンをチームへ" status="available">
-      チームビルダーのポケモン選択画面における「BOX」タブ、および空スロットやスロットヘッダーから直接、マイボックスに保存済みのポケモンをワンクリックで読み込めるようになりました。
+      こちらは既にご利用可能となっております。チームビルダーのポケモン選択画面における「BOX」タブ、および空スロットやスロットヘッダーの「BOXから読み込む」から、マイボックスに保存済みのポケモンを直接チームに配置いただけます（※v0.7.0 ではさらに持ち物や努力値等の詳細表示・検索性を強化いたしました）。
     </FeedbackItem>
 
-    <FeedbackItem title="3. ダメージ計算での登録型ポケモンの選択" status="available">
-      ダメージ計算画面に「BOXから読み込む」ダイアログを追加いたしました。BOXに登録した努力値・持ち物・技構成のポケモンを瞬時に計算対象へ反映いただけます。
+    <FeedbackItem title="3. ダメージ計算での登録型ポケモンの選択" status="fixed">
+      v0.7.0 にて、ダメージ計算画面に「BOXから読み込む」ダイアログを追加いたしました。BOXに登録した努力値・持ち物・技構成のポケモンをワンクリックで瞬時に計算対象へ反映いただけます。
     </FeedbackItem>
 
   </FeedbackReply>
@@ -167,17 +167,17 @@ draft: false
 <FeedbackCard
   title="パーティ別・ポケモン別の勝率分析表示"
   category="feature"
-  status="planned"
+  status="fixed"
   source="https://poketistix.mitama.io/ja/battle-record"
 >
   <FeedbackMessage>
     [FEATURE] 使用パーティごとの勝率や使用ポケモンごとの勝率を見れるとありがたいです
   </FeedbackMessage>
   <FeedbackReply>
-    ご要望ありがとうございます！
+    ご要望いただきありがとうございます！
 
-    登録された対戦記録をもとに、「どのパーティが最も勝率が高いか」「どのポケモンを選出した際の勝率が高いか」を可視化する分析機能（`/battle-analytics`）を計画しております。
-    シーズンや対戦ルールごとの絞り込みも含めて、より詳細なスタッツを確認できるよう機能追加を進めてまいります。
+    v0.7.0 にて、対戦分析画面（`/battle-analytics`）にタブ切り替え機能を追加し、使用ポケモン別の選出率・選出時勝率、使用チーム別の戦績（勝率・勝敗内訳）、および相手ポケモン別の勝率を確認できるようになりました。
+    また、対戦記録画面（`/battle-record`）の一覧上部にあるパーティ表示にも、現在選択中のチームの通算勝率バッジを表示するように改修いたしました。
 
   </FeedbackReply>
 </FeedbackCard>
