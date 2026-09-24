@@ -39,6 +39,7 @@ export const trainedPokemonSaveSchema = z
         spe: z.number().optional(),
       })
       .optional(),
+    description: z.string().max(2000).optional(),
   })
   .loose();
 
@@ -47,6 +48,7 @@ export const trainedPokemonSchema = z
     boxId: z.string().optional(),
     identifier: z.string(),
     slug: z.string().optional(),
+    description: z.string().max(2000).optional(),
     item: z.number().nullable().optional(),
     ability: z.number().nullable().optional(),
     gender: z

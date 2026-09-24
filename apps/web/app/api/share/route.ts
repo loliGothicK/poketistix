@@ -14,6 +14,7 @@ import { trainedPokemonSchema } from "@/lib/validator/trained-pokemon";
 const snapshotSchema = z
   .object({
     teamName: z.string().min(1).max(100),
+    description: z.string().max(2000).optional(),
     members: z.array(trainedPokemonSchema.nullable()).length(6),
     showStats: z.boolean(),
   })

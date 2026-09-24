@@ -18,6 +18,11 @@ export class TeamFactory<THasUserId extends boolean = false, THasName extends bo
     return this as unknown as TeamFactory<THasUserId, true>;
   }
 
+  withDescription(description: string): this {
+    this.data.description = description;
+    return this;
+  }
+
   build(this: TeamFactory<true, true>): InsertTeam {
     return this.data as InsertTeam;
   }

@@ -59,6 +59,7 @@ export function ShareButton() {
 
     const snapshot = {
       teamName: activeTeam.name,
+      description: activeTeam.description,
       members: activeTeam.members,
       showStats,
     };

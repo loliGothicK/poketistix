@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`TeamHistoryDialog - renderFieldDiff > locks in desktop baseline appearance (single-line horizontal arrow) 1`] = `
+<p
+  class="MuiTypography-root MuiTypography-body2 css-d00gn5-MuiTypography-root"
+>
+  <span
+    style="text-decoration: line-through; opacity: 0.6;"
+  >
+    Impish (H32 B10+ D14 S10)
+  </span>
+   → 
+  <span
+    style="font-weight: 600; color: #1976d2;"
+  >
+    Impish (H32 A3 B10+ D11 S10)
+  </span>
+</p>
+`;
+
+exports[`TeamHistoryDialog - renderFieldDiff > renders 3-line vertical format on mobile 1`] = `
+<div
+  class="MuiBox-root css-1m1z55l"
+>
+  <p
+    class="MuiTypography-root MuiTypography-body2 css-1wmqihd-MuiTypography-root"
+  >
+    Impish (H32 B10+ D14 S10)
+  </p>
+  <span
+    class="MuiTypography-root MuiTypography-caption css-1oqy26n-MuiTypography-root"
+  >
+    ↓
+  </span>
+  <p
+    class="MuiTypography-root MuiTypography-body2 css-1utvdeh-MuiTypography-root"
+  >
+    Impish (H32 A3 B10+ D11 S10)
+  </p>
+</div>
+`;

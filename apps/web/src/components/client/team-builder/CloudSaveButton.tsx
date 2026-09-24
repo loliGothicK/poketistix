@@ -59,6 +59,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
         //    invalidateQueries は再フェッチ完了を await しないため refetchQueries を使う。
         //    これにより「localTeams 削除後にキャッシュにも存在しない」消失ウィンドウを防ぐ。
         await queryClient.refetchQueries({ queryKey: ["teams"] });
+        void queryClient.invalidateQueries({ queryKey: ["team-revisions"] });
 
         // 2. refetch 完了後に localTeams（未保存差分）から保存済みチームを削除
         //    この時点ではサーバーから返ったデータがキャッシュに入っているため UI に乖離がない

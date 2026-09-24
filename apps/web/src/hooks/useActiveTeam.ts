@@ -116,6 +116,13 @@ export const useActiveTeam = () => {
     [applyLocalUpdate],
   );
 
+  const updateTeamDescription = useCallback(
+    (description: string) => {
+      applyLocalUpdate((t) => ({ ...t, description }));
+    },
+    [applyLocalUpdate],
+  );
+
   const reorderMembers = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (fromIndex === toIndex) return;
@@ -170,5 +177,32 @@ export const useActiveTeam = () => {
   const canUndo = activeId ? getHistoryEntry(activeId).past.length > 0 : false;
   const canRedo = activeId ? getHistoryEntry(activeId).future.length > 0 : false;
 
-  return [team, updateSlot, updateTeamName, reorderMembers, undo, redo, canUndo, canRedo] as const;
+  const restoreTeamSnapshot = useCallback(
+    (snapshot: {
+      readonly name: string;
+      readonly description?: string;
+      readonly members: readonly (TrainedPokemon | null)[];
+    }) => {
+      applyLocalUpdate((t) => ({
+        ...t,
+        name: snapshot.name,
+        description: snapshot.description,
+        members: [...snapshot.members],
+      }));
+    },
+    [applyLocalUpdate],
+  );
+
+  return [
+    team,
+    updateSlot,
+    updateTeamName,
+    reorderMembers,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    updateTeamDescription,
+    restoreTeamSnapshot,
+  ] as const;
 };

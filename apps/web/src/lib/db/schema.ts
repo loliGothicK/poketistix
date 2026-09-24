@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { authUsers } from "drizzle-orm/supabase";
 import { ulidType } from "./ulid-type";
 import type { TrainedPokemon } from "@/store/team/team";
+import type { TeamDiff, TeamSnapshot } from "@/lib/team-diff";
 
 /** 対戦フォーマット */
 export type BattleFormat = "singles" | "doubles";
@@ -27,6 +28,7 @@ export type OpponentSelectionRole = "lead" | "back";
 /** チームシェアの公開スナップショット型 */
 export interface SharedTeamSnapshot {
   readonly teamName: string;
+  readonly description?: string;
   readonly members: readonly (TrainedPokemon | null)[];
   /** true = 実数値・努力値を公開する。false = オープンチームシート（構成のみ公開） */
   readonly showStats: boolean;
@@ -57,6 +59,7 @@ export const teams = pgTable(
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    description: text("description"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -92,6 +95,34 @@ export const sharedTeams = pgTable(
   },
   (t) => [check("shared_teams_snapshot_is_object", sql`jsonb_typeof(${t.snapshot}) = 'object'`)],
 );
+
+export const teamRevisions = pgTable(
+  "team_revisions",
+  {
+    id: ulidType("id").primaryKey(),
+    teamId: ulidType("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** セマンティック差分。変更があったキーのみ存在する */
+    diff: jsonb("diff").notNull().$type<TeamDiff>(),
+    /** 改訂時点のフルスナップショット。復元は単体で完結する */
+    snapshot: jsonb("snapshot").notNull().$type<TeamSnapshot>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("team_revisions_diff_is_object", sql`jsonb_typeof(${t.diff}) = 'object'`),
+    check("team_revisions_snapshot_is_object", sql`jsonb_typeof(${t.snapshot}) = 'object'`),
+    index("team_revisions_team_id_idx").on(t.teamId),
+    index("team_revisions_created_at_idx").on(t.createdAt),
+    index("team_revisions_snapshot_gin").using("gin", t.snapshot),
+    index("team_revisions_diff_gin").using("gin", t.diff),
+  ],
+);
+
+export type TeamRevision = typeof teamRevisions.$inferSelect;
 
 // =====================================================================
 // Battle Records（対戦記録）

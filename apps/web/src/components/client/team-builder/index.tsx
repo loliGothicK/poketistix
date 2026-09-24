@@ -57,8 +57,11 @@ import { match } from "ts-pattern";
 import { ParseError } from "@/errors/thiserror/thiserror";
 import LinkIcon from "@mui/icons-material/Link";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import HistoryIcon from "@mui/icons-material/History";
 import { ShareButton } from "@/components/client/share/ShareButton";
 import { CloudSaveButton } from "@/components/client/team-builder/CloudSaveButton";
+import { TeamHistoryDialog } from "@/components/client/team-builder/TeamHistoryDialog";
+import { TeamNotesWorkspace } from "@/components/client/team-builder/TeamNotesWorkspace";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { teamSchema } from "@/lib/validator/team";
 import { formatTeamValidationIssues } from "@/lib/validator/format-issues";
@@ -601,7 +604,10 @@ export default function TeamBuilderPage({
   };
 
   const [isLintOn, setIsLintOn] = useAtom(activeTeamLintAtom);
-  const [, , , , undo, redo, canUndo, canRedo] = useActiveTeam();
+  const [, , , , undo, redo, canUndo, canRedo, updateTeamDescription, restoreTeamSnapshot] =
+    useActiveTeam();
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historySnackbarOpen, setHistorySnackbarOpen] = useState(false);
 
   useHotkeys(
     "ctrl+z",
@@ -804,6 +810,15 @@ export default function TeamBuilderPage({
                     <ExportMenu />
                     <CloudSaveButton />
                     <ShareButton />
+                    <Tooltip title={t("teamBuilder.history")}>
+                      <MuiIconButton
+                        color="inherit"
+                        aria-label={t("teamBuilder.history")}
+                        onClick={() => setHistoryDialogOpen(true)}
+                      >
+                        <HistoryIcon />
+                      </MuiIconButton>
+                    </Tooltip>
                     <MuiIconButton
                       color="inherit"
                       aria-label={t("teamBuilder.deleteTeamTitle")}
@@ -1031,29 +1046,20 @@ export default function TeamBuilderPage({
             </Box>
           ) : (
             <Grid container spacing={3}>
-              <Grid component={"div"} size={{ xs: 12, md: 3 }} sx={{ height: "100%" }}>
+              <Grid component={"div"} size={{ xs: 12, md: 3 }} sx={{ minHeight: "100%" }}>
                 <TeamOverview
                   activeSlot={hasSelection ? effectiveSlot : undefined}
                   onSelectSlot={handleSelectSlot}
                 />
               </Grid>
-              <Grid component={"div"} size={{ xs: 12, md: 9 }} sx={{ height: "100%" }}>
+              <Grid component={"div"} size={{ xs: 12, md: 9 }} sx={{ minHeight: "100%" }}>
                 {hasSelection ? (
                   <TeamSlotDetail key={effectiveSlot} slot={effectiveSlot!} />
                 ) : (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      height: "100%",
-                      minHeight: 240,
-                    }}
-                  >
-                    <Typography variant="body1" color="text.secondary">
-                      {t("teamBuilder.slotDescription")}
-                    </Typography>
-                  </Box>
+                  <TeamNotesWorkspace
+                    description={activeTeam.description}
+                    onUpdateDescription={updateTeamDescription}
+                  />
                 )}
               </Grid>
             </Grid>
@@ -1067,6 +1073,14 @@ export default function TeamBuilderPage({
           >
             <CloudSaveButton asSpeedDialAction />
             <ExportMenu asSpeedDialAction />
+            <SpeedDialAction
+              icon={<HistoryIcon />}
+              title={t("teamBuilder.history")}
+              slotProps={{
+                tooltip: { title: t("teamBuilder.history"), open: true },
+              }}
+              onClick={() => setHistoryDialogOpen(true)}
+            />
             <SpeedDialAction
               icon={<RuleIcon color={isLintOn ? "primary" : "inherit"} />}
               title={t("teamBuilder.lintToggle")}
@@ -1085,6 +1099,27 @@ export default function TeamBuilderPage({
             />
           </SpeedDial>
         )}
+        {activeTeam && (
+          <TeamHistoryDialog
+            open={historyDialogOpen}
+            onClose={() => setHistoryDialogOpen(false)}
+            teamId={activeTeam.id}
+            onRestore={(snapshot) => {
+              restoreTeamSnapshot(snapshot);
+              setHistorySnackbarOpen(true);
+            }}
+          />
+        )}
+        <Snackbar
+          open={historySnackbarOpen}
+          autoHideDuration={3000}
+          onClose={() => setHistorySnackbarOpen(false)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert severity="success" onClose={() => setHistorySnackbarOpen(false)}>
+            {t("teamBuilder.restored")}
+          </Alert>
+        </Snackbar>
       </Box>
     </>
   );

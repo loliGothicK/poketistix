@@ -9,6 +9,12 @@ import {
   InputAdornment,
   TextField,
   Typography,
+  Stack,
+  Chip,
+  Tooltip,
+  Tabs,
+  Tab,
+  useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
@@ -25,6 +31,8 @@ import { ShareButton } from "@/components/client/share/ShareButton";
 import type { TrainedPokemon } from "@/store/team/team";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { flexRowCenter } from "@/theme/sx";
+import { TeamNotesWorkspace } from "@/components/client/team-builder/TeamNotesWorkspace";
+import { parseTeamNotes, hasTeamNotes } from "@/lib/team-notes";
 
 import {
   DndContext,
@@ -196,9 +204,22 @@ function SortableSlotItem({
 
               {/* テキスト情報 */}
               <Box sx={{ ml: 2, flexGrow: 1, minWidth: 0 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
-                  {t(`pokemon.${member.identifier}.name`)}
-                </Typography>
+                <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+                    {t(`pokemon.${member.identifier}.name`)}
+                  </Typography>
+                  {member.description && (
+                    <Tooltip title={member.description}>
+                      <Chip
+                        label="Note"
+                        size="small"
+                        color="info"
+                        variant="outlined"
+                        sx={{ height: 18, fontSize: "0.65rem", px: 0.25 }}
+                      />
+                    </Tooltip>
+                  )}
+                </Stack>
                 {i18n.exists(`pokemon.${member.identifier}.formName`) && (
                   <Typography
                     variant="caption"
@@ -261,7 +282,8 @@ export default function TeamOverview({
 }) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const [team, _updateSlot, updateTeamName, reorderMembers] = useActiveTeam();
+  const [team, _updateSlot, updateTeamName, reorderMembers, , , , , updateTeamDescription] =
+    useActiveTeam();
 
   const name = useMemo(() => team?.name ?? "", [team]);
 
@@ -356,18 +378,25 @@ export default function TeamOverview({
     [sortableIds, activeSlot, onSelectSlot, reorderMembers, router, i18n.resolvedLanguage],
   );
 
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [mobileTab, setMobileTab] = useState(0);
+  const notes = useMemo(() => parseTeamNotes(team?.description), [team?.description]);
+  const hasNotes = useMemo(() => hasTeamNotes(notes), [notes]);
+
   if (!team) return null;
 
   return (
     <SurfaceCard
       raised
       sx={{
-        height: "100%",
+        minHeight: "100%",
         display: "flex",
         flexDirection: "column",
-        borderRadius: 1,
-        py: 3,
-        px: 3,
+        borderRadius: { xs: 0 },
+        border: { xs: "none" },
+        py: { xs: 1.5, md: 3 },
+        px: { xs: 1, md: 3 },
       }}
     >
       {/* モバイル用ヘッダー */}
@@ -391,54 +420,96 @@ export default function TeamOverview({
         </>
       )}
 
-      <TextField
-        id="title"
-        label={t("teamBuilder.teamName")}
-        variant="outlined"
-        value={name}
-        onChange={(event) => updateTeamName(event.target.value)}
-        slotProps={{
-          htmlInput: { maxLength: maxNameLength },
-          input: {
-            endAdornment: (
-              <InputAdornment position="end">
-                <Typography variant="body2">{`${name.length} / ${maxNameLength}`}</Typography>
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
-
-      <Divider sx={{ my: 2 }} />
-
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          <Grid container spacing={2}>
-            {team.members.map((member, index) => {
-              const id = sortableIds[index] ?? String(index);
-              return (
-                <SortableSlotItem
-                  key={id}
-                  id={id}
-                  index={index}
-                  member={member}
-                  isActive={activeSlot === index}
-                  onNavigate={() => {
-                    if (onSelectSlot) {
-                      onSelectSlot(index);
-                    } else {
-                      const locale = i18n.resolvedLanguage ?? "ja";
-                      const params = new URLSearchParams(window.location.search);
-                      params.set("slot", index.toString());
-                      router.push(`/${locale}/team-builder?${params.toString()}`);
-                    }
-                  }}
+      {/* モバイル表示時のタブ切り替え（メンバー / 戦略ノート） */}
+      {isMobile && (
+        <Tabs
+          value={mobileTab}
+          onChange={(_, v) => setMobileTab(v)}
+          variant="fullWidth"
+          sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+        >
+          <Tab label={t("teamBuilder.tabMembers")} />
+          <Tab
+            icon={
+              hasNotes ? (
+                <Chip
+                  size="small"
+                  color="primary"
+                  label="✓"
+                  sx={{ height: 16, fontSize: "0.65rem", mr: 0.5 }}
                 />
-              );
-            })}
-          </Grid>
-        </SortableContext>
-      </DndContext>
+              ) : undefined
+            }
+            iconPosition="end"
+            label={t("teamBuilder.tabTeamNotes")}
+          />
+        </Tabs>
+      )}
+
+      {isMobile && mobileTab === 1 ? (
+        <TeamNotesWorkspace
+          description={team.description}
+          onUpdateDescription={updateTeamDescription}
+          isMobile
+        />
+      ) : (
+        <>
+          <TextField
+            id="title"
+            label={t("teamBuilder.teamName")}
+            variant="outlined"
+            value={name}
+            onChange={(event) => updateTeamName(event.target.value)}
+            slotProps={{
+              htmlInput: { maxLength: maxNameLength },
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Typography variant="body2">{`${name.length} / ${maxNameLength}`}</Typography>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+
+          <Divider sx={{ my: 2 }} />
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+              <Grid container spacing={2}>
+                {team.members.map((member, index) => {
+                  const id = sortableIds[index] ?? String(index);
+                  return (
+                    <SortableSlotItem
+                      key={id}
+                      id={id}
+                      index={index}
+                      member={member}
+                      isActive={activeSlot === index}
+                      onNavigate={() => {
+                        if (onSelectSlot) {
+                          onSelectSlot(index);
+                        } else {
+                          const locale = i18n.resolvedLanguage ?? "ja";
+                          const params = new URLSearchParams(window.location.search);
+                          params.set("slot", index.toString());
+                          router.push(`/${locale}/team-builder?${params.toString()}`);
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </Grid>
+            </SortableContext>
+          </DndContext>
+        </>
+      )}
+
+      <Box sx={{ height: 72, display: { xs: "block", md: "none" } }} />
     </SurfaceCard>
   );
 }

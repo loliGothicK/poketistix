@@ -19,6 +19,7 @@ import {
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
@@ -54,6 +55,7 @@ export default function TeamSlotDetail({
 }) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTab, setDialogTab] = useState<"master" | "box">("master");
@@ -99,7 +101,7 @@ export default function TeamSlotDetail({
         direction="row"
         sx={{
           ...flexRowCenter,
-          px: 2,
+          px: { xs: 1, md: 2 },
           py: 1,
           borderBottom: "1px solid",
           borderColor: theme.palette.divider,
@@ -125,26 +127,46 @@ export default function TeamSlotDetail({
           <Box
             sx={{
               flexGrow: 1,
+              minWidth: 0,
+              width: { xs: "100%", md: "auto" },
               display: "flex",
-              justifyContent: "flex-start",
-              ml: showBackButton ? 2 : 0,
+              justifyContent: { xs: "stretch", md: "flex-start" },
+              ml: showBackButton ? { xs: 1, md: 2 } : 0,
             }}
           >
             <Tabs
               value={activeTab}
               onChange={(_, v) => setActiveTab(v)}
+              variant={isMobile ? "fullWidth" : "standard"}
               sx={{
-                minHeight: "auto",
+                width: { xs: "100%", md: "auto" },
+                minHeight: { xs: 44, md: 48 },
+                "& .MuiTabs-flexContainer": {
+                  width: "100%",
+                },
                 "& .MuiTab-root": {
-                  minHeight: "auto",
-                  py: 0.5,
+                  minHeight: { xs: 44, md: 48 },
+                  py: { xs: 0.75, md: 1 },
+                  px: { xs: 0.5, sm: 1, md: 2 },
+                  minWidth: { xs: 0, md: 90 },
                   textTransform: "none",
                   fontWeight: 600,
+                  fontSize: { xs: "0.85rem", md: "0.875rem" },
+                  whiteSpace: "nowrap",
                 },
               }}
             >
-              <Tab label={t("teamBuilder.tabOpenSpecs")} />
-              <Tab label={t("teamBuilder.tabEvSpreads")} />
+              <Tab
+                label={
+                  isMobile ? t("teamBuilder.tabOpenSpecsShort") : t("teamBuilder.tabOpenSpecs")
+                }
+              />
+              <Tab
+                label={
+                  isMobile ? t("teamBuilder.tabEvSpreadsShort") : t("teamBuilder.tabEvSpreads")
+                }
+              />
+              <Tab label={isMobile ? t("teamBuilder.tabNotesShort") : t("teamBuilder.tabNotes")} />
             </Tabs>
           </Box>
         )}

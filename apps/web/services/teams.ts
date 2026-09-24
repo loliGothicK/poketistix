@@ -58,3 +58,29 @@ export const deleteTeamFromServer = async (teamId: string): Promise<void> => {
     }
   });
 };
+
+import type { TeamDiff, TeamSnapshot } from "@/lib/team-diff";
+
+export interface TeamRevisionData {
+  readonly id: string;
+  readonly teamId: string;
+  readonly diff: TeamDiff;
+  readonly snapshot: TeamSnapshot;
+  readonly createdAt: string;
+}
+
+export const fetchTeamRevisions = async (teamId: string): Promise<readonly TeamRevisionData[]> => {
+  return withSpan("ui.teams.fetchRevisions", async (span) => {
+    span.setAttribute("teamId", teamId);
+    const res = await fetch(`/api/teams/${teamId}/revisions`, { cache: "no-store" });
+    if (!res.ok) {
+      const errorText = await res.text();
+      span.setAttribute("error", true);
+      Sentry.captureException(new Error("Failed to fetch team revisions"), {
+        extra: { status: res.status, errorText, teamId },
+      });
+      throw new Error(`Failed to fetch team revisions: ${errorText}`);
+    }
+    return res.json() as Promise<readonly TeamRevisionData[]>;
+  });
+};

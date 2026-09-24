@@ -293,8 +293,8 @@ export function Training({
       >
         {/* Name and Types Block */}
         <Stack
-          direction={{ xs: "row", md: "column" }}
-          spacing={{ xs: 2, md: 1 }}
+          direction="column"
+          spacing={1}
           sx={{
             width: "100%",
             alignItems: "center",
@@ -304,15 +304,8 @@ export function Training({
             pt: { xs: 2, md: 0 },
           }}
         >
-          <Stack
-            direction="column"
-            spacing={0}
-            sx={{ alignItems: { xs: "flex-end", md: "center" } }}
-          >
-            <Typography
-              variant="h5"
-              sx={{ fontWeight: 700, textAlign: { xs: "right", md: "center" } }}
-            >
+          <Stack direction="column" spacing={0} sx={{ alignItems: "center" }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, textAlign: "center" }}>
               {t(`pokemon.${activePokemon.identifier}.name`)}
             </Typography>
             {i18n.exists(`pokemon.${activePokemon.identifier}.formName`) && (
@@ -320,7 +313,7 @@ export function Training({
                 variant="body2"
                 sx={{
                   color: "text.secondary",
-                  textAlign: { xs: "right", md: "center" },
+                  textAlign: "center",
                   fontWeight: 400,
                 }}
               >
@@ -328,11 +321,7 @@ export function Training({
               </Typography>
             )}
           </Stack>
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{ justifyContent: { xs: "flex-start", md: "center" } }}
-          >
+          <Stack direction="row" spacing={1} sx={{ justifyContent: "center", flexWrap: "wrap" }}>
             {activePokemon.types.map((type) => (
               <Chip
                 avatar={<Avatar src={typeIcon(type)} />}
@@ -1426,6 +1415,40 @@ export function Training({
             })()}
           </Stack>
         </Box>
+      </Box>
+
+      {/* --- Tab 2: 調整意図・メモ --- */}
+      <Box sx={{ display: activeTab === 2 ? "block" : "none" }}>
+        <Stack spacing={2.5} sx={{ flexGrow: 1 }}>
+          <Box>
+            <Divider textAlign="left">
+              <Typography variant="h6">{t("teamBuilder.pokemonNotes.title")}</Typography>
+            </Divider>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {t("teamBuilder.pokemonNotes.helper")}
+            </Typography>
+          </Box>
+          <TextField
+            multiline
+            minRows={10}
+            maxRows={24}
+            fullWidth
+            variant="outlined"
+            placeholder={t("teamBuilder.pokemonNotes.placeholder")}
+            value={ongoing.description ?? ""}
+            onChange={(e) => handleUpdate({ ...ongoing, description: e.target.value })}
+            slotProps={{
+              input: {
+                sx: {
+                  fontFamily: "inherit",
+                  fontSize: "0.95rem",
+                  lineHeight: 1.6,
+                  bgcolor: "background.paperTint",
+                },
+              },
+            }}
+          />
+        </Stack>
       </Box>
 
       {/* --- 技選択 Drawer --- */}

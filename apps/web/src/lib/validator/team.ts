@@ -5,6 +5,8 @@ import { trainedPokemonSchema, trainedPokemonSaveSchema } from "./trained-pokemo
 export const teamSaveSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(100),
+  description: z.string().max(30000).optional(),
+  pokepaste: z.string().optional(),
   members: z.array(trainedPokemonSaveSchema.nullable()).max(6),
 });
 
@@ -14,6 +16,7 @@ export const teamSchema = z
   .object({
     id: z.string(),
     name: z.string(),
+    description: z.string().optional(),
     members: z.array(trainedPokemonSchema.nullable()).length(6),
   })
   .superRefine((team, ctx) => {

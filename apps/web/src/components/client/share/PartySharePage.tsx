@@ -20,6 +20,7 @@ import BarChartIcon from "@mui/icons-material/BarChart";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import { PokemonBuildCard } from "@/components/client/share/PokemonBuildCard";
 import type { SharedTeamSnapshot } from "@/lib/db/schema";
+import { parseTeamNotes, hasTeamNotes } from "@/lib/team-notes";
 import { useSetAtom } from "jotai";
 import { localTeamsAtom, activeTeamIdAtom } from "@/store/team/team";
 import { ulid } from "ulid";
@@ -126,6 +127,7 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
       {
         id: newId,
         name: snapshot.teamName,
+        description: snapshot.description,
         members: snapshot.members,
       },
     ]);
@@ -239,6 +241,55 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
             </Button>
           </Stack>
         </Stack>
+        {(() => {
+          const notes = parseTeamNotes(snapshot.description);
+          const hasAny = hasTeamNotes(notes);
+          if (!hasAny) return null;
+
+          return (
+            <Stack spacing={1.5} sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: "divider" }}>
+              {notes.buildProcess && (
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: "primary.main", display: "block" }}
+                  >
+                    {t("teamBuilder.notes.buildProcessTitle")}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
+                    {notes.buildProcess}
+                  </Typography>
+                </Box>
+              )}
+              {notes.basicConcepts && (
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: "primary.main", display: "block" }}
+                  >
+                    {t("teamBuilder.notes.basicConceptsTitle")}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
+                    {notes.basicConcepts}
+                  </Typography>
+                </Box>
+              )}
+              {notes.metaPlans && (
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: "secondary.main", display: "block" }}
+                  >
+                    {t("teamBuilder.notes.metaPlansTitle")}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
+                    {notes.metaPlans}
+                  </Typography>
+                </Box>
+              )}
+            </Stack>
+          );
+        })()}
       </Box>
 
       {/* ── パーティ一覧 ─────────────────────────────────────────── */}

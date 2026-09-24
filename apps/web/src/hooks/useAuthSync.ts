@@ -107,6 +107,7 @@ export const useAuthSync = (): AuthSyncResult => {
       return {
         id: conflict.teamId,
         name: conflict.name,
+        description: conflict.localTeam?.description || conflict.serverTeam?.description,
         members,
       };
     });

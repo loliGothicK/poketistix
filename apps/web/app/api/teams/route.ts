@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { teams, teamMembers, boxPokemon } from "@/lib/db/schema";
-import { eq, inArray, sql, asc } from "drizzle-orm";
+import { teams, teamMembers, boxPokemon, teamRevisions } from "@/lib/db/schema";
+import { eq, inArray, sql, asc, and } from "drizzle-orm";
 import { withChildSpan } from "@/lib/otel";
 import type { Team, TrainedPokemon } from "@/store/team/team";
 import { teamsSaveSchema } from "@/lib/validator/team";
+import { exportPokepaste } from "@/lib/pokepaste";
+import { ulid } from "ulid";
+import { buildTeamSnapshot, diffTeamSnapshots, isEmptyTeamDiff } from "@/lib/team-diff";
 
 export async function GET(_request: Request) {
   const supabase = await createClient();
@@ -51,6 +54,7 @@ export async function GET(_request: Request) {
         return {
           id: team.id,
           name: team.name,
+          description: team.description ?? undefined,
           members: slots,
         } satisfies Team;
       });
@@ -89,10 +93,20 @@ export async function POST(request: Request) {
         // 1. Batch upsert teams
         await tx
           .insert(teams)
-          .values(incomingTeams.map((team) => ({ id: team.id, userId, name: team.name })))
+          .values(
+            incomingTeams.map((team) => ({
+              id: team.id,
+              userId,
+              name: team.name,
+              description: team.description ?? null,
+            })),
+          )
           .onConflictDoUpdate({
             target: teams.id,
-            set: { name: sql`excluded.name` },
+            set: {
+              name: sql`excluded.name`,
+              description: sql`excluded.description`,
+            },
           });
 
         // 2. Collect unique non-null members across all teams
@@ -152,6 +166,62 @@ export async function POST(request: Request) {
               boxPokemonId: member.boxId,
             })),
           );
+        }
+
+        // 6. Record snapshot + semantic diff for teams whose content has changed
+        if (teamIds.length > 0) {
+          const existingRevisions = await tx
+            .select({
+              teamId: teamRevisions.teamId,
+              snapshot: teamRevisions.snapshot,
+              createdAt: teamRevisions.createdAt,
+            })
+            .from(teamRevisions)
+            .where(and(eq(teamRevisions.userId, userId), inArray(teamRevisions.teamId, teamIds)))
+            .orderBy(asc(teamRevisions.createdAt));
+
+          const latestByTeamId = new Map<string, (typeof existingRevisions)[number]>();
+          for (const rev of existingRevisions) {
+            latestByTeamId.set(rev.teamId, rev);
+          }
+
+          const revisionsToInsert: (typeof teamRevisions.$inferInsert)[] = [];
+
+          for (const team of incomingTeams) {
+            let currentPokepaste = team.pokepaste;
+            if (typeof currentPokepaste !== "string") {
+              try {
+                currentPokepaste = exportPokepaste(team as unknown as Team);
+              } catch {
+                currentPokepaste = "";
+              }
+            }
+
+            const snapshot = buildTeamSnapshot(
+              {
+                name: team.name,
+                description: team.description,
+                members: team.members as unknown as Team["members"],
+              },
+              currentPokepaste,
+            );
+
+            const latest = latestByTeamId.get(team.id)?.snapshot ?? null;
+            const diff = diffTeamSnapshots(latest, snapshot);
+            if (latest === null || !isEmptyTeamDiff(diff)) {
+              revisionsToInsert.push({
+                id: ulid(),
+                teamId: team.id,
+                userId,
+                diff,
+                snapshot,
+              });
+            }
+          }
+
+          if (revisionsToInsert.length > 0) {
+            await tx.insert(teamRevisions).values(revisionsToInsert);
+          }
         }
       });
     },

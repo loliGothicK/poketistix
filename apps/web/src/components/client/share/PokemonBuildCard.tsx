@@ -931,6 +931,24 @@ function PokemonFullCard({ pokemon, showStats }: Omit<PokemonBuildCardProps, "va
             </Stack>
           </>
         )}
+
+        {/* 調整意図・メモ */}
+        {pokemon.description && (
+          <>
+            <Divider />
+            <Box sx={{ bgcolor: "background.paperTint", p: 1, borderRadius: 1 }}>
+              <Typography
+                variant="caption"
+                sx={{ fontWeight: 700, display: "block", color: "text.secondary" }}
+              >
+                {t("teamBuilder.pokemonNotes.title")}
+              </Typography>
+              <Typography variant="caption" sx={{ whiteSpace: "pre-wrap", color: "text.primary" }}>
+                {pokemon.description}
+              </Typography>
+            </Box>
+          </>
+        )}
       </Box>
     </CardShell>
   );

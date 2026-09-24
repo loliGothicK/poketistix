@@ -26,6 +26,7 @@ export interface TrainedPokemon {
     readonly spd: EV;
     readonly spe: EV;
   };
+  readonly description?: string;
 }
 
 // 1. まず、TrainedPokemon から `evs` プロパティへフォーカスするLensを作る
@@ -40,6 +41,7 @@ export const getStatLens = (stat: keyof TrainedPokemon["evs"]) =>
 export interface Team {
   readonly id: string;
   readonly name: string;
+  readonly description?: string;
   readonly members: readonly (TrainedPokemon | null)[];
 }
 
