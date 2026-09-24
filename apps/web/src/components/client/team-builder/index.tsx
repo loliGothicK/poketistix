@@ -189,82 +189,101 @@ const ImportMenu = React.forwardRef<
     readonly onError: (diagnostics: Diagnostics) => void;
     readonly isMobile: boolean;
     readonly asSpeedDialAction?: boolean;
+    readonly fullWidth?: boolean;
+    readonly variant?: "contained" | "outlined" | "text";
+    readonly startIcon?: React.ReactNode;
   } & Omit<Partial<import("@mui/material").SpeedDialActionProps>, "onError">
->(({ createTeamAction, onError, isMobile, asSpeedDialAction, ...props }, ref) => {
-  const { t } = useTranslation();
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [openPaste, setOpenPaste] = useState(false);
-  const [openFromUrl, setOpenFromUrl] = useState(false);
-  const open = Boolean(anchorEl);
-  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
+>(
+  (
+    {
+      createTeamAction,
+      onError,
+      isMobile,
+      asSpeedDialAction,
+      fullWidth,
+      variant = "contained",
+      startIcon,
+      ...props
+    },
+    ref,
+  ) => {
+    const { t } = useTranslation();
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [openPaste, setOpenPaste] = useState(false);
+    const [openFromUrl, setOpenFromUrl] = useState(false);
+    const open = Boolean(anchorEl);
+    const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+      setAnchorEl(event.currentTarget);
+    };
+    const handleClose = () => {
+      setAnchorEl(null);
+    };
 
-  return (
-    <>
-      {asSpeedDialAction ? (
-        <SpeedDialAction
-          {...(props as import("@mui/material").SpeedDialActionProps)}
-          ref={ref as React.Ref<HTMLDivElement>}
-          icon={<DownloadIcon />}
-          title={t("teamBuilder.importAction")}
-          slotProps={{ tooltip: { title: t("teamBuilder.importAction"), open: true } }}
-          onClick={handleClick}
+    return (
+      <>
+        {asSpeedDialAction ? (
+          <SpeedDialAction
+            {...(props as import("@mui/material").SpeedDialActionProps)}
+            ref={ref as React.Ref<HTMLDivElement>}
+            icon={<DownloadIcon />}
+            title={t("teamBuilder.importAction")}
+            slotProps={{ tooltip: { title: t("teamBuilder.importAction"), open: true } }}
+            onClick={handleClick}
+          />
+        ) : (
+          <Button
+            ref={ref}
+            variant={variant}
+            disableElevation
+            onClick={handleClick}
+            startIcon={startIcon}
+            endIcon={<KeyboardArrowDownIcon />}
+            size={isMobile ? "small" : "medium"}
+            fullWidth={fullWidth}
+          >
+            {t("teamBuilder.importAction")}
+          </Button>
+        )}
+        <StyledMenu anchorEl={anchorEl} open={open} onClose={handleClose}>
+          <MenuItem
+            onClick={() => {
+              setOpenFromUrl(true);
+              handleClose();
+            }}
+            disableRipple
+          >
+            <EditIcon />
+            {t("teamBuilder.importFromUrl")}
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setOpenPaste(true);
+              handleClose();
+            }}
+            disableRipple
+          >
+            <FileCopyIcon />
+            {t("teamBuilder.importFromPaste")}
+          </MenuItem>
+        </StyledMenu>
+        <ImportPokepasteDialog
+          type={"paste"}
+          open={openPaste}
+          onClose={() => setOpenPaste(false)}
+          onImport={(data) => createTeamAction(data)}
+          onError={onError}
         />
-      ) : (
-        <Button
-          ref={ref}
-          variant="contained"
-          disableElevation
-          onClick={handleClick}
-          endIcon={<KeyboardArrowDownIcon />}
-          size={isMobile ? "small" : "medium"}
-        >
-          {t("teamBuilder.importAction")}
-        </Button>
-      )}
-      <StyledMenu anchorEl={anchorEl} open={open} onClose={handleClose}>
-        <MenuItem
-          onClick={() => {
-            setOpenFromUrl(true);
-            handleClose();
-          }}
-          disableRipple
-        >
-          <EditIcon />
-          {t("teamBuilder.importFromUrl")}
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setOpenPaste(true);
-            handleClose();
-          }}
-          disableRipple
-        >
-          <FileCopyIcon />
-          {t("teamBuilder.importFromPaste")}
-        </MenuItem>
-      </StyledMenu>
-      <ImportPokepasteDialog
-        type={"paste"}
-        open={openPaste}
-        onClose={() => setOpenPaste(false)}
-        onImport={(data) => createTeamAction(data)}
-        onError={onError}
-      />
-      <ImportPokepasteDialog
-        type={"url"}
-        open={openFromUrl}
-        onClose={() => setOpenFromUrl(false)}
-        onImport={(data) => createTeamAction(data)}
-        onError={onError}
-      />
-    </>
-  );
-});
+        <ImportPokepasteDialog
+          type={"url"}
+          open={openFromUrl}
+          onClose={() => setOpenFromUrl(false)}
+          onImport={(data) => createTeamAction(data)}
+          onError={onError}
+        />
+      </>
+    );
+  },
+);
 
 const ExportMenu = React.forwardRef<
   HTMLButtonElement,
@@ -426,26 +445,8 @@ function MobileTeamList({
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {t("teamBuilder.title")}
         </Typography>
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{ ...flexRowCenter, display: { xs: "none", md: "flex" } }}
-        >
-          <ImportMenu createTeamAction={onImportTeam} onError={onError} isMobile={false} />
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={onCreateTeam}
-            disableElevation
-            sx={{
-              borderRadius: 2,
-              py: 2,
-              px: 4,
-            }}
-          >
-            {t("teamBuilder.createTeam")}
-          </Button>
+        <Stack direction="row" spacing={1} sx={{ ...flexRowCenter }}>
+          <ImportMenu createTeamAction={onImportTeam} onError={onError} isMobile={true} />
         </Stack>
       </Box>
       <Stack spacing={1.5}>
@@ -800,14 +801,6 @@ export default function TeamBuilderPage({
                         </MuiIconButton>
                       </span>
                     </Tooltip>
-                    <ImportMenu
-                      createTeamAction={handleCreateTeam}
-                      onError={(diagnostics) => {
-                        setDiagnostics(diagnostics);
-                        setSnackbarOpen(true);
-                      }}
-                      isMobile={false}
-                    />
                     <ExportMenu />
                     <CloudSaveButton />
                     <ShareButton />
@@ -848,14 +841,27 @@ export default function TeamBuilderPage({
               </DrawerHeader>
               <Divider sx={{ borderColor: theme.palette.divider }} />
               <Box sx={{ p: 2 }}>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  fullWidth
-                  onClick={handleCreateNewTeam}
-                >
-                  {t("teamBuilder.createTeam")}
-                </Button>
+                <Stack spacing={1}>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    fullWidth
+                    onClick={handleCreateNewTeam}
+                  >
+                    {t("teamBuilder.createTeam")}
+                  </Button>
+                  <ImportMenu
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    fullWidth
+                    createTeamAction={handleCreateTeam}
+                    onError={(diagnostics) => {
+                      setDiagnostics(diagnostics);
+                      setSnackbarOpen(true);
+                    }}
+                    isMobile={false}
+                  />
+                </Stack>
               </Box>
               <Divider sx={{ borderColor: theme.palette.divider }} />
               <List>
@@ -1061,15 +1067,6 @@ export default function TeamBuilderPage({
           >
             <CloudSaveButton asSpeedDialAction />
             <ExportMenu asSpeedDialAction />
-            <ImportMenu
-              asSpeedDialAction
-              isMobile={true}
-              createTeamAction={handleCreateTeam}
-              onError={(diagnostics) => {
-                setDiagnostics(diagnostics);
-                setSnackbarOpen(true);
-              }}
-            />
             <SpeedDialAction
               icon={<RuleIcon color={isLintOn ? "primary" : "inherit"} />}
               title={t("teamBuilder.lintToggle")}
