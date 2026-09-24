@@ -461,7 +461,9 @@ export default function BattleRecordPage() {
 
       // ローカル限定チームの場合は、DBの外部キー制約および競合を防ぐため直列で先に同期
       if (draft.teamId && localTeams.some((lt) => lt.id === draft.teamId)) {
-        const selectedTeam = safeTeams.find((tm) => tm.id === draft.teamId);
+        const selectedTeam =
+          allTeams.find((tm) => tm.id === draft.teamId) ??
+          localTeams.find((lt) => lt.id === draft.teamId);
         if (selectedTeam) {
           try {
             await saveTeamsToServer([selectedTeam]);
@@ -766,7 +768,7 @@ export default function BattleRecordPage() {
         open={recordDialogOpen}
         onClose={() => setRecordDialogOpen(false)}
         editing={recordEditing}
-        teams={safeTeams}
+        teams={allTeams}
         teamMembers={teamMembers}
         teamId={activeTeam?.id ?? null}
         seasons={seasons}

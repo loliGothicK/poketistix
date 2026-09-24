@@ -2826,7 +2826,7 @@
       "slug": "floette-eternal",
       "types": "inherit",
       "abilities": "inherit",
-      "status": "inherit",
+      "status": [74, 65, 67, 125, 128, 92],
       "moves": "inherit",
       "mega": [
         {

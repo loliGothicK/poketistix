@@ -60,13 +60,6 @@ export const useBattleRecords = (filter: BattleRecordsFilter) => {
             ? [createdRecord, ...prev.filter((r) => r.id !== createdRecord.id)]
             : [createdRecord],
       );
-      if (filter.seasonId && filter.seasonId !== createdRecord.seasonId) {
-        queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
-          prev
-            ? [createdRecord, ...prev.filter((r) => r.id !== createdRecord.id)]
-            : [createdRecord],
-        );
-      }
       invalidate();
     },
   });
@@ -82,7 +75,7 @@ export const useBattleRecords = (filter: BattleRecordsFilter) => {
       );
       if (filter.seasonId && filter.seasonId !== updatedRecord.seasonId) {
         queryClient.setQueryData<readonly BattleRecord[]>(battleRecordsQueryKey(filter), (prev) =>
-          prev ? prev.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)) : [updatedRecord],
+          prev ? prev.filter((r) => r.id !== updatedRecord.id) : [],
         );
       }
       invalidate();
