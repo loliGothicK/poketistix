@@ -1,4 +1,5 @@
 import {
+  alpha,
   Avatar,
   Box,
   Chip,
@@ -6,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   InputAdornment,
   Stack,
   Tab,
@@ -15,6 +17,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import Search from "@mui/icons-material/Search";
+import CloseIcon from "@mui/icons-material/Close";
 import { championsPokemonList, type ChampionsPokemon } from "@/data/champions-pokemon";
 import { ComponentProps, useRef, useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -214,134 +217,233 @@ export function SelectPokemonDialog({
       maxWidth="sm"
       fullWidth
       slotProps={{
+        paper: {
+          sx: {
+            borderRadius: "16px",
+            overflow: "hidden",
+          },
+        },
         transition: { onEntered: handleDialogEntered },
       }}
       sx={{
         "& .MuiDialog-container": {
           alignItems: "flex-start",
-          pt: 10,
+          pt: { xs: 3, sm: 8 },
         },
       }}
     >
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle
+        sx={{
+          m: 0,
+          px: { xs: 2, sm: 2.5 },
+          py: 1.75,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Typography variant="h6" component="span" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+        <IconButton
+          aria-label="close"
+          onClick={() => onClose?.({}, "backdropClick")}
+          size="small"
+          sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
       {showBoxTab && (
-        <Tabs value={tab} onChange={(_, v: "master" | "box") => setTab(v)} sx={{ px: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v: "master" | "box") => setTab(v)}
+          sx={{
+            px: { xs: 2, sm: 2.5 },
+            minHeight: 40,
+            "& .MuiTab-root": {
+              minHeight: 40,
+              py: 0.5,
+              textTransform: "none",
+              fontWeight: 600,
+            },
+          }}
+        >
           <Tab value="master" label={translator("teamBuilder.selectPokemon")} />
           <Tab value="box" label={translator("box.title")} />
         </Tabs>
       )}
+
       <Divider />
-      <DialogContent>
+
+      <DialogContent sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {activeTab === "master" ? (
           <>
-            <QueryableAutocomplete
-              fields={fields}
-              onTokensChange={setTokens}
-              label={translator("teamBuilder.query.label")}
-              placeholder={translator("teamBuilder.query.placeholder")}
-              helperText={translator("teamBuilder.query.helper")}
-              textFieldProps={{ inputRef: autocompleteInputRef, onKeyDown: handleKeyDown }}
-            />
+            <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2, pb: 1.5 }}>
+              <QueryableAutocomplete
+                fields={fields}
+                onTokensChange={setTokens}
+                label={translator("teamBuilder.query.label")}
+                placeholder={translator("teamBuilder.query.placeholder")}
+                helperText={translator("teamBuilder.query.helper")}
+                textFieldProps={{ inputRef: autocompleteInputRef, onKeyDown: handleKeyDown }}
+              />
+            </Box>
+
+            <Divider />
 
             <Box
               sx={{
-                mt: 2,
-                maxHeight: 360,
+                maxHeight: 380,
                 overflowY: "auto",
+                "&::-webkit-scrollbar": {
+                  width: "6px",
+                },
+                "&::-webkit-scrollbar-thumb": {
+                  borderRadius: "3px",
+                  bgcolor: (t) => alpha(t.palette.text.primary, 0.15),
+                },
               }}
             >
               {results.matched.length === 0 ? (
                 <Typography
                   variant="body2"
-                  sx={{ color: "text.secondary", py: 4, textAlign: "center" }}
+                  sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
                 >
                   {translator("teamBuilder.query.noResults")}
                 </Typography>
               ) : (
-                <Stack divider={<Divider flexItem />}>
-                  {results.visible.map((pokemon, index) => (
-                    <Stack
-                      key={pokemon.id}
-                      ref={(el) => {
-                        itemRefs.current[index] = el;
-                      }}
-                      direction="row"
-                      onClick={() => handleSelect(pokemon)}
-                      onMouseEnter={() => setHighlightedIndex(index)}
-                      sx={{
-                        alignItems: "center",
-                        gap: 1,
-                        px: 1,
-                        py: 1,
-                        cursor: "pointer",
-                        borderRadius: 2,
-                        bgcolor: index === highlightedIndex ? "action.selected" : "transparent",
-                        outline:
-                          index === highlightedIndex
-                            ? `2px solid ${theme.palette.primary.main}`
-                            : undefined,
-                        "&:hover": { bgcolor: "action.hover" },
-                      }}
-                    >
-                      <Chip
-                        avatar={<Avatar src={`/pokemon/${pokemon.identifier}.png`} />}
-                        label={
-                          <>
-                            {translator(`pokemon.${pokemon.identifier}.name`)}
-                            {i18n.exists(`pokemon.${pokemon.identifier}.formName`) && (
-                              <Typography
-                                component="span"
-                                sx={{
-                                  ml: 0.5,
-                                  fontSize: "0.8em",
-                                  color: "text.secondary",
-                                  fontWeight: 400,
-                                }}
-                              >
-                                {translator(`pokemon.${pokemon.identifier}.formName`)}
-                              </Typography>
-                            )}
-                          </>
-                        }
+                <Box component="div">
+                  {results.visible.map((pokemon, index) => {
+                    const isSelected = index === highlightedIndex;
+                    return (
+                      <Stack
+                        key={pokemon.id}
+                        ref={(el) => {
+                          itemRefs.current[index] = el;
+                        }}
+                        direction="row"
+                        onClick={() => handleSelect(pokemon)}
+                        onMouseEnter={() => setHighlightedIndex(index)}
                         sx={{
-                          height: 48,
-                          fontSize: "1.1rem",
-                          borderRadius: 24,
-                          "& .MuiChip-avatar": {
-                            width: 40,
-                            height: 40,
+                          alignItems: "center",
+                          gap: 1.5,
+                          px: { xs: 2, sm: 2.5 },
+                          py: 1.25,
+                          cursor: "pointer",
+                          bgcolor: isSelected
+                            ? alpha(theme.palette.primary.main, 0.1)
+                            : "transparent",
+                          borderBottom: "1px solid",
+                          borderColor: (t) => alpha(t.palette.divider, 0.4),
+                          transition: "background-color 0.12s ease",
+                          "&:hover": {
+                            bgcolor: isSelected
+                              ? alpha(theme.palette.primary.main, 0.15)
+                              : alpha(theme.palette.text.primary, 0.04),
+                          },
+                          "&:last-of-type": {
+                            borderBottom: "none",
                           },
                         }}
-                      />
-                      <Box sx={{ flexGrow: 1 }} />
-                      {pokemon.types.map((type) =>
-                        isMobile ? (
-                          <Avatar key={type} src={typeIcon(type)} />
-                        ) : (
-                          <Chip
-                            key={type}
-                            avatar={<Avatar src={typeIcon(type)} />}
-                            label={translator(type)}
+                      >
+                        {/* Selection Accent Bar */}
+                        <Box
+                          sx={{
+                            width: 3.5,
+                            height: 26,
+                            borderRadius: "2px",
+                            bgcolor: isSelected ? theme.palette.primary.main : "transparent",
+                            flexShrink: 0,
+                            transition: "background-color 0.12s ease",
+                          }}
+                        />
+
+                        <Avatar
+                          src={`/pokemon/${pokemon.identifier}.png`}
+                          alt={pokemon.identifier}
+                          sx={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: "8px",
+                            bgcolor: alpha(theme.palette.text.primary, 0.03),
+                            p: 0.25,
+                            flexShrink: 0,
+                            "& img": { objectFit: "contain" },
+                          }}
+                        />
+
+                        <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1.5 }}>
+                          <Typography
+                            variant="body1"
                             sx={{
-                              height: 40,
-                              fontSize: "1rem",
-                              "& .MuiChip-avatar": {
-                                width: 32,
-                                height: 32,
-                              },
+                              fontWeight: isSelected ? 700 : 600,
+                              color: isSelected ? theme.palette.primary.main : "text.primary",
+                              transition: "color 0.12s ease",
                             }}
-                          />
-                        ),
-                      )}
-                    </Stack>
-                  ))}
-                </Stack>
+                            noWrap
+                          >
+                            {translator(`pokemon.${pokemon.identifier}.name`)}
+                          </Typography>
+                          {i18n.exists(`pokemon.${pokemon.identifier}.formName`) && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                display: "block",
+                                fontSize: "0.75rem",
+                              }}
+                              noWrap
+                            >
+                              {translator(`pokemon.${pokemon.identifier}.formName`)}
+                            </Typography>
+                          )}
+                        </Box>
+
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          sx={{ alignItems: "center", flexShrink: 0 }}
+                        >
+                          {pokemon.types.map((type) =>
+                            isMobile ? (
+                              <Avatar
+                                key={type}
+                                src={typeIcon(type)}
+                                sx={{ width: 24, height: 24 }}
+                              />
+                            ) : (
+                              <Chip
+                                key={type}
+                                avatar={
+                                  <Avatar
+                                    src={typeIcon(type)}
+                                    sx={{ width: "16px !important", height: "16px !important" }}
+                                  />
+                                }
+                                label={translator(type)}
+                                size="small"
+                                sx={{
+                                  height: 26,
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  borderRadius: "6px",
+                                }}
+                              />
+                            ),
+                          )}
+                        </Stack>
+                      </Stack>
+                    );
+                  })}
+                </Box>
               )}
 
               {results.matched.length > results.visible.length ? (
                 <Typography
                   variant="caption"
-                  sx={{ color: "text.secondary", display: "block", py: 1, textAlign: "center" }}
+                  sx={{ color: "text.secondary", display: "block", py: 1.5, textAlign: "center" }}
                 >
                   {translator("teamBuilder.query.more")}
                 </Typography>
@@ -350,95 +452,146 @@ export function SelectPokemonDialog({
           </>
         ) : (
           <>
-            <TextField
-              size="small"
-              fullWidth
-              placeholder={translator("box.searchPlaceholder")}
-              value={boxSearch}
-              onChange={(e) => setBoxSearch(e.target.value)}
-              onKeyDown={handleKeyDown}
-              inputRef={boxSearchInputRef}
-              sx={{ mb: 2 }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search fontSize="small" />
-                    </InputAdornment>
-                  ),
+            <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 2, pb: 1.5 }}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder={translator("box.searchPlaceholder")}
+                value={boxSearch}
+                onChange={(e) => setBoxSearch(e.target.value)}
+                onKeyDown={handleKeyDown}
+                inputRef={boxSearchInputRef}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Box>
+
+            <Divider />
+
+            <Box
+              sx={{
+                maxHeight: 380,
+                overflowY: "auto",
+                "&::-webkit-scrollbar": {
+                  width: "6px",
+                },
+                "&::-webkit-scrollbar-thumb": {
+                  borderRadius: "3px",
+                  bgcolor: (t) => alpha(t.palette.text.primary, 0.15),
                 },
               }}
-            />
-            <Box sx={{ maxHeight: 360, overflowY: "auto" }}>
+            >
               {filteredBox.length === 0 ? (
                 <Typography
                   variant="body2"
-                  sx={{ color: "text.secondary", py: 4, textAlign: "center" }}
+                  sx={{ color: "text.secondary", py: 5, textAlign: "center" }}
                 >
                   {translator("box.empty")}
                 </Typography>
               ) : (
-                <Stack divider={<Divider flexItem />}>
-                  {filteredBox.map((pokemon, index) => (
-                    <Stack
-                      key={pokemon.boxId}
-                      ref={(el) => {
-                        itemRefs.current[index] = el;
-                      }}
-                      direction="row"
-                      onClick={() => {
-                        if (onSelectFromBox) {
-                          onSelectFromBox(pokemon);
-                        } else {
-                          onChange(pokemon.identifier);
-                        }
-                      }}
-                      onMouseEnter={() => setHighlightedIndex(index)}
-                      sx={{
-                        alignItems: "center",
-                        gap: 1,
-                        px: 1,
-                        py: 1,
-                        cursor: "pointer",
-                        borderRadius: 2,
-                        bgcolor: index === highlightedIndex ? "action.selected" : "transparent",
-                        outline:
-                          index === highlightedIndex
-                            ? `2px solid ${theme.palette.primary.main}`
-                            : undefined,
-                        "&:hover": { bgcolor: "action.hover" },
-                      }}
-                    >
-                      <Chip
-                        avatar={<Avatar src={`/pokemon/${pokemon.identifier}.png`} />}
-                        label={
-                          <>
-                            {translator(`pokemon.${pokemon.identifier}.name`)}
-                            {i18n.exists(`pokemon.${pokemon.identifier}.formName`) && (
-                              <Typography
-                                component="span"
-                                sx={{
-                                  ml: 0.5,
-                                  fontSize: "0.8em",
-                                  color: "text.secondary",
-                                  fontWeight: 400,
-                                }}
-                              >
-                                {translator(`pokemon.${pokemon.identifier}.formName`)}
-                              </Typography>
-                            )}
-                          </>
-                        }
-                        sx={{
-                          height: 48,
-                          fontSize: "1.1rem",
-                          borderRadius: 24,
-                          "& .MuiChip-avatar": { width: 40, height: 40 },
+                <Box component="div">
+                  {filteredBox.map((pokemon, index) => {
+                    const isSelected = index === highlightedIndex;
+                    return (
+                      <Stack
+                        key={pokemon.boxId}
+                        ref={(el) => {
+                          itemRefs.current[index] = el;
                         }}
-                      />
-                    </Stack>
-                  ))}
-                </Stack>
+                        direction="row"
+                        onClick={() => {
+                          if (onSelectFromBox) {
+                            onSelectFromBox(pokemon);
+                          } else {
+                            onChange(pokemon.identifier);
+                          }
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        sx={{
+                          alignItems: "center",
+                          gap: 1.5,
+                          px: { xs: 2, sm: 2.5 },
+                          py: 1.25,
+                          cursor: "pointer",
+                          bgcolor: isSelected
+                            ? alpha(theme.palette.primary.main, 0.1)
+                            : "transparent",
+                          borderBottom: "1px solid",
+                          borderColor: (t) => alpha(t.palette.divider, 0.4),
+                          transition: "background-color 0.12s ease",
+                          "&:hover": {
+                            bgcolor: isSelected
+                              ? alpha(theme.palette.primary.main, 0.15)
+                              : alpha(theme.palette.text.primary, 0.04),
+                          },
+                          "&:last-of-type": {
+                            borderBottom: "none",
+                          },
+                        }}
+                      >
+                        {/* Selection Accent Bar */}
+                        <Box
+                          sx={{
+                            width: 3.5,
+                            height: 26,
+                            borderRadius: "2px",
+                            bgcolor: isSelected ? theme.palette.primary.main : "transparent",
+                            flexShrink: 0,
+                            transition: "background-color 0.12s ease",
+                          }}
+                        />
+
+                        <Avatar
+                          src={`/pokemon/${pokemon.identifier}.png`}
+                          alt={pokemon.identifier}
+                          sx={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: "8px",
+                            bgcolor: alpha(theme.palette.text.primary, 0.03),
+                            p: 0.25,
+                            flexShrink: 0,
+                            "& img": { objectFit: "contain" },
+                          }}
+                        />
+
+                        <Box sx={{ minWidth: 0, flexGrow: 1, mr: 1.5 }}>
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              fontWeight: isSelected ? 700 : 600,
+                              color: isSelected ? theme.palette.primary.main : "text.primary",
+                              transition: "color 0.12s ease",
+                            }}
+                            noWrap
+                          >
+                            {translator(`pokemon.${pokemon.identifier}.name`)}
+                          </Typography>
+                          {i18n.exists(`pokemon.${pokemon.identifier}.formName`) && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                display: "block",
+                                fontSize: "0.75rem",
+                              }}
+                              noWrap
+                            >
+                              {translator(`pokemon.${pokemon.identifier}.formName`)}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Stack>
+                    );
+                  })}
+                </Box>
               )}
             </Box>
           </>

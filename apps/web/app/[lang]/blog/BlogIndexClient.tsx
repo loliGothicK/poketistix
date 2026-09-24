@@ -17,6 +17,7 @@ type BlogListItem = {
   readonly description: string;
   readonly date: string;
   readonly tags: readonly string[];
+  readonly draft?: boolean;
 };
 
 type LocalizedSidebar = {

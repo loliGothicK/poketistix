@@ -16,6 +16,18 @@ import {
   type TocHeading,
 } from "@/components/client/content/TableOfContents";
 import type { BreadcrumbItem } from "@/components/client/content/ContentLayoutContext";
+import {
+  FeedbackCard,
+  FeedbackMessage,
+  FeedbackReply,
+} from "@/components/client/content/FeedbackCard";
+
+const mdxComponents = {
+  FeedbackCard,
+  FeedbackMessage,
+  FeedbackReply,
+  FeedbackResponse: FeedbackReply,
+};
 
 type LocalizedSidebar = {
   readonly en: readonly ContentSidebarItem[];
@@ -28,6 +40,7 @@ type LocalizedContent = {
   readonly description?: string;
   readonly date: string;
   readonly tags: readonly string[];
+  readonly draft?: boolean;
   readonly headings: readonly TocHeading[];
   readonly mdx: string;
 };
@@ -83,16 +96,27 @@ export function BlogPostClient({ localizedSidebar, localizedContent }: Props) {
       <Container maxWidth="md" sx={{ py: { xs: 4, md: 8 } }}>
         <Stack spacing={4}>
           <Stack spacing={1}>
-            <Typography variant="overline" color="text.secondary">
-              {new Date(activeContent.date).toLocaleDateString(
-                activeLang === "ja" ? "ja-JP" : "en-US",
-                {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                },
-              )}
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Typography variant="overline" color="text.secondary">
+                {new Date(activeContent.date).toLocaleDateString(
+                  activeLang === "ja" ? "ja-JP" : "en-US",
+                  {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  },
+                )}
+              </Typography>
+              {activeContent.draft ? (
+                <Chip
+                  label="Draft"
+                  color="warning"
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 20, fontSize: "0.7rem", fontWeight: 600 }}
+                />
+              ) : null}
+            </Stack>
             <Typography variant="h3" sx={{ fontWeight: 800 }}>
               {activeContent.title}
             </Typography>
@@ -135,7 +159,7 @@ export function BlogPostClient({ localizedSidebar, localizedContent }: Props) {
               },
             }}
           >
-            <MDXContent code={activeContent.mdx} />
+            <MDXContent code={activeContent.mdx} components={mdxComponents} />
           </Box>
         </Stack>
       </Container>

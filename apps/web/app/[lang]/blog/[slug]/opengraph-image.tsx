@@ -10,10 +10,13 @@ export const size = {
 
 export const contentType = "image/png";
 
+const isDev = process.env.NODE_ENV !== "production";
+const isPostVisible = (p: { readonly draft: boolean }) => isDev || !p.draft;
+
 function getPost(slug: string, locale: string) {
   return (
-    allPosts.find((post) => post.slug === slug && post.locale === locale && !post.draft) ||
-    allPosts.find((post) => post.slug === slug && !post.draft)
+    allPosts.find((post) => post.slug === slug && post.locale === locale && isPostVisible(post)) ||
+    allPosts.find((post) => post.slug === slug && isPostVisible(post))
   );
 }
 

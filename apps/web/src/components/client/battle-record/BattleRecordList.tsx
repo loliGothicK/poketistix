@@ -111,36 +111,50 @@ export function BattleRecordList({
             key={record.id}
             sx={{
               position: "relative",
-              overflow: "hidden",
-              bgcolor: alpha(accent, 0.06),
-              pl: 2,
-              pr: 1.5,
+              borderRadius: "10px",
+              bgcolor: alpha(accent, 0.05),
+              border: "1px solid",
+              borderColor: alpha(accent, 0.25),
+              px: 2,
               py: 1.25,
-              "&::before": {
-                content: '""',
-                position: "absolute",
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 4,
-                bgcolor: accent,
+              transition: "border-color 0.2s, box-shadow 0.2s",
+              "&:hover": {
+                borderColor: alpha(accent, 0.5),
+                boxShadow: `0 2px 8px -2px ${alpha(accent, 0.15)}`,
               },
               "&:hover .row-actions": { opacity: 1 },
             }}
           >
             <Stack
               direction="row"
-              spacing={1}
+              spacing={1.25}
               sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5 }}
             >
+              {/* インジケーターバー */}
+              <Box
+                sx={{
+                  width: 3.5,
+                  height: 24,
+                  borderRadius: "2px",
+                  bgcolor: accent,
+                  flexShrink: 0,
+                }}
+              />
+
               {/* 結果 */}
               <Typography
                 variant="caption"
                 sx={{
                   fontWeight: 800,
-                  letterSpacing: "0.08em",
+                  letterSpacing: "0.06em",
                   color: accent,
-                  minWidth: 36,
+                  bgcolor: alpha(accent, 0.12),
+                  px: 0.85,
+                  py: 0.25,
+                  borderRadius: "6px",
+                  fontSize: "0.75rem",
+                  textAlign: "center",
+                  minWidth: 42,
                 }}
               >
                 {t(`battleRecord.result.${record.result}`).toUpperCase()}

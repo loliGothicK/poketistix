@@ -128,7 +128,7 @@ export function YourTeamSelector({ myTeam, selection, onChange, format }: YourTe
                   cursor: "pointer",
                   transition: "border-color 0.15s, background-color 0.15s",
                   opacity: state === "unused" ? 0.7 : 1,
-                  borderRadius: 2,
+                  borderRadius: "10px",
                   py: 1,
                   "&:focus-visible": {
                     outline: "2px solid",

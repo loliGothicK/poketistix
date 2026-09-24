@@ -232,7 +232,7 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                     outline: "2px solid",
                     outlineColor: "primary.main",
                   },
-                  borderRadius: 2,
+                  borderRadius: "10px",
                 }}
               >
                 <Add fontSize="small" />
@@ -284,7 +284,7 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
                   outline: "2px solid",
                   outlineColor: "primary.main",
                 },
-                borderRadius: 2,
+                borderRadius: "10px",
               }}
             >
               <Image

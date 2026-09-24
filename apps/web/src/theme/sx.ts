@@ -16,7 +16,7 @@ export function surfaceCard(
   return {
     border: "1px solid",
     borderColor: "divider",
-    borderRadius: options?.borderRadius ?? 3,
+    borderRadius: options?.borderRadius ?? 1,
     bgcolor: options?.raised ? "background.paperRaised" : "background.paper",
   };
 }
