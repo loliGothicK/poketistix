@@ -8,7 +8,7 @@
     "check": "npx tsc --noEmit"
   },
   "dependencies": {
-    "hono": "4.13.2"
+    "hono": "4.13.9"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260801.1",
