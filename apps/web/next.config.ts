@@ -11,7 +11,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
   },
   serverExternalPackages: ["@pkmn/dex", "@pkmn/data", "@pkmn/sim"],
-  productionBrowserSourceMaps: false,
   allowedDevOrigins: ["127.0.0.1"],
   cacheComponents: true,
   partialPrefetching: true,
@@ -99,6 +98,10 @@ export default withContentCollections(
 
     sourcemaps: {
       deleteSourcemapsAfterUpload: true,
+    },
+
+    errorHandler: (err) => {
+      console.warn("[@sentry/nextjs] Sentry build error:", err);
     },
 
     webpack: {
