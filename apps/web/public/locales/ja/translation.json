@@ -764,6 +764,20 @@
       "copyPokepaste": "コピー",
       "copied": "コピーしました"
     },
+    "importDialog": {
+      "title": "Pokepaste インポート",
+      "instruction": "Pokemon Showdown 形式のテキストを貼り付けてください。",
+      "urlPlaceholder": "ID または URL を入力...",
+      "cancel": "キャンセル",
+      "import": "インポート",
+      "executing": "解析実行",
+      "waiting": "待機中",
+      "loading": "取得中...",
+      "notFound": "指定された Pokepaste が見つかりませんでした",
+      "invalidUrl": "無効な Pokepaste の URL または ID です",
+      "fetchFailed": "Pokepaste の取得に失敗しました",
+      "emptyInput": "入力が空です"
+    },
     "draftReasonTitle": "保存できない理由",
     "validation": {
       "abilityRequired": "特性が設定されていません",

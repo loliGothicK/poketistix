@@ -329,3 +329,22 @@ export function exportPokepaste(team: Team): string {
   // 内部型から @pkmn/sets の型へ変換し、テキスト化するロジック
   return team.members.filter(nonNullable).map(exportSet).join("\n\n");
 }
+
+/**
+ * URL または文字列から Pokepaste の ID を抽出する
+ */
+export function extractPokepasteId(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const urlMatch = trimmed.match(
+    /(?:https?:\/\/)?(?:www\.)?pokepast\.es\/([a-zA-Z0-9_-]+)(?:\/raw)?(?:\/|\?.*)?$/i,
+  );
+  if (urlMatch) {
+    return urlMatch[1];
+  }
+  const idMatch = trimmed.match(/^([a-zA-Z0-9_-]+)$/);
+  if (idMatch) {
+    return idMatch[1];
+  }
+  return null;
+}

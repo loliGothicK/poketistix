@@ -696,6 +696,20 @@
       "copyPokepaste": "Copy",
       "copied": "Copied!"
     },
+    "importDialog": {
+      "title": "Import Pokepaste",
+      "instruction": "Paste Pokémon Showdown format text or Pokepaste URL.",
+      "urlPlaceholder": "Enter ID or URL...",
+      "cancel": "Cancel",
+      "import": "Import",
+      "executing": "Parse",
+      "waiting": "Waiting",
+      "loading": "Fetching...",
+      "notFound": "Pokepaste not found",
+      "invalidUrl": "Invalid Pokepaste URL or ID",
+      "fetchFailed": "Failed to fetch Pokepaste",
+      "emptyInput": "Input is empty"
+    },
     "draftReasonTitle": "Why this team can't be saved",
     "validation": {
       "abilityRequired": "Ability is required",

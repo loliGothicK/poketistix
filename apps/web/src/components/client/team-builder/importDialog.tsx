@@ -9,12 +9,18 @@ import {
   Typography,
   Box,
 } from "@mui/material";
-import { importSets } from "@/lib/pokepaste";
+import { importSets, extractPokepasteId } from "@/lib/pokepaste";
 import { Diagnostics } from "@/components/client/team-builder/index";
 import { Team } from "@/store/team/team";
 import { isLeft } from "fp-ts/lib/Either";
 import { anyhow } from "@/errors/anyhow/error";
 import { match } from "ts-pattern";
+import { useTranslation } from "react-i18next";
+import {
+  fetchPokepasteFromUrl,
+  PokepasteNotFoundError,
+  PokepasteInvalidUrlError,
+} from "@services/teams";
 
 interface Props {
   readonly type: "paste" | "url";
@@ -25,12 +31,37 @@ interface Props {
 }
 
 export default function ImportPokepasteDialog({ type, open, onClose, onImport, onError }: Props) {
+  const { t } = useTranslation();
   const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleImport = async () => {
+  const handleImport = async (): Promise<boolean> => {
     let paste: string;
     if (type === "url") {
-      paste = await fetch(`https://pokepast.es/${text.trim()}/raw`).then((res) => res.text());
+      setLoading(true);
+      try {
+        paste = await fetchPokepasteFromUrl(text);
+      } catch (err) {
+        if (err instanceof PokepasteNotFoundError) {
+          onError({
+            severity: "error",
+            message: [anyhow(t("teamBuilder.importDialog.notFound"))],
+          });
+        } else if (err instanceof PokepasteInvalidUrlError) {
+          onError({
+            severity: "error",
+            message: [anyhow(t("teamBuilder.importDialog.invalidUrl"))],
+          });
+        } else {
+          onError({
+            severity: "error",
+            message: [anyhow(t("teamBuilder.importDialog.fetchFailed"))],
+          });
+        }
+        return false;
+      } finally {
+        setLoading(false);
+      }
     } else {
       paste = text.trim();
     }
@@ -40,22 +71,31 @@ export default function ImportPokepasteDialog({ type, open, onClose, onImport, o
     if (isLeft(members) || members.right.members.length === 0) {
       onError({
         severity: "error",
-        message: isLeft(members) ? members.left : [anyhow("ERROR: Input is empty.")],
+        message: isLeft(members)
+          ? members.left
+          : [anyhow(t("teamBuilder.importDialog.emptyInput"))],
       });
-      return;
+      return false;
     }
 
     onImport(members.right);
-    setText(""); // クリア
+    setText("");
+    return true;
+  };
+
+  const handleClose = () => {
+    if (!loading) {
+      onClose();
+    }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Pokepaste インポート</DialogTitle>
+    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <DialogTitle>{t("teamBuilder.importDialog.title")}</DialogTitle>
       <DialogContent>
         <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Pokemon Showdown 形式のテキストを貼り付けてください。
+            {t("teamBuilder.importDialog.instruction")}
           </Typography>
 
           {match(type)
@@ -76,16 +116,33 @@ export default function ImportPokepasteDialog({ type, open, onClose, onImport, o
             .with("url", () => (
               <TextField
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const id = extractPokepasteId(val);
+                  if (id && (val.includes("pokepast.es") || val.includes("/raw"))) {
+                    setText(id);
+                  } else {
+                    setText(val);
+                  }
+                }}
                 autoFocus
+                placeholder={t("teamBuilder.importDialog.urlPlaceholder")}
                 sx={{
                   fontFamily: "monospace",
                   "& .MuiInputBase-input": { fontSize: "0.875rem" },
                 }}
                 slotProps={{
                   input: {
-                    startAdornment: <Typography>{"https://pokepast.es/"}</Typography>,
-                    endAdornment: <Typography>{"/raw"}</Typography>,
+                    startAdornment: (
+                      <Typography variant="body2" color="text.secondary">
+                        {"https://pokepast.es/"}
+                      </Typography>
+                    ),
+                    endAdornment: (
+                      <Typography variant="body2" color="text.secondary">
+                        {"/raw"}
+                      </Typography>
+                    ),
                   },
                 }}
               />
@@ -94,18 +151,27 @@ export default function ImportPokepasteDialog({ type, open, onClose, onImport, o
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} color="inherit">
-          キャンセル
+        <Button onClick={handleClose} color="inherit" disabled={loading}>
+          {t("teamBuilder.importDialog.cancel")}
         </Button>
         <Button
           onClick={async () => {
-            await handleImport();
-            onClose();
+            const success = await handleImport();
+            if (success) {
+              onClose();
+            }
           }}
           variant="contained"
           disableElevation
+          disabled={loading || !text.trim()}
         >
-          インポート ({text.trim() ? "解析実行" : "待機中"})
+          {loading
+            ? t("teamBuilder.importDialog.loading")
+            : `${t("teamBuilder.importDialog.import")} (${
+                text.trim()
+                  ? t("teamBuilder.importDialog.executing")
+                  : t("teamBuilder.importDialog.waiting")
+              })`}
         </Button>
       </DialogActions>
     </Dialog>

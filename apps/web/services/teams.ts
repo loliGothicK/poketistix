@@ -2,6 +2,7 @@
 import { Team } from "@/store/team/team";
 import { withSpan } from "@/lib/otel";
 import * as Sentry from "@sentry/nextjs";
+import { extractPokepasteId } from "@/lib/pokepaste";
 
 export const fetchTeamsFromServer = async (): Promise<readonly Team[]> => {
   return withSpan("ui.teams.fetch", async (span) => {
@@ -82,5 +83,59 @@ export const fetchTeamRevisions = async (teamId: string): Promise<readonly TeamR
       throw new Error(`Failed to fetch team revisions: ${errorText}`);
     }
     return res.json() as Promise<readonly TeamRevisionData[]>;
+  });
+};
+
+export class PokepasteNotFoundError extends Error {
+  constructor(message = "Pokepaste not found") {
+    super(message);
+    this.name = "PokepasteNotFoundError";
+  }
+}
+
+export class PokepasteInvalidUrlError extends Error {
+  constructor(message = "Invalid Pokepaste URL or ID") {
+    super(message);
+    this.name = "PokepasteInvalidUrlError";
+  }
+}
+
+export const fetchPokepasteFromUrl = async (input: string): Promise<string> => {
+  return withSpan("ui.teams.fetchPokepaste", async (span) => {
+    span.setAttribute("input", input);
+    const id = extractPokepasteId(input);
+    if (!id) {
+      span.setAttribute("error", true);
+      throw new PokepasteInvalidUrlError();
+    }
+    span.setAttribute("pokepaste.id", id);
+
+    const res = await fetch(`/api/pokepaste?id=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      span.setAttribute("error", true);
+      let errorJson: { error?: string } = {};
+      try {
+        errorJson = JSON.parse(errorText);
+      } catch {
+        // ignore
+      }
+      if (res.status === 404 || errorJson.error === "not_found") {
+        throw new PokepasteNotFoundError();
+      }
+      if (res.status === 400 || errorJson.error === "invalid_id") {
+        throw new PokepasteInvalidUrlError();
+      }
+      Sentry.captureException(new Error("Failed to fetch pokepaste"), {
+        extra: { status: res.status, errorText, input, id },
+      });
+      throw new Error(`Failed to fetch pokepaste: ${errorText}`);
+    }
+
+    const data = (await res.json()) as { paste: string };
+    return data.paste;
   });
 };
