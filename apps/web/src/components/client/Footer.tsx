@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { flexRowCenter } from "@/theme/sx";
 import { useBugReport } from "@/components/client/feedback";
 import { APP_VERSION } from "@/config/version";
+import { GitHubSponsorsIcon } from "@/components/icons/GitHubSponsors";
 
 export function Footer() {
   const theme = useTheme();
@@ -122,6 +123,28 @@ export function Footer() {
               underline="hover"
             >
               {`v${APP_VERSION}`}
+            </Link>
+            <Typography variant="caption" color="text.secondary">
+              •
+            </Typography>
+            <Link
+              href="https://github.com/sponsors/loliGothicK"
+              target="_blank"
+              rel="noopener noreferrer"
+              color="text.secondary"
+              variant="caption"
+              underline="hover"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.5,
+                "&:hover": {
+                  color: "#ea4aaa",
+                },
+              }}
+            >
+              <GitHubSponsorsIcon sx={{ fontSize: 13, color: "#ea4aaa" }} />
+              {t("navigation.items.sponsor")}
             </Link>
           </Stack>
         </Stack>
