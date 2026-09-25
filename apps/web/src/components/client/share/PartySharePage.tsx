@@ -21,6 +21,7 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import { PokemonBuildCard } from "@/components/client/share/PokemonBuildCard";
 import type { SharedTeamSnapshot } from "@/lib/db/schema";
 import { parseTeamNotes, hasTeamNotes } from "@/lib/team-notes";
+import { MarkdownView } from "@/components/common/MarkdownView";
 import { useSetAtom } from "jotai";
 import { localTeamsAtom, activeTeamIdAtom } from "@/store/team/team";
 import { ulid } from "ulid";
@@ -256,9 +257,7 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
                   >
                     {t("teamBuilder.notes.buildProcessTitle")}
                   </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
-                    {notes.buildProcess}
-                  </Typography>
+                  <MarkdownView content={notes.buildProcess} sx={{ mt: 0.25 }} />
                 </Box>
               )}
               {notes.basicConcepts && (
@@ -269,9 +268,7 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
                   >
                     {t("teamBuilder.notes.basicConceptsTitle")}
                   </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
-                    {notes.basicConcepts}
-                  </Typography>
+                  <MarkdownView content={notes.basicConcepts} sx={{ mt: 0.25 }} />
                 </Box>
               )}
               {notes.metaPlans && (
@@ -282,9 +279,7 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
                   >
                     {t("teamBuilder.notes.metaPlansTitle")}
                   </Typography>
-                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
-                    {notes.metaPlans}
-                  </Typography>
+                  <MarkdownView content={notes.metaPlans} sx={{ mt: 0.25 }} />
                 </Box>
               )}
             </Stack>

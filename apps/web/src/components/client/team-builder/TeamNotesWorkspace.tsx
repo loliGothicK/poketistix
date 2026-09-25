@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Box, Typography, Tabs, Tab, TextField, Stack, Chip } from "@mui/material";
+import { Box, Typography, Tabs, Tab, Stack, Chip } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
@@ -9,6 +9,7 @@ import SportsScoreOutlinedIcon from "@mui/icons-material/SportsScoreOutlined";
 import SportsMmaOutlinedIcon from "@mui/icons-material/SportsMmaOutlined";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { parseTeamNotes, serializeTeamNotes, TeamNotes } from "@/lib/team-notes";
+import { InlineMarkdownEditor } from "./InlineMarkdownEditor";
 
 interface Props {
   readonly description?: string;
@@ -201,27 +202,12 @@ export function TeamNotesWorkspace({ description, onUpdateDescription, isMobile 
               {t("teamBuilder.notes.buildProcessHelper")}
             </Typography>
           </Box>
-          <TextField
-            multiline
-            minRows={isMobile ? 12 : 16}
-            maxRows={isMobile ? 22 : 28}
-            fullWidth
-            variant="outlined"
+          <InlineMarkdownEditor
             placeholder={t("teamBuilder.notes.buildProcessPlaceholder")}
             value={notes.buildProcess ?? ""}
-            onChange={(e) => handleFieldChange("buildProcess", e.target.value)}
-            slotProps={{
-              input: {
-                sx: {
-                  width: "100%",
-                  fontFamily: "inherit",
-                  fontSize: { xs: "0.9rem", md: "0.95rem" },
-                  lineHeight: 1.6,
-                  bgcolor: "background.paperTint",
-                  p: { xs: 1.25, md: 2 },
-                },
-              },
-            }}
+            onChange={(val) => handleFieldChange("buildProcess", val)}
+            isMobile={isMobile}
+            minHeight={isMobile ? 260 : 380}
           />
         </Box>
       )}
@@ -237,27 +223,12 @@ export function TeamNotesWorkspace({ description, onUpdateDescription, isMobile 
               {t("teamBuilder.notes.basicConceptsHelper")}
             </Typography>
           </Box>
-          <TextField
-            multiline
-            minRows={isMobile ? 12 : 16}
-            maxRows={isMobile ? 22 : 28}
-            fullWidth
-            variant="outlined"
+          <InlineMarkdownEditor
             placeholder={t("teamBuilder.notes.basicConceptsPlaceholder")}
             value={notes.basicConcepts ?? ""}
-            onChange={(e) => handleFieldChange("basicConcepts", e.target.value)}
-            slotProps={{
-              input: {
-                sx: {
-                  width: "100%",
-                  fontFamily: "inherit",
-                  fontSize: { xs: "0.9rem", md: "0.95rem" },
-                  lineHeight: 1.6,
-                  bgcolor: "background.paperTint",
-                  p: { xs: 1.25, md: 2 },
-                },
-              },
-            }}
+            onChange={(val) => handleFieldChange("basicConcepts", val)}
+            isMobile={isMobile}
+            minHeight={isMobile ? 260 : 380}
           />
         </Box>
       )}
@@ -273,27 +244,12 @@ export function TeamNotesWorkspace({ description, onUpdateDescription, isMobile 
               {t("teamBuilder.notes.metaPlansHelper")}
             </Typography>
           </Box>
-          <TextField
-            multiline
-            minRows={isMobile ? 12 : 16}
-            maxRows={isMobile ? 22 : 28}
-            fullWidth
-            variant="outlined"
+          <InlineMarkdownEditor
             placeholder={t("teamBuilder.notes.metaPlansPlaceholder")}
             value={notes.metaPlans ?? ""}
-            onChange={(e) => handleFieldChange("metaPlans", e.target.value)}
-            slotProps={{
-              input: {
-                sx: {
-                  width: "100%",
-                  fontFamily: "inherit",
-                  fontSize: { xs: "0.9rem", md: "0.95rem" },
-                  lineHeight: 1.6,
-                  bgcolor: "background.paperTint",
-                  p: { xs: 1.25, md: 2 },
-                },
-              },
-            }}
+            onChange={(val) => handleFieldChange("metaPlans", val)}
+            isMobile={isMobile}
+            minHeight={isMobile ? 260 : 380}
           />
         </Box>
       )}

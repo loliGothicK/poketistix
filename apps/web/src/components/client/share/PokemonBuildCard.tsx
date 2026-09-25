@@ -13,6 +13,7 @@ import { natureObjectToString } from "@/data/nature";
 import { match } from "ts-pattern";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { Type } from "@/types/pokemon";
+import { MarkdownView } from "@/components/common/MarkdownView";
 import { flexRowCenter } from "@/theme/sx";
 
 // ── タイプカラー ──────────────────────────────────────────────────────────────
@@ -943,9 +944,10 @@ function PokemonFullCard({ pokemon, showStats }: Omit<PokemonBuildCardProps, "va
               >
                 {t("teamBuilder.pokemonNotes.title")}
               </Typography>
-              <Typography variant="caption" sx={{ whiteSpace: "pre-wrap", color: "text.primary" }}>
-                {pokemon.description}
-              </Typography>
+              <MarkdownView
+                content={pokemon.description}
+                sx={{ fontSize: "0.78rem", lineHeight: 1.5, color: "text.primary", mt: 0.25 }}
+              />
             </Box>
           </>
         )}

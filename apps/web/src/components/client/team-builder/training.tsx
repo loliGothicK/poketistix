@@ -22,7 +22,9 @@ import {
   TableCell,
   TableBody,
   TableContainer,
+  useMediaQuery,
 } from "@mui/material";
+import { InlineMarkdownEditor } from "@/components/client/team-builder/InlineMarkdownEditor";
 import CloseIcon from "@mui/icons-material/Close";
 import Image from "next/image";
 import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
@@ -112,6 +114,7 @@ export function Training({
 }) {
   const { t, i18n } = useTranslation();
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [prevMember, setPrevMember] = useState(member);
   const [ongoing, setOngoing] = useState<TrainedPokemon>(member);
 
@@ -1428,25 +1431,12 @@ export function Training({
               {t("teamBuilder.pokemonNotes.helper")}
             </Typography>
           </Box>
-          <TextField
-            multiline
-            minRows={10}
-            maxRows={24}
-            fullWidth
-            variant="outlined"
+          <InlineMarkdownEditor
             placeholder={t("teamBuilder.pokemonNotes.placeholder")}
             value={ongoing.description ?? ""}
-            onChange={(e) => handleUpdate({ ...ongoing, description: e.target.value })}
-            slotProps={{
-              input: {
-                sx: {
-                  fontFamily: "inherit",
-                  fontSize: "0.95rem",
-                  lineHeight: 1.6,
-                  bgcolor: "background.paperTint",
-                },
-              },
-            }}
+            onChange={(val) => handleUpdate({ ...ongoing, description: val })}
+            isMobile={isMobile}
+            minHeight={280}
           />
         </Stack>
       </Box>
