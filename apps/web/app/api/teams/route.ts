@@ -78,7 +78,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = teamsSaveSchema.safeParse(body);
+  // body は配列（後方互換）または { teams, commitMessage } オブジェクト
+  let rawTeams: unknown;
+  let commitMessage: string | undefined;
+  if (Array.isArray(body)) {
+    rawTeams = body;
+  } else if (body && typeof body === "object" && "teams" in body) {
+    rawTeams = body.teams;
+    commitMessage =
+      typeof body.commitMessage === "string" ? body.commitMessage.slice(0, 200) : undefined;
+  } else {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const parsed = teamsSaveSchema.safeParse(rawTeams);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues }, { status: 422 });
   }
@@ -207,7 +220,7 @@ export async function POST(request: Request) {
             );
 
             const latest = latestByTeamId.get(team.id)?.snapshot ?? null;
-            const diff = diffTeamSnapshots(latest, snapshot);
+            const diff = diffTeamSnapshots(latest, snapshot, commitMessage);
             if (latest === null || !isEmptyTeamDiff(diff)) {
               revisionsToInsert.push({
                 id: ulid(),

@@ -1,40 +1,13 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
 import fs from "fs";
 import path from "path";
-import { ulid } from "ulid";
-import { eq } from "drizzle-orm";
+import { fileURLToPath } from "url";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { eq, inArray } from "drizzle-orm";
 import * as schema from "./schema";
-import type { TrainedPokemon } from "@/store/team/team";
-import { WIDGET_TEMPLATES } from "@/components/client/dashboard/widgetTemplates";
-import { createSeason } from "./repositories/seasonRepository";
-import { createTeam } from "./repositories/teamRepository";
-import { createBoxPokemon } from "./repositories/boxPokemonRepository";
-import { createDashboard } from "./repositories/dashboardRepository";
-import { createBattleRecord } from "./repositories/battleRecordRepository";
-import { isLeft } from "fp-ts/lib/Either";
-import { teamSchema } from "@/lib/validator/team";
 
-const GIMMICK_TAGS = [
-  "trick-room",
-  "tailwind",
-  "weather-rain",
-  "weather-sun",
-  "weather-snow",
-  "weather-sand",
-  "redirection",
-  "perish-trap",
-];
-const ROLE_TAGS = [
-  "speed-control",
-  "follow-me",
-  "fake-out",
-  "intimidate",
-  "cycle",
-  "sleep-control",
-  "mega-focused",
-  "standard",
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load .env.local manually
 try {
@@ -42,12 +15,12 @@ try {
   for (const line of envFile.split("\n")) {
     const match = line.match(/^([^=]+)=(.*)$/);
     if (match) {
-      let key = match[1].trim();
+      const key = match[1].trim();
       process.env[key] = match[2].trim().replace(/^['"]|['"]$/g, "");
     }
   }
 } catch {
-  console.log("No .env.local found");
+  // Ignore if no .env.local
 }
 
 const connectionString =
@@ -56,19 +29,24 @@ const client = postgres(connectionString);
 const db = drizzle(client, { schema });
 
 async function seed() {
-  console.log("Seeding database...");
+  console.log("Seeding database with production data (1f1084ce-f685-4a04-a04f-7e39ec336d3b)...");
 
   try {
     // 登録されているユーザーを動的に取得する（DBリセット等でIDが変わる可能性があるため）
-    const users =
-      await client`SELECT id FROM auth.users WHERE email = 'loligothick@gmail.com' LIMIT 1`;
+    const users = await client`
+      SELECT id FROM auth.users 
+      WHERE email = 'loligothick@gmail.com' OR id = '1f1084ce-f685-4a04-a04f-7e39ec336d3b'
+      ORDER BY (CASE WHEN email = 'loligothick@gmail.com' THEN 0 ELSE 1 END)
+      LIMIT 1
+    `;
+
     if (users.length === 0) {
       console.error(
-        "エラー: 'loligothick@gmail.com' のユーザーが見つかりません。先にアプリ画面からサインアップしてください。",
+        "エラー: 対象ユーザー ('loligothick@gmail.com' または '1f1084ce-f685-4a04-a04f-7e39ec336d3b') が見つかりません。先にアプリ画面からサインアップしてください。",
       );
       process.exit(1);
     }
-    const userId = users[0].id;
+    const userId = users[0].id as string;
     console.log(`Using userId: ${userId}`);
 
     // Check if user already has data to avoid duplicating
@@ -77,326 +55,162 @@ async function seed() {
       .from(schema.seasons)
       .where(eq(schema.seasons.userId, userId))
       .limit(1);
-    if (existingSeasons.length > 0 && !process.argv.includes("--dry-run")) {
-      if (process.argv.includes("--force")) {
-        console.log("Force flag detected. Deleting existing user data...");
-        await db.delete(schema.seasons).where(eq(schema.seasons.userId, userId));
-        await db.delete(schema.teams).where(eq(schema.teams.userId, userId));
-        await db.delete(schema.boxPokemon).where(eq(schema.boxPokemon.userId, userId));
-        await db.delete(schema.dashboards).where(eq(schema.dashboards.userId, userId));
-        await db.delete(schema.battleRecords).where(eq(schema.battleRecords.userId, userId));
-      } else {
-        console.log("Data already exists for this user. Skipping seed. (Use --force to overwrite)");
-        process.exit(0);
-      }
-    }
 
     const isDryRun = process.argv.includes("--dry-run");
-    if (isDryRun) console.log("--- STARTING DRY RUN ---");
+    const isForce = process.argv.includes("--force");
 
-    try {
-      // --- Season 1 (Singles) ---
-      const singlesSeasonId = ulid();
-      const resS1 = await createSeason({
-        id: singlesSeasonId,
-        userId,
-        name: "Season 1 (Singles)",
-        format: "singles",
-        ruleMark: "regulation-h",
-        startedAt: "2026-07-01",
-        endedAt: "2026-07-31",
-      })();
-      if (isLeft(resS1)) throw resS1.left;
-      console.log(`Created season (singles): ${singlesSeasonId}`);
-
-      // --- Season 2 (Doubles) ---
-      const doublesSeasonId = ulid();
-      const resS2 = await createSeason({
-        id: doublesSeasonId,
-        userId,
-        name: "Season 2 (Doubles)",
-        format: "doubles",
-        ruleMark: "regulation-h",
-        startedAt: "2026-08-01",
-        endedAt: "2026-08-31",
-      })();
-      if (isLeft(resS2)) throw new Error(resS2.left.message);
-      console.log(`Created season (doubles): ${doublesSeasonId}`);
-
-      // Create a team
-      const teamId = ulid();
-      const resT = await createTeam({
-        id: teamId,
-        userId,
-        name: "Test Team",
-      })();
-      if (isLeft(resT)) throw new Error(resT.left.message);
-      console.log(`Created team: ${teamId}`);
-
-      const myTeamData = [
-        {
-          slug: "pikachu",
-          item: 213, // light-ball
-          ability: 31,
-          moves: [85, 87, 521, 182],
-          evs: { hp: 0, atk: 0, def: 0, spa: 32, spd: 0, spe: 32 },
-        },
-        {
-          slug: "charizard",
-          item: 696, // charizardite-x
-          ability: 66,
-          moves: [53, 403, 416, 182],
-          evs: { hp: 0, atk: 0, def: 0, spa: 32, spd: 0, spe: 32 },
-        },
-        {
-          slug: "venusaur",
-          item: 695, // venusaurite
-          ability: 34,
-          moves: [188, 202, 414, 182],
-          evs: { hp: 32, atk: 0, def: 0, spa: 32, spd: 0, spe: 0 },
-        },
-        {
-          slug: "blastoise",
-          item: 697, // blastoisinite
-          ability: 67,
-          moves: [56, 406, 430, 182],
-          evs: { hp: 32, atk: 0, def: 0, spa: 32, spd: 0, spe: 0 },
-        },
-        {
-          slug: "gengar",
-          item: 692, // gengarite
-          ability: 130,
-          moves: [247, 188, 416, 182],
-          evs: { hp: 0, atk: 0, def: 0, spa: 32, spd: 0, spe: 32 },
-        },
-        {
-          slug: "snorlax",
-          item: 211, // leftovers
-          ability: 82,
-          moves: [34, 89, 442, 182],
-          evs: { hp: 32, atk: 32, def: 0, spa: 0, spd: 0, spe: 0 },
-        },
-      ] as const;
-
-      const myTeam: TrainedPokemon[] = myTeamData.map((data) => ({
-        boxId: ulid(),
-        identifier: data.slug,
-        slug: data.slug,
-        item: data.item,
-        ability: data.ability,
-        gender: { fixed: false },
-        nature: {},
-        moves: data.moves as [number, number, number, number],
-        evs: data.evs,
-      }));
-
-      // --- Validate team data before seeding ---
-      const teamToValidate = {
-        id: teamId,
-        name: "Test Team",
-        members: [...myTeam, ...Array(Math.max(0, 6 - myTeam.length)).fill(null)].slice(0, 6),
-      };
-      const validationResult = teamSchema.safeParse(teamToValidate);
-      if (!validationResult.success) {
-        console.error("\n[VALIDATION ERROR] Seed team data is invalid:");
-        for (const issue of validationResult.error.issues) {
-          console.error(`  path: ${issue.path.join(" > ")}  message: ${issue.message}`);
-        }
-        if (isDryRun) throw new Error("Dry-run aborted: seed team is invalid (see above)");
-      } else {
-        console.log("[VALIDATION OK] Team data is valid.");
-      }
-
-      const commonOpponents = [
-        "charizard",
-        "blastoise",
-        "venusaur",
-        "pikachu",
-        "arcanine",
-        "absol",
-        "glalie",
-        "torterra",
-        "infernape",
-        "empoleon",
-        "luxray",
-        "roserade",
-        "rampardos",
-        "bastiodon",
-        "gengar",
-      ];
-
-      let currentRating = 1500;
-
-      // Generate 150 records for Singles and 150 for Doubles
-      const numRecordsPerSeason = 150;
-
-      for (const format of ["singles", "doubles"]) {
-        const seasonId = format === "singles" ? singlesSeasonId : doublesSeasonId;
-        for (let i = 0; i < numRecordsPerSeason; i++) {
-          const result = Math.random() > 0.45 ? "win" : "loss"; // ~55% win rate
-          const recordId = ulid();
-
-          if (result === "win") currentRating += Math.floor(Math.random() * 15) + 10;
-          else currentRating -= Math.floor(Math.random() * 15) + 10;
-
-          const playedAt = new Date();
-          playedAt.setDate(playedAt.getDate() - Math.floor(Math.random() * 30)); // random within last 30 days
-
-          // Randomize my selection (Singles = 3, Doubles = 4)
-          const mySelectionCount = format === "singles" ? 3 : 4;
-          const mySel: number[] = [];
-          while (mySel.length < mySelectionCount) {
-            const r = Math.floor(Math.random() * 6);
-            if (!mySel.includes(r)) mySel.push(r);
-          }
-
-          // Randomize tags
-          const tags: string[] = [];
-          if (Math.random() > 0.5)
-            tags.push(GIMMICK_TAGS[Math.floor(Math.random() * GIMMICK_TAGS.length)]);
-          if (Math.random() > 0.3)
-            tags.push(ROLE_TAGS[Math.floor(Math.random() * ROLE_TAGS.length)]);
-          if (Math.random() > 0.8) tags.push("カスタムタグ");
-
-          if (isDryRun) continue;
-
-          // Random opponent party of 6
-          const oppTeam: string[] = [];
-          while (oppTeam.length < 6) {
-            const r = commonOpponents[Math.floor(Math.random() * commonOpponents.length)];
-            if (!oppTeam.includes(r)) oppTeam.push(r);
-          }
-
-          const resBR = await createBattleRecord({
-            id: recordId,
-            userId,
-            seasonId,
-            teamId,
-            result,
-            myTeam,
-            mySelection: mySel,
-            rating: currentRating,
-            notes: `Seed battle ${i + 1} (${format})`,
-            playedAt,
-            tags,
-            opponents: oppTeam.map((slug, index) => {
-              let role: "lead" | "back" | null = null;
-              if (format === "singles") {
-                if (index === 0) role = "lead";
-                else if (index < 3) role = "back";
-              } else {
-                if (index < 2) role = "lead";
-                else if (index < 4) role = "back";
-              }
-              return {
-                slotIndex: index,
-                pokemonSlug: slug,
-                selectionRole: role,
-              };
-            }),
-          })();
-          if (isLeft(resBR)) throw new Error(resBR.left.message);
-        }
-      }
-
-      console.log(`Created ${numRecordsPerSeason * 2} battle records across both formats.`);
-
-      // Create 6 box pokemon and link to team
-      const boxPokemonIds = [];
-      for (let i = 0; i < 6; i++) {
-        const pId = ulid();
-        boxPokemonIds.push(pId);
-
-        if (!isDryRun) {
-          const resBP = await createBoxPokemon({
-            id: pId,
-            userId,
-            slug: myTeamData[i].slug,
-            inBox: true,
-            data: {
-              boxId: pId,
-              identifier: myTeamData[i].slug,
-              slug: myTeamData[i].slug,
-              item: myTeamData[i].item,
-              ability: myTeamData[i].ability,
-              gender: { fixed: false },
-              nature: {},
-              moves: myTeamData[i].moves as unknown as [number, number, number, number],
-              evs: myTeamData[i].evs,
-            },
-          })();
-          if (isLeft(resBP)) throw new Error(resBP.left.message);
-        }
-      }
-      if (!isDryRun) {
-        await db.insert(schema.teamMembers).values(
-          boxPokemonIds.map((boxId, index) => ({
-            teamId,
-            slotIndex: index,
-            boxPokemonId: boxId,
-          })),
-        );
-      }
-
-      console.log(`Created 6 box pokemon and linked to team.`);
-
-      // Create layout with all templates
-      const layout = WIDGET_TEMPLATES.map((tmpl, idx) => {
-        // Layout in a 3-column grid (12 total width => 4 width per widget)
-        const cols = 3;
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-
-        return {
-          id: ulid(),
-          templateId: tmpl.id,
-          title: tmpl.id, // The UI will translate this based on template if left alone, but we set a fallback title
-          dataSource: { type: "season" as const, seasonId: null },
-          x: col * 4,
-          y: row * 4,
-          w: 4,
-          h: 4,
-          query: tmpl.query,
-          transformer: tmpl.transformer,
-          visualization: tmpl.visualization,
-        };
-      });
-
-      const dashboardId = ulid();
-      if (!isDryRun) {
-        const resDash = await createDashboard({
-          id: dashboardId,
-          userId,
-          name: "Default Dashboard",
-          isDefault: true,
-          variables: [
-            {
-              id: ulid(),
-              name: "season",
-              label: "Season",
-              type: "season",
-              defaultSeasonId: singlesSeasonId,
-            },
-          ],
-          layout: layout,
-        })();
-        if (isLeft(resDash)) throw new Error(resDash.left.message);
-      }
-      console.log(`Created default dashboard with ${layout.length} widgets.`);
-
-      console.log("Seeding complete!");
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("Rollback")) {
-        console.log("--- DRY RUN COMPLETE: Transaction rolled back successfully ---");
-      } else {
-        throw err;
-      }
+    if (existingSeasons.length > 0 && !isForce && !isDryRun) {
+      console.log("Data already exists for this user. Skipping seed. (Use --force to overwrite)");
+      process.exit(0);
     }
-  } catch (err) {
-    console.error("Seeding failed:", err);
+
+    if (isDryRun) {
+      console.log("--- STARTING DRY RUN ---");
+    }
+
+    const seedDataPath = path.join(__dirname, "seed-data.json");
+    const seedData = JSON.parse(fs.readFileSync(seedDataPath, "utf-8"));
+
+    await db.transaction(async (tx) => {
+      if (existingSeasons.length > 0) {
+        console.log("Cleaning up existing user data for current user...");
+        const userBattles = await tx
+          .select({ id: schema.battleRecords.id })
+          .from(schema.battleRecords)
+          .where(eq(schema.battleRecords.userId, userId));
+        if (userBattles.length > 0) {
+          await tx.delete(schema.battleRecordOpponents).where(
+            inArray(
+              schema.battleRecordOpponents.battleRecordId,
+              userBattles.map((b) => b.id),
+            ),
+          );
+        }
+        await tx.delete(schema.battleRecords).where(eq(schema.battleRecords.userId, userId));
+        await tx.delete(schema.teamRevisions).where(eq(schema.teamRevisions.userId, userId));
+        await tx.delete(schema.sharedTeams).where(eq(schema.sharedTeams.createdBy, userId));
+
+        const userTeams = await tx
+          .select({ id: schema.teams.id })
+          .from(schema.teams)
+          .where(eq(schema.teams.userId, userId));
+        if (userTeams.length > 0) {
+          await tx.delete(schema.teamMembers).where(
+            inArray(
+              schema.teamMembers.teamId,
+              userTeams.map((t) => t.id),
+            ),
+          );
+        }
+        await tx.delete(schema.teams).where(eq(schema.teams.userId, userId));
+        await tx.delete(schema.boxPokemon).where(eq(schema.boxPokemon.userId, userId));
+        await tx.delete(schema.dashboards).where(eq(schema.dashboards.userId, userId));
+        await tx.delete(schema.seasons).where(eq(schema.seasons.userId, userId));
+      }
+
+      console.log(`Inserting ${seedData.seasons.length} seasons...`);
+      await tx.insert(schema.seasons).values(
+        seedData.seasons.map((s: typeof schema.seasons.$inferInsert) => ({
+          ...s,
+          userId,
+          createdAt: new Date(s.createdAt ?? Date.now()),
+          updatedAt: new Date(s.updatedAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.teams.length} teams...`);
+      await tx.insert(schema.teams).values(
+        seedData.teams.map((t: typeof schema.teams.$inferInsert) => ({
+          ...t,
+          userId,
+          createdAt: new Date(t.createdAt ?? Date.now()),
+          updatedAt: new Date(t.updatedAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.boxPokemon.length} box_pokemon...`);
+      await tx.insert(schema.boxPokemon).values(
+        seedData.boxPokemon.map((bp: typeof schema.boxPokemon.$inferInsert) => ({
+          ...bp,
+          userId,
+          createdAt: new Date(bp.createdAt ?? Date.now()),
+          updatedAt: new Date(bp.updatedAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.teamMembers.length} team_members...`);
+      await tx.insert(schema.teamMembers).values(seedData.teamMembers);
+
+      console.log(`Inserting ${seedData.sharedTeams.length} shared_teams...`);
+      await tx.insert(schema.sharedTeams).values(
+        seedData.sharedTeams.map((st: typeof schema.sharedTeams.$inferInsert) => ({
+          ...st,
+          createdBy: userId,
+          createdAt: new Date(st.createdAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.teamRevisions.length} team_revisions...`);
+      await tx.insert(schema.teamRevisions).values(
+        seedData.teamRevisions.map((tr: typeof schema.teamRevisions.$inferInsert) => ({
+          ...tr,
+          userId,
+          createdAt: new Date(tr.createdAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.dashboards.length} dashboards...`);
+      await tx.insert(schema.dashboards).values(
+        seedData.dashboards.map((d: typeof schema.dashboards.$inferInsert) => ({
+          ...d,
+          userId,
+          createdAt: new Date(d.createdAt ?? Date.now()),
+          updatedAt: new Date(d.updatedAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.battleRecords.length} battle_records...`);
+      await tx.insert(schema.battleRecords).values(
+        seedData.battleRecords.map((br: typeof schema.battleRecords.$inferInsert) => ({
+          ...br,
+          userId,
+          playedAt: new Date(br.playedAt ?? Date.now()),
+          createdAt: new Date(br.createdAt ?? Date.now()),
+          updatedAt: new Date(br.updatedAt ?? Date.now()),
+        })),
+      );
+
+      console.log(`Inserting ${seedData.battleRecordOpponents.length} battle_record_opponents...`);
+      for (let i = 0; i < seedData.battleRecordOpponents.length; i += 100) {
+        await tx
+          .insert(schema.battleRecordOpponents)
+          .values(seedData.battleRecordOpponents.slice(i, i + 100));
+      }
+
+      if (isDryRun) {
+        tx.rollback();
+      }
+    });
+
+    console.log("Seeding complete!");
+  } catch (err: unknown) {
+    if (isRollbackError(err)) {
+      console.log("--- DRY RUN COMPLETE: Transaction rolled back successfully ---");
+    } else {
+      console.error("Seeding failed:", err);
+      process.exit(1);
+    }
   } finally {
+    await client.end();
     process.exit(0);
   }
+}
+
+function isRollbackError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.message.toLowerCase().includes("rollback");
+  }
+  return false;
 }
 
 void seed();

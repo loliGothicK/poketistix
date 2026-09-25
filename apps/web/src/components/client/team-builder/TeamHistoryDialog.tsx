@@ -25,6 +25,7 @@ import {
   AccordionDetails,
   Paper,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import RestoreIcon from "@mui/icons-material/Restore";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -81,7 +82,7 @@ function formatEvsSummary(pokemon: TrainedPokemon, t: (key: string) => string): 
   return natureName ? `${natureName} (${evs})` : evs;
 }
 
-function formatFieldLabel(field: string, t: (key: string) => string): string {
+export function formatFieldLabel(field: string, t: (key: string) => string): string {
   switch (field) {
     case "item":
       return t("teamBuilder.heldItem");
@@ -741,7 +742,28 @@ export function TeamHistoryDialog({ open, onClose, teamId, onRestore }: Props) {
                           <ChevronRightIcon color="action" fontSize="small" />
                         </Stack>
 
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                        {rev.diff.message ? (
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              fontWeight: 700,
+                              fontFamily: "monospace",
+                              color: "primary.main",
+                            }}
+                            noWrap
+                          >
+                            💬 {rev.diff.message}
+                          </Typography>
+                        ) : null}
+
+                        <Typography
+                          variant={rev.diff.message ? "caption" : "subtitle2"}
+                          sx={{
+                            fontWeight: rev.diff.message ? 500 : 600,
+                            color: rev.diff.message ? "text.secondary" : "text.primary",
+                          }}
+                          noWrap
+                        >
                           {rev.snapshot.name || t("teamBuilder.historyDialog.untitled")}
                         </Typography>
 
@@ -827,6 +849,36 @@ export function TeamHistoryDialog({ open, onClose, teamId, onRestore }: Props) {
                 >
                   {/* チーム名・備考 */}
                   <Box sx={{ mb: 2.5, minWidth: 0 }}>
+                    {activeRev.diff.message && (
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          p: 1.5,
+                          mb: 1.5,
+                          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                          borderColor: "primary.main",
+                          borderRadius: 1.5,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 700,
+                            color: "primary.main",
+                            display: "block",
+                            mb: 0.25,
+                          }}
+                        >
+                          {t("teamBuilder.sync.commitMessageLabel")}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontFamily: "monospace", fontWeight: 600 }}
+                        >
+                          {activeRev.diff.message}
+                        </Typography>
+                      </Paper>
+                    )}
                     <Typography variant="h6" sx={{ fontWeight: 700, wordBreak: "break-word" }}>
                       {activeRev.snapshot.name || t("teamBuilder.historyDialog.untitled")}
                     </Typography>
@@ -1101,7 +1153,30 @@ export function TeamHistoryDialog({ open, onClose, teamId, onRestore }: Props) {
                           </Typography>
                         </Stack>
 
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                        {rev.diff.message ? (
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              fontWeight: 700,
+                              fontFamily: "monospace",
+                              color: "primary.main",
+                              width: "100%",
+                            }}
+                            noWrap
+                          >
+                            💬 {rev.diff.message}
+                          </Typography>
+                        ) : null}
+
+                        <Typography
+                          variant={rev.diff.message ? "caption" : "subtitle2"}
+                          sx={{
+                            fontWeight: rev.diff.message ? 500 : 600,
+                            color: rev.diff.message ? "text.secondary" : "text.primary",
+                            width: "100%",
+                          }}
+                          noWrap
+                        >
                           {rev.snapshot.name || t("teamBuilder.historyDialog.untitled")}
                         </Typography>
 
@@ -1212,6 +1287,36 @@ export function TeamHistoryDialog({ open, onClose, teamId, onRestore }: Props) {
                           {formatDate(activeRev.createdAt)}
                         </Typography>
                       </Stack>
+                      {activeRev.diff.message && (
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            mb: 1.5,
+                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                            borderColor: "primary.main",
+                            borderRadius: 1.5,
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontWeight: 700,
+                              color: "primary.main",
+                              display: "block",
+                              mb: 0.25,
+                            }}
+                          >
+                            {t("teamBuilder.sync.commitMessageLabel")}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontFamily: "monospace", fontWeight: 600 }}
+                          >
+                            {activeRev.diff.message}
+                          </Typography>
+                        </Paper>
+                      )}
                       <Typography variant="h6" sx={{ fontWeight: 700 }}>
                         {activeRev.snapshot.name || t("teamBuilder.historyDialog.untitled")}
                       </Typography>

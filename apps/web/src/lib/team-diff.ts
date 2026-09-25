@@ -48,6 +48,8 @@ export interface TeamDiff {
   /** pokepaste 全文は snapshot 側に保持し、diff には変更有無フラグのみ持つ */
   readonly pokepasteChanged: boolean;
   readonly members: readonly MemberChange[];
+  /** オプションの commit message（power user 向け）。diff jsonb に埋め込む */
+  readonly message?: string;
 }
 
 const normalizeText = (value: string | undefined): string => value?.trim() ?? "";
@@ -149,6 +151,7 @@ export function memberChangedFields(
 export function diffTeamSnapshots(
   oldSnapshot: TeamSnapshot | null,
   newSnapshot: TeamSnapshot,
+  message?: string,
 ): TeamDiff {
   const members: MemberChange[] = [];
   const oldMembers = oldSnapshot ? normalizeMembers(oldSnapshot.members) : Array(6).fill(null);
@@ -189,6 +192,7 @@ export function diffTeamSnapshots(
   const diff: TeamDiff = {
     pokepasteChanged: (oldSnapshot?.pokepaste ?? "") !== newSnapshot.pokepaste,
     members,
+    ...(message ? { message } : {}),
   };
   if ((oldSnapshot?.name ?? "") !== newSnapshot.name) {
     (diff as { name?: FieldChange<string> }).name = {

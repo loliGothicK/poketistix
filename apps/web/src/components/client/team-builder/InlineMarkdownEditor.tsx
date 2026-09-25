@@ -291,7 +291,7 @@ export function InlineMarkdownEditor({
         flexDirection: "column",
         border: 1,
         borderColor: "divider",
-        borderRadius: 1.5,
+        borderRadius: 1,
         bgcolor: "background.paperTint",
         overflow: "hidden",
         transition: "border-color 0.2s, box-shadow 0.2s",

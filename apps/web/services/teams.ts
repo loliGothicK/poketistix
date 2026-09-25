@@ -19,12 +19,16 @@ export const fetchTeamsFromServer = async (): Promise<readonly Team[]> => {
   });
 };
 
-export const saveTeamsToServer = async (teams: readonly Team[]): Promise<void> => {
+export const saveTeamsToServer = async (
+  teams: readonly Team[],
+  commitMessage?: string,
+): Promise<void> => {
   return withSpan("ui.teams.save", async (span) => {
+    const body = commitMessage ? { teams, commitMessage } : teams;
     const res = await fetch("/api/teams", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(teams),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errorText = await res.text();
