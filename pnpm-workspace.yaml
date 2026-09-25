@@ -14,7 +14,7 @@ catalog:
   typescript: 7.0.2
   vite-plugin-top-level-await: 1.6.0
   vite-plugin-wasm: 3.6.0
-  vitest: 5.0.0
+  vitest: 5.0.2
   wrangler: 4.129.0
 
 allowBuilds:
