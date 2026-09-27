@@ -26,7 +26,7 @@
     "db:seed": "tsx src/lib/db/seed.ts",
     "d1:migrate": "drizzle-kit migrate --config drizzle.d1.config.ts",
     "d1:index": "tsx scripts/index-docs.ts",
-    "renovate": "ncu -u && pnpm install",
+    "renovate": "pnpm update --latest",
     "i18n:check": "pnpm exec tsx scripts/check-i18n.ts",
     "generate:release-note": "npx tsx scripts/generate-blog.ts"
   },

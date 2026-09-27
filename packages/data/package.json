@@ -20,7 +20,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "oxfmt": "catalog:",
-    "oxlint-plugin-eslint": "1.81.0",
+    "oxlint-plugin-eslint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "typescript": "catalog:"
   }
