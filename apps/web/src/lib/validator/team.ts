@@ -1,25 +1,28 @@
-import { z } from "zod";
+import * as v from "valibot";
 import { pokemonByIdentifier } from "@/data/pokemon";
 import { trainedPokemonSchema, trainedPokemonSaveSchema } from "./trained-pokemon";
 
-export const teamSaveSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1).max(100),
-  description: z.string().max(30000).optional(),
-  pokepaste: z.string().optional(),
-  members: z.array(trainedPokemonSaveSchema.nullable()).max(6),
+export const teamSaveSchema = v.object({
+  id: v.string(),
+  name: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  description: v.optional(v.pipe(v.string(), v.maxLength(30000))),
+  pokepaste: v.optional(v.string()),
+  members: v.pipe(v.array(v.nullable(trainedPokemonSaveSchema)), v.maxLength(6)),
 });
 
-export const teamsSaveSchema = z.array(teamSaveSchema);
+export const teamsSaveSchema = v.array(teamSaveSchema);
 
-export const teamSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string().optional(),
-    members: z.array(trainedPokemonSchema.nullable()).length(6),
-  })
-  .superRefine((team, ctx) => {
+export const teamSchema = v.pipe(
+  v.object({
+    id: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    members: v.pipe(v.array(v.nullable(trainedPokemonSchema)), v.length(6)),
+  }),
+  v.rawCheck(({ dataset, addIssue }) => {
+    if (!dataset.typed) return;
+    const team = dataset.value;
+
     // --- Pass 1: 重複しているアイテム・species_id を洗い出す ---
     const itemCount = new Map<number, number>();
     const speciesCount = new Map<number, number>();
@@ -51,22 +54,35 @@ export const teamSchema = z
       if (!member) continue;
 
       if (member.item !== null && member.item !== undefined && duplicateItems.has(member.item)) {
-        ctx.addIssue({
-          code: "custom",
+        addIssue({
           message: `Duplicate item. Each Pokemon must have a unique item.`,
-          path: ["members", i, "item"],
+          path: [
+            { type: "object", origin: "value", input: team, key: "members", value: team.members },
+            { type: "array", origin: "value", input: team.members, key: i, value: member },
+            { type: "object", origin: "value", input: member, key: "item", value: member.item },
+          ],
         });
       }
 
       const pokemonBaseData = pokemonByIdentifier.get(member.identifier);
       if (pokemonBaseData && duplicateSpecies.has(pokemonBaseData.species_id)) {
-        ctx.addIssue({
-          code: "custom",
+        addIssue({
           message: `Duplicate species. Each Pokemon must have a unique species.`,
-          path: ["members", i, "identifier"],
+          path: [
+            { type: "object", origin: "value", input: team, key: "members", value: team.members },
+            { type: "array", origin: "value", input: team.members, key: i, value: member },
+            {
+              type: "object",
+              origin: "value",
+              input: member,
+              key: "identifier",
+              value: member.identifier,
+            },
+          ],
         });
       }
     }
-  });
+  }),
+);
 
-export const teamsSchema = z.array(teamSchema);
+export const teamsSchema = v.array(teamSchema);

@@ -1,115 +1,120 @@
-import { z } from "zod";
+import * as v from "valibot";
 import { ValidateResult, anyhow } from "@/errors/anyhow/error";
 import { either } from "fp-ts";
 
-const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const dateString = v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"));
 
-type ZodSafeParseResult<T> = { success: true; data: T } | { success: false; error: z.ZodError };
-
-const handleZodError = <T>(parsed: ZodSafeParseResult<T>, name: string): ValidateResult<T> => {
-  if (!parsed.success) {
+const handleValibotError = <T>(
+  result: v.SafeParseResult<v.BaseSchema<unknown, T, v.BaseIssue<unknown>>>,
+  name: string,
+): ValidateResult<T> => {
+  if (!result.success) {
     return either.left(
-      parsed.error.issues.map((e) =>
-        anyhow(`${name} validation error: ${e.path.join(".")} - ${e.message}`, undefined),
-      ),
+      v.flatten(result.issues).nested
+        ? Object.entries(v.flatten(result.issues).nested ?? {}).map(([path, msgs]) =>
+            anyhow(`${name} validation error: ${path} - ${(msgs ?? []).join(", ")}`, undefined),
+          )
+        : (v.flatten(result.issues).root ?? []).map((msg) =>
+            anyhow(`${name} validation error: ${msg}`, undefined),
+          ),
     );
   }
-  return either.right(parsed.data);
+  return either.right(result.output);
 };
 
 // -----------------------------------------------------------------------------
 // Season Validation
 // -----------------------------------------------------------------------------
-export const insertSeasonSchema = z.object({
-  id: z.string().optional(),
-  userId: z.string(),
-  name: z.string().trim().min(1).max(100),
-  format: z.enum(["singles", "doubles"]),
-  ruleMark: z.string().trim().min(1).nullish(),
-  startedAt: dateString.nullish(),
-  endedAt: dateString.nullish(),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+export const insertSeasonSchema = v.object({
+  id: v.optional(v.string()),
+  userId: v.string(),
+  name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
+  format: v.picklist(["singles", "doubles"] as const),
+  ruleMark: v.nullish(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  startedAt: v.nullish(dateString),
+  endedAt: v.nullish(dateString),
+  createdAt: v.optional(v.date()),
+  updatedAt: v.optional(v.date()),
 });
 
 export const validateInsertSeason = (
   data: unknown,
-): ValidateResult<z.infer<typeof insertSeasonSchema>> =>
-  handleZodError(insertSeasonSchema.safeParse(data), "Season");
+): ValidateResult<v.InferOutput<typeof insertSeasonSchema>> =>
+  handleValibotError(v.safeParse(insertSeasonSchema, data), "Season");
 
 // -----------------------------------------------------------------------------
 // Team Validation
 // -----------------------------------------------------------------------------
-export const insertTeamSchema = z.object({
-  id: z.string().optional(),
-  userId: z.string(),
-  name: z.string().trim().min(1).max(100),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+export const insertTeamSchema = v.object({
+  id: v.optional(v.string()),
+  userId: v.string(),
+  name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
+  createdAt: v.optional(v.date()),
+  updatedAt: v.optional(v.date()),
 });
 
 export const validateInsertTeam = (
   data: unknown,
-): ValidateResult<z.infer<typeof insertTeamSchema>> =>
-  handleZodError(insertTeamSchema.safeParse(data), "Team");
+): ValidateResult<v.InferOutput<typeof insertTeamSchema>> =>
+  handleValibotError(v.safeParse(insertTeamSchema, data), "Team");
 
 // -----------------------------------------------------------------------------
 // Box Pokemon Validation
 // -----------------------------------------------------------------------------
-export const insertBoxPokemonSchema = z.object({
-  id: z.string().optional(),
-  userId: z.string(),
-  slug: z.string().trim().min(1),
-  data: z.record(z.string(), z.unknown()), // Drizzle jsonb field
-  inBox: z.boolean().default(false),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+export const insertBoxPokemonSchema = v.object({
+  id: v.optional(v.string()),
+  userId: v.string(),
+  slug: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  data: v.record(v.string(), v.unknown()), // Drizzle jsonb field
+  inBox: v.optional(v.boolean(), false),
+  createdAt: v.optional(v.date()),
+  updatedAt: v.optional(v.date()),
 });
 
 export const validateInsertBoxPokemon = (
   data: unknown,
-): ValidateResult<z.infer<typeof insertBoxPokemonSchema>> =>
-  handleZodError(insertBoxPokemonSchema.safeParse(data), "BoxPokemon");
+): ValidateResult<v.InferOutput<typeof insertBoxPokemonSchema>> =>
+  handleValibotError(v.safeParse(insertBoxPokemonSchema, data), "BoxPokemon");
 
 // -----------------------------------------------------------------------------
 // Battle Record Validation
 // -----------------------------------------------------------------------------
-export const insertBattleRecordSchema = z.object({
-  id: z.string().optional(),
-  userId: z.string(),
-  seasonId: z.string().min(1),
-  teamId: z.string().min(1).nullish(),
-  result: z.enum(["win", "loss", "draw"]),
-  myTeam: z.array(z.record(z.string(), z.unknown())).max(6),
-  mySelection: z.array(z.number().int().min(0).max(5)).nullish(),
-  rating: z.number().min(0).max(100000).nullish(),
-  tags: z.array(z.string()).nullish(),
-  notes: z.string().nullish(),
-  playedAt: z.date().nullish(),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+export const insertBattleRecordSchema = v.object({
+  id: v.optional(v.string()),
+  userId: v.string(),
+  seasonId: v.pipe(v.string(), v.minLength(1)),
+  teamId: v.nullish(v.pipe(v.string(), v.minLength(1))),
+  result: v.picklist(["win", "loss", "draw"] as const),
+  myTeam: v.pipe(v.array(v.record(v.string(), v.unknown())), v.maxLength(6)),
+  mySelection: v.nullish(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(5)))),
+  rating: v.nullish(v.pipe(v.number(), v.minValue(0), v.maxValue(100000))),
+  tags: v.nullish(v.array(v.string())),
+  notes: v.nullish(v.string()),
+  playedAt: v.nullish(v.date()),
+  createdAt: v.optional(v.date()),
+  updatedAt: v.optional(v.date()),
 });
 
 export const validateInsertBattleRecord = (
   data: unknown,
-): ValidateResult<z.infer<typeof insertBattleRecordSchema>> =>
-  handleZodError(insertBattleRecordSchema.safeParse(data), "BattleRecord");
+): ValidateResult<v.InferOutput<typeof insertBattleRecordSchema>> =>
+  handleValibotError(v.safeParse(insertBattleRecordSchema, data), "BattleRecord");
 
 // -----------------------------------------------------------------------------
 // Dashboard Validation
 // -----------------------------------------------------------------------------
-export const insertDashboardSchema = z.object({
-  id: z.string().optional(),
-  userId: z.string(),
-  name: z.string().trim().min(1).max(100),
-  isDefault: z.boolean().optional(),
-  layout: z.array(z.record(z.string(), z.unknown())),
-  variables: z.array(z.record(z.string(), z.unknown())),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+export const insertDashboardSchema = v.object({
+  id: v.optional(v.string()),
+  userId: v.string(),
+  name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
+  isDefault: v.optional(v.boolean()),
+  layout: v.array(v.record(v.string(), v.unknown())),
+  variables: v.array(v.record(v.string(), v.unknown())),
+  createdAt: v.optional(v.date()),
+  updatedAt: v.optional(v.date()),
 });
 
 export const validateInsertDashboard = (
   data: unknown,
-): ValidateResult<z.infer<typeof insertDashboardSchema>> =>
-  handleZodError(insertDashboardSchema.safeParse(data), "Dashboard");
+): ValidateResult<v.InferOutput<typeof insertDashboardSchema>> =>
+  handleValibotError(v.safeParse(insertDashboardSchema, data), "Dashboard");

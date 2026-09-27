@@ -3,38 +3,61 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { sharedTeams } from "@/lib/db/schema";
 import { genUlid } from "@/lib/db/ulid-type";
-import { z } from "zod";
+import * as v from "valibot";
 import { match } from "ts-pattern";
 import { withChildSpan } from "@/lib/otel";
 import type { SharedTeamSnapshot } from "@/lib/db/schema";
 import { trainedPokemonSchema } from "@/lib/validator/trained-pokemon";
 
 // members の中身は実行時に TrainedPokemon 形式であることをクライアントが保証するが、
-// Zod 側では passthrough() で受け付け、DB 挿入時に型キャストする。
-const snapshotSchema = z
-  .object({
-    teamName: z.string().min(1).max(100),
-    description: z.string().max(2000).optional(),
-    members: z.array(trainedPokemonSchema.nullable()).length(6),
-    showStats: z.boolean(),
-  })
-  .superRefine((snapshot, ctx) => {
+// Valibot 側では looseObject で受け付け、DB 挿入時に型キャストする。
+const snapshotSchema = v.pipe(
+  v.object({
+    teamName: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+    description: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+    members: v.pipe(v.array(v.nullable(trainedPokemonSchema)), v.length(6)),
+    showStats: v.boolean(),
+  }),
+  v.rawCheck(({ dataset, addIssue }) => {
+    if (!dataset.typed) return;
+    const snapshot = dataset.value;
     const items = new Set<number>();
     for (let i = 0; i < snapshot.members.length; i++) {
       const member = snapshot.members[i];
       if (member && member.item !== null && member.item !== undefined) {
-        if (items.has(member.item)) {
-          ctx.addIssue({
-            code: "custom",
+        if (items.has(member.item as number)) {
+          addIssue({
             message: `Duplicate item found: ${member.item}. Each Pokemon must have a unique item.`,
-            path: ["members", i, "item"],
+            path: [
+              {
+                type: "object",
+                origin: "value",
+                input: snapshot,
+                key: "members",
+                value: snapshot.members,
+              },
+              {
+                type: "array",
+                origin: "value",
+                input: snapshot.members,
+                key: i,
+                value: member,
+              },
+              {
+                type: "object",
+                origin: "value",
+                input: member,
+                key: "item",
+                value: member.item,
+              },
+            ],
           });
         }
-        items.add(member.item);
+        items.add(member.item as number);
       }
     }
-  })
-  .readonly();
+  }),
+);
 
 export async function POST(request: Request) {
   // 認証は任意（ゲストシェアも許可）
@@ -47,12 +70,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = snapshotSchema.safeParse(body);
+  const parsed = v.safeParse(snapshotSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: snapshot }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: snapshot }) => {
       const id = genUlid();
       await withChildSpan(
         "db.share.create",

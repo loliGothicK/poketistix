@@ -13,6 +13,7 @@ import { withChildSpan } from "@/lib/otel";
 import * as Sentry from "@sentry/nextjs";
 import type { InferSelectModel } from "drizzle-orm";
 import type { TrainedPokemon } from "@/store/team/team";
+import * as v from "valibot";
 
 type RecordRow = InferSelectModel<typeof battleRecords>;
 type OpponentRow = InferSelectModel<typeof battleRecordOpponents>;
@@ -103,12 +104,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = battleRecordUpdateSchema.safeParse(body);
+  const parsed = v.safeParse(battleRecordUpdateSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       try {
         const result = await withChildSpan(
           "db.battle-records.update",

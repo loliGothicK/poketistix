@@ -45,6 +45,7 @@ import { teamSchema, teamSaveSchema } from "@/lib/validator/team";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useTeamsData } from "@/hooks/useTeamsData";
 import { formatTeamValidationIssues } from "@/lib/validator/format-issues";
+import * as v from "valibot";
 import { formatFieldLabel, renderFieldDiff } from "./TeamHistoryDialog";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -106,7 +107,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
         if (!activeTeam) throw new Error("No active team to save");
         const targetTeam = options?.teamToSave ?? activeTeam;
         const candidates = [targetTeam, ...localTeams.filter((t) => t.id !== activeTeam.id)];
-        const validTeams = candidates.filter((t) => teamSaveSchema.safeParse(t).success);
+        const validTeams = candidates.filter((t) => v.safeParse(teamSaveSchema, t).success);
         if (validTeams.length === 0) {
           throw new Error(t("teamBuilder.validation.noValidTeams"));
         }
@@ -270,7 +271,7 @@ export const CloudSaveButton = React.forwardRef<HTMLButtonElement, CloudSaveButt
 
     if (!isAuthenticated || !activeTeam) return null;
 
-    const parseResult = teamSchema.safeParse(activeTeam);
+    const parseResult = v.safeParse(teamSchema, activeTeam);
     const isDraft = !parseResult.success;
     const draftReasons = formatTeamValidationIssues(parseResult, t, activeTeam.members);
 

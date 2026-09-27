@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as v from "valibot";
 import { teamSchema, teamSaveSchema } from "./team";
 
 describe("team schemas with description", () => {
@@ -9,10 +10,10 @@ describe("team schemas with description", () => {
       description: "Pelipper + Archaludon lead against hyper offense. Keep Kingdra in the back.",
       members: [],
     };
-    const result = teamSaveSchema.safeParse(data);
+    const result = v.safeParse(teamSaveSchema, data);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.description).toBe(
+      expect(result.output.description).toBe(
         "Pelipper + Archaludon lead against hyper offense. Keep Kingdra in the back.",
       );
     }
@@ -24,10 +25,10 @@ describe("team schemas with description", () => {
       name: "Standard Team",
       members: [],
     };
-    const result = teamSaveSchema.safeParse(data);
+    const result = v.safeParse(teamSaveSchema, data);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.description).toBeUndefined();
+      expect(result.output.description).toBeUndefined();
     }
   });
 
@@ -38,7 +39,7 @@ describe("team schemas with description", () => {
       description: "a".repeat(30001),
       members: [],
     };
-    const result = teamSaveSchema.safeParse(data);
+    const result = v.safeParse(teamSaveSchema, data);
     expect(result.success).toBe(false);
   });
 
@@ -49,10 +50,10 @@ describe("team schemas with description", () => {
       description: "Concept: Hard TR with Hatterene and Indeedee-Female.",
       members: [null, null, null, null, null, null],
     };
-    const result = teamSchema.safeParse(data);
+    const result = v.safeParse(teamSchema, data);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.description).toBe("Concept: Hard TR with Hatterene and Indeedee-Female.");
+      expect(result.output.description).toBe("Concept: Hard TR with Hatterene and Indeedee-Female.");
     }
   });
 });

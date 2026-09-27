@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as v from "valibot";
 import i18next from "i18next";
 import jaTranslation from "@locales/ja/translation.json";
 import enTranslation from "@locales/en/translation.json";
@@ -42,7 +43,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -76,7 +77,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -120,7 +121,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -164,7 +165,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -195,7 +196,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -229,7 +230,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);
@@ -263,7 +264,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     // members 引数でスロット2を null に見立てた場合
@@ -299,7 +300,7 @@ describe("formatTeamValidationIssues", () => {
       ],
     };
 
-    const parseResult = teamSchema.safeParse(invalidTeam);
+    const parseResult = v.safeParse(teamSchema, invalidTeam);
     expect(parseResult.success).toBe(false);
 
     const issuesJa = formatTeamValidationIssues(parseResult, i18nJa.t.bind(i18nJa), invalidTeam.members);

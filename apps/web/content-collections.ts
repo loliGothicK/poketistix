@@ -2,7 +2,7 @@ import { defineCollection, defineConfig, type Context } from "@content-collectio
 import { compileMDX } from "@content-collections/mdx";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
-import { z } from "zod";
+import * as v from "valibot";
 import { P, match } from "ts-pattern";
 
 type MDXDocument = Parameters<typeof compileMDX>[1];
@@ -61,13 +61,16 @@ const posts = defineCollection({
   name: "posts",
   directory: "content/blog",
   include: "**/*.mdx",
-  schema: z.object({
-    title: z.string(),
-    description: z.string(),
-    date: z.coerce.date(),
-    tags: z.array(z.string()).default([]),
-    draft: z.boolean().default(false),
-    content: z.string(),
+  schema: v.object({
+    title: v.string(),
+    description: v.string(),
+    date: v.pipe(
+      v.unknown(),
+      v.transform((input) => (input instanceof Date ? input : new Date(input as string | number))),
+    ),
+    tags: v.optional(v.array(v.string()), () => []),
+    draft: v.optional(v.boolean(), () => false),
+    content: v.string(),
   }),
   transform: transformer({ withHeadings: true }),
 });
@@ -76,102 +79,102 @@ const docs = defineCollection({
   name: "docs",
   directory: "content/docs",
   include: "**/*.mdx",
-  schema: z.object({
-    title: z.string(),
-    description: z.string().optional(),
-    order: z.number().default(0),
-    group: z.string().optional(),
-    content: z.string(),
+  schema: v.object({
+    title: v.string(),
+    description: v.optional(v.string()),
+    order: v.optional(v.number(), () => 0),
+    group: v.optional(v.string()),
+    content: v.string(),
   }),
   transform: transformer({ withHeadings: true }),
 });
 
-const tsumePokemonSchema = z.object({
-  species: z.string(),
-  hpCurrent: z.number().optional(), // Make optional if some puzzles don't strictly require HP to be tracked
-  hpMax: z.number().optional(),
-  stats: z.object({ spe: z.number().optional() }).optional(),
-  moves: z.array(z.string()).optional(),
-  item: z.string().optional(),
-  ability: z.string().optional(),
-  nature: z.string().optional(),
-  status: z.string().optional(),
-  volatiles: z.array(z.string()).optional(),
+const tsumePokemonSchema = v.object({
+  species: v.string(),
+  hpCurrent: v.optional(v.number()), // Make optional if some puzzles don't strictly require HP to be tracked
+  hpMax: v.optional(v.number()),
+  stats: v.optional(v.object({ spe: v.optional(v.number()) })),
+  moves: v.optional(v.array(v.string())),
+  item: v.optional(v.string()),
+  ability: v.optional(v.string()),
+  nature: v.optional(v.string()),
+  status: v.optional(v.string()),
+  volatiles: v.optional(v.array(v.string())),
 });
 
-const practicalDataSchema = z.object({
-  attacker: z.object({
-    species: z.string(),
-    evs: z.string(),
-    item: z.string(),
-    nature: z.string(),
-    boosts: z.string().optional(),
+const practicalDataSchema = v.object({
+  attacker: v.object({
+    species: v.string(),
+    evs: v.string(),
+    item: v.string(),
+    nature: v.string(),
+    boosts: v.optional(v.string()),
   }),
-  defender: z.object({
-    species: z.string(),
-    evs: z.string(),
-    item: z.string(),
-    nature: z.string(),
-    hpPercent: z.number().optional(),
+  defender: v.object({
+    species: v.string(),
+    evs: v.string(),
+    item: v.string(),
+    nature: v.string(),
+    hpPercent: v.optional(v.number()),
   }),
-  ally: z
-    .object({
-      species: z.string(),
-      item: z.string().optional(),
-    })
-    .optional(),
-  opponentAlly: z
-    .object({
-      species: z.string(),
-      item: z.string().optional(),
-    })
-    .optional(),
-  move: z.string(),
-  field: z
-    .object({
-      weather: z.string().optional(),
-      terrain: z.string().optional(),
-    })
-    .optional(),
+  ally: v.optional(
+    v.object({
+      species: v.string(),
+      item: v.optional(v.string()),
+    }),
+  ),
+  opponentAlly: v.optional(
+    v.object({
+      species: v.string(),
+      item: v.optional(v.string()),
+    }),
+  ),
+  move: v.string(),
+  field: v.optional(
+    v.object({
+      weather: v.optional(v.string()),
+      terrain: v.optional(v.string()),
+    }),
+  ),
 });
 
-const tsumeSideSchema = z.object({
-  active: z.array(tsumePokemonSchema),
-  bench: z.array(tsumePokemonSchema).optional(),
+const tsumeSideSchema = v.object({
+  active: v.array(tsumePokemonSchema),
+  bench: v.optional(v.array(tsumePokemonSchema)),
 });
 
-const tsumeDataSchema = z.object({
+const tsumeDataSchema = v.object({
   playerSide: tsumeSideSchema,
   opponentSide: tsumeSideSchema,
-  field: z
-    .object({
-      weather: z.string().optional(),
-      terrain: z.string().optional(),
-      trickRoom: z.boolean().optional(),
-    })
-    .optional(),
-  rngControl: z
-    .object({
-      mode: z.enum(["deterministic", "probabilistic"]),
-      iterations: z.number().optional(),
-      crits: z.enum(["none", "always", "vanilla"]).optional(),
-      accuracy: z.enum(["perfect", "worst_case", "vanilla"]).optional(),
-      secondaryEffects: z.enum(["none", "always", "vanilla"]).optional(),
-      damageRoll: z.enum(["max", "min", "expected", "worst_case", "vanilla"]).optional(),
-      speedTies: z.enum(["player_wins", "opponent_wins", "vanilla"]).optional(),
-    })
-    .optional(),
-  correctMoves: z.array(z.string()),
-  opponentResponses: z.record(z.string(), z.string()).optional(),
+  field: v.optional(
+    v.object({
+      weather: v.optional(v.string()),
+      terrain: v.optional(v.string()),
+      trickRoom: v.optional(v.boolean()),
+    }),
+  ),
+  rngControl: v.optional(
+    v.object({
+      mode: v.picklist(["deterministic", "probabilistic"]),
+      iterations: v.optional(v.number()),
+      crits: v.optional(v.picklist(["none", "always", "vanilla"])),
+      accuracy: v.optional(v.picklist(["perfect", "worst_case", "vanilla"])),
+      secondaryEffects: v.optional(v.picklist(["none", "always", "vanilla"])),
+      damageRoll: v.optional(v.picklist(["max", "min", "expected", "worst_case", "vanilla"])),
+      speedTies: v.optional(v.picklist(["player_wins", "opponent_wins", "vanilla"])),
+    }),
+  ),
+  correctMoves: v.array(v.string()),
+  opponentResponses: v.optional(v.record(v.string(), v.string())),
 });
 
 const quizzes = defineCollection({
   name: "quizzes",
   directory: "content/quiz",
   include: "**/*.mdx",
-  schema: z
-    .object({
-      format: z.enum([
+  schema: v.pipe(
+    v.object({
+      format: v.picklist([
         "choices",
         "multi_select",
         "ordering",
@@ -180,24 +183,24 @@ const quizzes = defineCollection({
         "input",
         "tsume_action",
       ]),
-      generation: z.number().optional(),
-      question: z.string(),
-      options: z.array(z.string()).optional(),
+      generation: v.optional(v.number()),
+      question: v.string(),
+      options: v.optional(v.array(v.string())),
 
       // Answer fields (all optional; validated by refinements below)
-      correctAnswerIndex: z.number().optional(),
-      correctAnswerIndices: z.array(z.number()).optional(),
-      correctAnswer: z.string().optional(), // only for 'input' format
-      correctOrderIndices: z.array(z.number()).optional(),
-      correctGroups: z.record(z.string(), z.array(z.string())).optional(),
+      correctAnswerIndex: v.optional(v.number()),
+      correctAnswerIndices: v.optional(v.array(v.number())),
+      correctAnswer: v.optional(v.string()), // only for 'input' format
+      correctOrderIndices: v.optional(v.array(v.number())),
+      correctGroups: v.optional(v.record(v.string(), v.array(v.string()))),
 
-      practicalData: practicalDataSchema.optional(),
-      tsumeData: z.optional(tsumeDataSchema),
-      reviewed: z.boolean().default(false),
-      content: z.string(),
-    })
+      practicalData: v.optional(practicalDataSchema),
+      tsumeData: v.optional(tsumeDataSchema),
+      reviewed: v.optional(v.boolean(), () => false),
+      content: v.string(),
+    }),
     // Refinement 1: Answer field must be present and correct for the format
-    .refine(
+    v.check(
       (data) =>
         match(data.format)
           .with(
@@ -219,31 +222,29 @@ const quizzes = defineCollection({
           .with("input", () => data.correctAnswer !== undefined && data.correctAnswer.length > 0)
           .with("tsume_action", () => true)
           .exhaustive(),
-      { message: "Answer field must match format type" },
-    )
-    // Refinement 2: Options count must satisfy per-format constraints
-    .refine(
-      (data) => {
-        if (data.format === "input" || data.format === "tsume_action") {
-          return true; // these formats do not require options
-        }
-
-        if (!data.options || data.options.length === 0) {
-          return false;
-        }
-
-        const count = data.options.length;
-
-        return match({ format: data.format, count })
-          .with({ format: "multi_select", count: P.number.between(3, 4) }, () => true)
-          .with({ format: "ordering", count: 4 }, () => true)
-          .with({ format: "grouping", count: P.number.between(3, 5) }, () => true)
-          .with({ format: "one_way", count: P.number.between(2, 6) }, () => true)
-          .with({ format: "choices", count: P.number.between(2, 4) }, () => true)
-          .otherwise(() => false);
-      },
-      { message: "Options count must match format requirements", path: ["options"] },
+      "Answer field must match format type",
     ),
+    // Refinement 2: Options count must satisfy per-format constraints
+    v.check((data) => {
+      if (data.format === "input" || data.format === "tsume_action") {
+        return true; // these formats do not require options
+      }
+
+      if (!data.options || data.options.length === 0) {
+        return false;
+      }
+
+      const count = data.options.length;
+
+      return match({ format: data.format, count })
+        .with({ format: "multi_select", count: P.number.between(3, 4) }, () => true)
+        .with({ format: "ordering", count: 4 }, () => true)
+        .with({ format: "grouping", count: P.number.between(3, 5) }, () => true)
+        .with({ format: "one_way", count: P.number.between(2, 6) }, () => true)
+        .with({ format: "choices", count: P.number.between(2, 4) }, () => true)
+        .otherwise(() => false);
+    }, "Options count must match format requirements"),
+  ),
   transform: async (document, context) => {
     const transformed = await transformer({ withHeadings: false })(document, context);
     const parts = document._meta.path.replace(/\\/g, "/").split("/");

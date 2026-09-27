@@ -9,6 +9,7 @@ import { teamsSaveSchema } from "@/lib/validator/team";
 import { exportPokepaste } from "@/lib/pokepaste";
 import { ulid } from "ulid";
 import { buildTeamSnapshot, diffTeamSnapshots, isEmptyTeamDiff } from "@/lib/team-diff";
+import * as v from "valibot";
 
 export async function GET(_request: Request) {
   const supabase = await createClient();
@@ -91,12 +92,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = teamsSaveSchema.safeParse(rawTeams);
+  const parsed = v.safeParse(teamsSaveSchema, rawTeams);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues }, { status: 422 });
+    return NextResponse.json({ error: parsed.issues }, { status: 422 });
   }
 
-  const incomingTeams = parsed.data;
+  const incomingTeams = parsed.output;
 
   await withChildSpan(
     "db.teams.save",

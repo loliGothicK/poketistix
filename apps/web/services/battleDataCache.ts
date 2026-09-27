@@ -1,50 +1,53 @@
 "use cache";
 
 import { cacheLife, cacheTag } from "next/cache";
-import { z } from "zod";
+import * as v from "valibot";
 import { withChildSpan } from "@/lib/otel";
 
-const rowSchema = z
-  .object({
-    category: z.enum(["move", "held_item", "teammate", "stat_alignment", "stat_points", "ability"]),
-    rank: z.number(),
-    name: z.string(),
-    percentage_value: z.number().nullable(),
-  })
-  .readonly();
+const rowSchema = v.object({
+  category: v.picklist([
+    "move",
+    "held_item",
+    "teammate",
+    "stat_alignment",
+    "stat_points",
+    "ability",
+  ]),
+  rank: v.number(),
+  name: v.string(),
+  percentage_value: v.nullable(v.number()),
+});
 
-const pokemonSchema = z
-  .object({
-    name: z.string(),
-    battleName: z.string(),
-    slug: z.string(),
-    summary: z
-      .object({
-        battleSummary: z
-          .record(
-            z.string(),
-            z
-              .object({
-                Doubles: z
-                  .object({
-                    rows: z.array(rowSchema).default([]),
-                  })
-                  .optional(),
-                Singles: z
-                  .object({
-                    rows: z.array(rowSchema).default([]),
-                  })
-                  .optional(),
-              })
-              .optional(),
-          )
-          .optional(),
-      })
-      .optional(),
-  })
-  .readonly();
+const pokemonSchema = v.object({
+  name: v.string(),
+  battleName: v.string(),
+  slug: v.string(),
+  summary: v.optional(
+    v.object({
+      battleSummary: v.optional(
+        v.record(
+          v.string(),
+          v.optional(
+            v.object({
+              Doubles: v.optional(
+                v.object({
+                  rows: v.optional(v.array(rowSchema), () => []),
+                }),
+              ),
+              Singles: v.optional(
+                v.object({
+                  rows: v.optional(v.array(rowSchema), () => []),
+                }),
+              ),
+            }),
+          ),
+        ),
+      ),
+    }),
+  ),
+});
 
-export type PokemonCacheData = z.infer<typeof pokemonSchema>;
+export type PokemonCacheData = v.InferOutput<typeof pokemonSchema>;
 
 // キャッシュ層：ファイルトップの "use cache" により全エクスポートがサーバー専用キャッシュ関数として扱われる
 export async function fetchAndParseBattleData(
@@ -78,6 +81,6 @@ export async function fetchAndParseBattleData(
   }
 
   const rawJson = await res.json();
-  // Zodでパース（失敗時はZodErrorがthrowされ、これもキャッシュ更新をキャンセルさせる）
-  return pokemonSchema.parse(rawJson);
+  // Valibotでパース（失敗時はValiErrorがthrowされ、これもキャッシュ更新をキャンセルさせる）
+  return v.parse(pokemonSchema, rawJson);
 }

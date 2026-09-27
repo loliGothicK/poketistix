@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as v from "valibot";
 import {
   seasonInputSchema,
   seasonUpdateSchema,
@@ -10,7 +11,7 @@ import {
 
 describe("seasonInputSchema", () => {
   it("accepts a minimal valid season", () => {
-    const parsed = seasonInputSchema.safeParse({
+    const parsed = v.safeParse(seasonInputSchema, {
       name: "レギュレーションH S24",
       format: "singles",
     });
@@ -18,7 +19,7 @@ describe("seasonInputSchema", () => {
   });
 
   it("accepts a full valid season", () => {
-    const parsed = seasonInputSchema.safeParse({
+    const parsed = v.safeParse(seasonInputSchema, {
       id: "01JABCDEF0123456789ABCDEFG",
       name: "doubles season",
       format: "doubles",
@@ -30,22 +31,22 @@ describe("seasonInputSchema", () => {
   });
 
   it("rejects an invalid format", () => {
-    const parsed = seasonInputSchema.safeParse({ name: "x", format: "triples" });
+    const parsed = v.safeParse(seasonInputSchema, { name: "x", format: "triples" });
     expect(parsed.success).toBe(false);
   });
 
   it("rejects an empty name", () => {
-    const parsed = seasonInputSchema.safeParse({ name: "", format: "singles" });
+    const parsed = v.safeParse(seasonInputSchema, { name: "", format: "singles" });
     expect(parsed.success).toBe(false);
   });
 
   it("rejects a name longer than 100 chars", () => {
-    const parsed = seasonInputSchema.safeParse({ name: "a".repeat(101), format: "singles" });
+    const parsed = v.safeParse(seasonInputSchema, { name: "a".repeat(101), format: "singles" });
     expect(parsed.success).toBe(false);
   });
 
   it("rejects a malformed date", () => {
-    const parsed = seasonInputSchema.safeParse({
+    const parsed = v.safeParse(seasonInputSchema, {
       name: "x",
       format: "singles",
       startedAt: "2026/01/01",
@@ -56,30 +57,30 @@ describe("seasonInputSchema", () => {
 
 describe("seasonUpdateSchema", () => {
   it("accepts an empty partial update", () => {
-    expect(seasonUpdateSchema.safeParse({}).success).toBe(true);
+    expect(v.safeParse(seasonUpdateSchema, {}).success).toBe(true);
   });
 
   it("accepts a single-field update", () => {
-    expect(seasonUpdateSchema.safeParse({ name: "renamed" }).success).toBe(true);
+    expect(v.safeParse(seasonUpdateSchema, { name: "renamed" }).success).toBe(true);
   });
 
   it("still validates the provided field", () => {
-    expect(seasonUpdateSchema.safeParse({ format: "invalid" }).success).toBe(false);
+    expect(v.safeParse(seasonUpdateSchema, { format: "invalid" }).success).toBe(false);
   });
 });
 
 describe("opponentInputSchema", () => {
   it("accepts a minimal opponent (slug only)", () => {
-    const parsed = opponentInputSchema.safeParse({ slotIndex: 0, pokemonSlug: "miraidon" });
+    const parsed = v.safeParse(opponentInputSchema, { slotIndex: 0, pokemonSlug: "miraidon" });
     expect(parsed.success).toBe(true);
   });
 
   it("rejects slotIndex out of range", () => {
-    expect(opponentInputSchema.safeParse({ slotIndex: 6, pokemonSlug: "x" }).success).toBe(false);
+    expect(v.safeParse(opponentInputSchema, { slotIndex: 6, pokemonSlug: "x" }).success).toBe(false);
   });
 
   it("rejects an invalid selectionRole", () => {
-    const parsed = opponentInputSchema.safeParse({
+    const parsed = v.safeParse(opponentInputSchema, {
       slotIndex: 0,
       pokemonSlug: "x",
       selectionRole: "middle",
@@ -100,11 +101,11 @@ describe("battleRecordInputSchema", () => {
   };
 
   it("accepts a valid record", () => {
-    expect(battleRecordInputSchema.safeParse(base).success).toBe(true);
+    expect(v.safeParse(battleRecordInputSchema, base).success).toBe(true);
   });
 
   it("accepts an optional ISO playedAt", () => {
-    const parsed = battleRecordInputSchema.safeParse({
+    const parsed = v.safeParse(battleRecordInputSchema, {
       ...base,
       playedAt: "2026-07-07T10:00:00+09:00",
     });
@@ -112,11 +113,11 @@ describe("battleRecordInputSchema", () => {
   });
 
   it("rejects an invalid result", () => {
-    expect(battleRecordInputSchema.safeParse({ ...base, result: "victory" }).success).toBe(false);
+    expect(v.safeParse(battleRecordInputSchema, { ...base, result: "victory" }).success).toBe(false);
   });
 
   it("rejects more than 6 team members", () => {
-    const parsed = battleRecordInputSchema.safeParse({
+    const parsed = v.safeParse(battleRecordInputSchema, {
       ...base,
       myTeam: Array.from({ length: 7 }, (_, i) => ({ boxId: String(i) })),
     });
@@ -124,7 +125,7 @@ describe("battleRecordInputSchema", () => {
   });
 
   it("rejects duplicate opponent slotIndex", () => {
-    const parsed = battleRecordInputSchema.safeParse({
+    const parsed = v.safeParse(battleRecordInputSchema, {
       ...base,
       opponents: [
         { slotIndex: 0, pokemonSlug: "a" },
@@ -135,21 +136,21 @@ describe("battleRecordInputSchema", () => {
   });
 
   it("rejects mySelection index out of range", () => {
-    expect(battleRecordInputSchema.safeParse({ ...base, mySelection: [0, 9] }).success).toBe(false);
+    expect(v.safeParse(battleRecordInputSchema, { ...base, mySelection: [0, 9] }).success).toBe(false);
   });
 });
 
 describe("battleRecordUpdateSchema", () => {
   it("accepts an empty partial update", () => {
-    expect(battleRecordUpdateSchema.safeParse({}).success).toBe(true);
+    expect(v.safeParse(battleRecordUpdateSchema, {}).success).toBe(true);
   });
 
   it("accepts a result-only update", () => {
-    expect(battleRecordUpdateSchema.safeParse({ result: "loss" }).success).toBe(true);
+    expect(v.safeParse(battleRecordUpdateSchema, { result: "loss" }).success).toBe(true);
   });
 
   it("omits seasonId (immutable)", () => {
-    const parsed = battleRecordUpdateSchema.parse({ seasonId: "should-be-stripped" });
+    const parsed = v.parse(battleRecordUpdateSchema, { seasonId: "should-be-stripped" });
     expect(parsed).not.toHaveProperty("seasonId");
   });
 });

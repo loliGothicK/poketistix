@@ -1,23 +1,21 @@
 import { data } from "@poketistix/data/master/pokemon.json";
-import { z } from "zod";
+import * as v from "valibot";
 
-const PokemonSchema = z
-  .object({
-    id: z.number(),
-    identifier: z.string(),
-    species_id: z.number(),
-    height: z.number(),
-    weight: z.number(),
-    gender_rate: z.number(),
-    order: z.number().nullable(),
-    is_default: z.boolean(),
-  })
-  .readonly();
+const PokemonSchema = v.object({
+  id: v.number(),
+  identifier: v.string(),
+  species_id: v.number(),
+  height: v.number(),
+  weight: v.number(),
+  gender_rate: v.number(),
+  order: v.nullable(v.number()),
+  is_default: v.boolean(),
+});
 
-type Pokemon = z.infer<typeof PokemonSchema>;
+type Pokemon = v.InferOutput<typeof PokemonSchema>;
 
 export const pokemonList: readonly Pokemon[] = data.map((memoria) => {
-  return PokemonSchema.parse(memoria);
+  return v.parse(PokemonSchema, memoria);
 });
 
 export const pokemonById: Map<number, Pokemon> = new Map(

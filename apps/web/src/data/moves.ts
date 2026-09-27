@@ -1,65 +1,61 @@
 import { data } from "@poketistix/data/champions/moves.json";
 import { moveCategories, moveClassifications, moveRanges, types } from "@/types/pokemon";
-import { z as zod } from "zod";
-import { toValidationError, ValidationError } from "zod-validation-error";
+import * as v from "valibot";
 import { Either, tryCatch } from "fp-ts/lib/Either";
 
-export function parse(value: zod.input<typeof schema>): Either<ValidationError, Move> {
-  return tryCatch(() => schema.parse(value), toValidationError());
+// Valibot doesn't have a zod-validation-error equivalent; we use ValiError directly.
+export type MoveParseError = v.ValiError<typeof schema>;
+
+export function parse(value: v.InferInput<typeof schema>): Either<MoveParseError, Move> {
+  return tryCatch(
+    () => v.parse(schema, value),
+    (e) => e as MoveParseError,
+  );
 }
 
-const schema = zod
-  .object({
-    id: zod.number(),
-    identifier: zod.string(),
-    type: zod.enum(types, {
-      error: (iss) => `${String(iss.input)}" is invalid`,
-    }),
-    category: zod.enum(moveCategories),
-    power: zod.number().nullable(),
-    accuracy: zod.number().nullable(),
-    range: zod.enum(moveRanges, {
-      error: (iss) => `${String(iss.input)}" is invalid`,
-    }),
-    pp: zod.number(),
-    priority: zod.number().nullable(),
+const schema = v.pipe(
+  v.object({
+    id: v.number(),
+    identifier: v.string(),
+    type: v.picklist(types),
+    category: v.picklist(moveCategories),
+    power: v.nullable(v.number()),
+    accuracy: v.nullable(v.number()),
+    range: v.picklist(moveRanges),
+    pp: v.number(),
+    priority: v.nullable(v.number()),
 
-    classifications: zod.array(
-      zod.enum(moveClassifications, {
-        error: (iss) => `"${String(iss.input)}" is invalid`,
+    classifications: v.array(v.picklist(moveClassifications)),
+    secondary: v.nullish(
+      v.object({
+        chance: v.number(),
+        status: v.optional(v.picklist(["brn", "par", "psn", "tox", "slp", "frz"] as const)),
+        volatileStatus: v.optional(v.picklist(["flinch", "confusion"] as const)),
+        boosts: v.optional(
+          v.object({
+            atk: v.optional(v.number()),
+            def: v.optional(v.number()),
+            spa: v.optional(v.number()),
+            spd: v.optional(v.number()),
+            spe: v.optional(v.number()),
+            accuracy: v.optional(v.number()),
+            evasion: v.optional(v.number()),
+          }),
+        ),
       }),
     ),
-    secondary: zod
-      .object({
-        chance: zod.number(),
-        status: zod.enum(["brn", "par", "psn", "tox", "slp", "frz"]).optional(),
-        volatileStatus: zod.enum(["flinch", "confusion"]).optional(),
-        boosts: zod
-          .object({
-            atk: zod.number().optional(),
-            def: zod.number().optional(),
-            spa: zod.number().optional(),
-            spd: zod.number().optional(),
-            spe: zod.number().optional(),
-            accuracy: zod.number().optional(),
-            evasion: zod.number().optional(),
-          })
-          .optional(),
-      })
-      .nullable()
-      .optional(),
-  })
-  .readonly()
-  .brand<"Move">();
+  }),
+  v.brand("Move"),
+);
 
-type Move = zod.infer<typeof schema>;
+type Move = v.InferOutput<typeof schema>;
 
 export const MoveList: readonly Move[] = data.map((move) => {
   // Override spit-up to be a special move (since it's erroneously marked as status with null power in pokeapi)
   const isSpitUp = move.identifier === "spit-up";
   const category = isSpitUp ? "special" : move.category;
 
-  return schema.parse({ ...move, type: move.type.toLocaleLowerCase(), category });
+  return v.parse(schema, { ...move, type: move.type.toLocaleLowerCase(), category });
 });
 
 export const moveById = new Map(MoveList.map((move) => [move.id, move]));

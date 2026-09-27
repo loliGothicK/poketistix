@@ -258,6 +258,10 @@ export function InlineMarkdownEditor({
     ],
     content: value,
     onUpdate: ({ editor }) => {
+      // Guard against onUpdate firing on a partially-destroyed editor during
+      // navigation away/back (schema is nulled before the editor ref itself
+      // becomes null, causing getText() to throw).
+      if (editor.isDestroyed || !editor.schema) return;
       const markdownStorage = editor.storage as unknown as {
         markdown?: { getMarkdown: () => string };
       };
@@ -272,6 +276,8 @@ export function InlineMarkdownEditor({
     if (!editor) return;
     // ユーザー自身が編集中の場合は外部同期によるカーソルリセットを防ぐ
     if (editor.isFocused) return;
+    // Same guard: schema can be null on a mid-teardown editor instance
+    if (editor.isDestroyed || !editor.schema) return;
 
     const markdownStorage = editor.storage as unknown as {
       markdown?: { getMarkdown: () => string };

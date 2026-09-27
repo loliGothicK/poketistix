@@ -175,8 +175,8 @@ export default function DashboardPage() {
     const layout = normalizeLayout(draftLayout);
     setDraftLayout(layout);
     await updateDashboard(activeDashboard.id, {
-      layout,
-      variables: draftVariables ?? [],
+      layout: [...layout],
+      variables: [...(draftVariables ?? [])],
     });
     setEditing(false);
     setDraftLayout(null);

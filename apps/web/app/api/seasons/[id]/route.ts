@@ -9,6 +9,7 @@ import type { InferSelectModel } from "drizzle-orm";
 import { updateSeason, deleteSeason } from "@/lib/db/repositories/seasonRepository";
 import type { InsertSeason } from "@/lib/db/factories/seasonFactory";
 import { isLeft } from "fp-ts/Either";
+import * as v from "valibot";
 
 const toDto = (row: InferSelectModel<typeof seasons>): Season => ({
   id: row.id,
@@ -38,12 +39,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = seasonUpdateSchema.safeParse(body);
+  const parsed = v.safeParse(seasonUpdateSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       const resultTask = updateSeason(id, userId, input as Partial<InsertSeason>);
       const result = await resultTask();
 

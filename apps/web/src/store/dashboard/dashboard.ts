@@ -1,42 +1,40 @@
-import { z } from "zod";
+import * as v from "valibot";
 import type { DataSource, DashboardVariable } from "@/lib/db/schema";
 
 export type { DataSource, DashboardVariable };
 
-export const visualizationTypeSchema = z.enum([
+export const visualizationTypeSchema = v.picklist([
   "table",
   "gauge",
   "stat",
   "histogram",
   "heatmap",
   "custom",
-]);
-export type VisualizationType = z.infer<typeof visualizationTypeSchema>;
+] as const);
+export type VisualizationType = v.InferOutput<typeof visualizationTypeSchema>;
 
 // =====================================================================
 // DTO（クライアント⇔サーバ間でやり取りするシリアライズ済みの形）
 // 設計: .design/dashboard.md
 // =====================================================================
 
-/** ウィジェットのデータソース（Zod スキーマ） */
-export const dataSourceSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("season"), seasonId: z.string().min(1).nullable() }),
-  z.object({ type: z.literal("variable"), variableId: z.string().min(1) }),
+/** ウィジェットのデータソース（Valibot スキーマ） */
+export const dataSourceSchema = v.variant("type", [
+  v.object({ type: v.literal("season"), seasonId: v.nullable(v.pipe(v.string(), v.minLength(1))) }),
+  v.object({ type: v.literal("variable"), variableId: v.pipe(v.string(), v.minLength(1)) }),
 ]);
 
 /** ダッシュボード変数で最新シーズンをデフォルトにするための特別な値 */
 export const VARIABLE_LATEST_SEASON = "__latest__";
 
-/** ダッシュボード変数（Zod スキーマ） */
-export const dashboardVariableSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1).max(50),
-    label: z.string().min(1).max(100),
-    type: z.literal("season"),
-    defaultSeasonId: z.string().min(1).nullable(),
-  })
-  .readonly();
+/** ダッシュボード変数（Valibot スキーマ） */
+export const dashboardVariableSchema = v.object({
+  id: v.pipe(v.string(), v.minLength(1)),
+  name: v.pipe(v.string(), v.minLength(1), v.maxLength(50)),
+  label: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  type: v.literal("season"),
+  defaultSeasonId: v.nullable(v.pipe(v.string(), v.minLength(1))),
+});
 
 /** ダッシュボード上の1ウィジェット */
 export interface DashboardWidget {
@@ -76,7 +74,7 @@ export interface Dashboard {
 }
 
 // =====================================================================
-// 入力バリデーション（Zod）
+// 入力バリデーション（Valibot）
 // =====================================================================
 
 /** グリッド列数の上限（lg ブレークポイント基準） */
@@ -84,49 +82,52 @@ export const DASHBOARD_GRID_MAX_COLS = 8;
 /** ウィジェット行高の上限 */
 export const DASHBOARD_GRID_MAX_ROWS = 12;
 
-export const dashboardWidgetSchema = z
-  .object({
-    id: z.string().min(1),
-    templateId: z.string().optional(),
-    title: z.string().max(100),
-    dataSource: dataSourceSchema,
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
-    w: z.number().int().min(1).max(DASHBOARD_GRID_MAX_COLS),
-    h: z.number().int().min(1).max(DASHBOARD_GRID_MAX_ROWS),
-    options: z.record(z.string(), z.unknown()).optional(),
-    visualization: visualizationTypeSchema.optional(),
-    query: z.string().optional(),
-    transformer: z.string().optional(),
-    transformerCode: z.string().optional(),
-  })
-  .readonly();
-
-const dashboardInputObject = z.object({
-  id: z.string().min(1).optional(),
-  name: z.string().trim().min(1).max(100),
-  isDefault: z.boolean().optional(),
-  layout: z
-    .array(dashboardWidgetSchema)
-    .max(30)
-    .refine((arr) => new Set(arr.map((w) => w.id)).size === arr.length, "widget id must be unique")
-    .readonly()
-    .optional(),
-  variables: z
-    .array(dashboardVariableSchema)
-    .max(20)
-    .refine(
-      (arr) => new Set(arr.map((v) => v.name)).size === arr.length,
-      "variable name must be unique",
-    )
-    .readonly()
-    .optional(),
+export const dashboardWidgetSchema = v.object({
+  id: v.pipe(v.string(), v.minLength(1)),
+  templateId: v.optional(v.string()),
+  title: v.pipe(v.string(), v.maxLength(100)),
+  dataSource: dataSourceSchema,
+  x: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  y: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  w: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(DASHBOARD_GRID_MAX_COLS)),
+  h: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(DASHBOARD_GRID_MAX_ROWS)),
+  options: v.optional(v.record(v.string(), v.unknown())),
+  visualization: v.optional(visualizationTypeSchema),
+  query: v.optional(v.string()),
+  transformer: v.optional(v.string()),
+  transformerCode: v.optional(v.string()),
 });
 
-export const dashboardInputSchema = dashboardInputObject.readonly();
+const dashboardInputObject = v.object({
+  id: v.optional(v.pipe(v.string(), v.minLength(1))),
+  name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
+  isDefault: v.optional(v.boolean()),
+  layout: v.optional(
+    v.pipe(
+      v.array(dashboardWidgetSchema),
+      v.maxLength(30),
+      v.check(
+        (arr) => new Set(arr.map((w) => w.id)).size === arr.length,
+        "widget id must be unique",
+      ),
+    ),
+  ),
+  variables: v.optional(
+    v.pipe(
+      v.array(dashboardVariableSchema),
+      v.maxLength(20),
+      v.check(
+        (arr) => new Set(arr.map((vr) => vr.name)).size === arr.length,
+        "variable name must be unique",
+      ),
+    ),
+  ),
+});
 
-export type DashboardInput = z.infer<typeof dashboardInputSchema>;
+export const dashboardInputSchema = dashboardInputObject;
 
-export const dashboardUpdateSchema = dashboardInputObject.omit({ id: true }).partial().readonly();
+export type DashboardInput = v.InferOutput<typeof dashboardInputSchema>;
+
+export const dashboardUpdateSchema = v.partial(v.omit(dashboardInputObject, ["id"]));
 
 export type DashboardUpdate = Partial<Omit<DashboardInput, "id">>;

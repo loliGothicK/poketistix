@@ -8,6 +8,7 @@ import { genUlid } from "@/lib/db/ulid-type";
 import { dashboardInputSchema, type Dashboard } from "@/store/dashboard/dashboard";
 import { withChildSpan } from "@/lib/otel";
 import type { InferSelectModel } from "drizzle-orm";
+import * as v from "valibot";
 
 type DashboardRow = InferSelectModel<typeof dashboards>;
 
@@ -57,12 +58,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = dashboardInputSchema.safeParse(body);
+  const parsed = v.safeParse(dashboardInputSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       const id = input.id ?? genUlid();
       const isDefault = input.isDefault ?? false;
 

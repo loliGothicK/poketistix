@@ -2,25 +2,23 @@
  * share.spec.ts
  *
  * テスト対象:
- *   1. シェア API の Zod スナップショットバリデーション
+ *   1. シェア API の Valibot スナップショットバリデーション
  *   2. PokemonBuildCard で使うスタット計算ロジック (calcStat / statColor)
  *   3. EN/JA 翻訳キーの完全性 (share.* キーが両言語に存在するか)
  */
 
 import { describe, it, expect } from "vitest";
-import { z } from "zod";
+import * as v from "valibot";
 import { calcHp, calcStatus } from "@/data/utility/training";
 import enTranslation from "@locales/en/translation.json";
 import jaTranslation from "@locales/ja/translation.json";
 
-// ── 1. スナップショット Zod スキーマ (API と同定義) ──────────────────────────
+// ── 1. スナップショット Valibot スキーマ (API と同定義) ──────────────────────────
 
-const snapshotSchema = z
-  .object({
-    teamName: z.string().min(1).max(100),
-    members: z.array(z.union([z.object({}).loose(), z.null()])).length(6),
-  })
-  .readonly();
+const snapshotSchema = v.object({
+  teamName: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  members: v.pipe(v.array(v.nullable(v.looseObject({}))), v.length(6)),
+});
 
 const validSnapshot = {
   teamName: "My Team",
@@ -29,12 +27,12 @@ const validSnapshot = {
 
 describe("snapshotSchema — バリデーション", () => {
   it("有効なスナップショットは成功する", () => {
-    const result = snapshotSchema.safeParse(validSnapshot);
+    const result = v.safeParse(snapshotSchema, validSnapshot);
     expect(result.success).toBe(true);
   });
 
   it("members が 6 未満だと失敗する", () => {
-    const result = snapshotSchema.safeParse({
+    const result = v.safeParse(snapshotSchema, {
       ...validSnapshot,
       members: [null, null, null],
     });
@@ -42,7 +40,7 @@ describe("snapshotSchema — バリデーション", () => {
   });
 
   it("members が 6 超だと失敗する", () => {
-    const result = snapshotSchema.safeParse({
+    const result = v.safeParse(snapshotSchema, {
       ...validSnapshot,
       members: [null, null, null, null, null, null, null],
     });
@@ -50,12 +48,12 @@ describe("snapshotSchema — バリデーション", () => {
   });
 
   it("teamName が空文字だと失敗する", () => {
-    const result = snapshotSchema.safeParse({ ...validSnapshot, teamName: "" });
+    const result = v.safeParse(snapshotSchema, { ...validSnapshot, teamName: "" });
     expect(result.success).toBe(false);
   });
 
   it("teamName が 101 文字だと失敗する", () => {
-    const result = snapshotSchema.safeParse({
+    const result = v.safeParse(snapshotSchema, {
       ...validSnapshot,
       teamName: "a".repeat(101),
     });
@@ -63,7 +61,7 @@ describe("snapshotSchema — バリデーション", () => {
   });
 
   it("teamName が 100 文字は成功する", () => {
-    const result = snapshotSchema.safeParse({
+    const result = v.safeParse(snapshotSchema, {
       ...validSnapshot,
       teamName: "a".repeat(100),
     });
@@ -82,7 +80,7 @@ describe("snapshotSchema — バリデーション", () => {
       moves: [1, 2, null, null],
       evs: { hp: 0, atk: 4, def: 0, spa: 0, spd: 0, spe: 0 },
     };
-    const result = snapshotSchema.safeParse({
+    const result = v.safeParse(snapshotSchema, {
       ...validSnapshot,
       members: [member, null, null, null, null, null],
     });

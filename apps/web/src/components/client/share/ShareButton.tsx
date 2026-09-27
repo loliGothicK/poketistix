@@ -28,6 +28,7 @@ import { alpha } from "@mui/material";
 
 import { teamSchema } from "@/lib/validator/team";
 import { formatTeamValidationIssues } from "@/lib/validator/format-issues";
+import * as v from "valibot";
 
 type ShareState = "idle" | "loading" | "success" | "error";
 
@@ -108,7 +109,7 @@ export function ShareButton() {
   const isLoading = shareState === "loading";
   const isSuccess = shareState === "success";
 
-  const parseResult = activeTeam ? teamSchema.safeParse(activeTeam) : null;
+  const parseResult = activeTeam ? v.safeParse(teamSchema, activeTeam) : null;
   const isDraft = parseResult ? !parseResult.success : false;
   const draftReasons =
     parseResult && !parseResult.success && activeTeam

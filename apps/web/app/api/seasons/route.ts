@@ -9,6 +9,7 @@ import type { InferSelectModel } from "drizzle-orm";
 import { SeasonFactory } from "@/lib/db/factories/seasonFactory";
 import { createSeason, listSeasons } from "@/lib/db/repositories/seasonRepository";
 import { isLeft } from "fp-ts/Either";
+import * as v from "valibot";
 
 const toDto = (row: InferSelectModel<typeof seasons>): Season => ({
   id: row.id,
@@ -52,12 +53,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = seasonInputSchema.safeParse(body);
+  const parsed = v.safeParse(seasonInputSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       const factory = new SeasonFactory()
         .withUserId(userId)
         .withName(input.name)

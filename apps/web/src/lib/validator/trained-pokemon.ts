@@ -1,94 +1,107 @@
-import { z } from "zod";
+import * as v from "valibot";
 import { championsPokemonByIdentifier } from "@/data/champions-pokemon";
 import { MAX_EV_TOTAL, MAX_EV_PER_STAT } from "@/store/team/lint";
 
-export const trainedPokemonSaveSchema = z
-  .object({
-    boxId: z.string(),
-    identifier: z.string(),
-    slug: z.string().optional(),
-    item: z.number().nullable().optional(),
-    ability: z.number().optional(),
-    gender: z
-      .object({
-        fixed: z.boolean().optional(),
-        specified: z.enum(["male", "female", "unknown"]).optional(),
-      })
-      .optional(),
-    nature: z
-      .object({
-        plus: z.enum(["hp", "atk", "def", "spa", "spd", "spe"]).nullable().optional(),
-        minus: z.enum(["hp", "atk", "def", "spa", "spd", "spe"]).nullable().optional(),
-      })
-      .optional(),
-    moves: z
-      .tuple([
-        z.number().nullable(),
-        z.number().nullable(),
-        z.number().nullable(),
-        z.number().nullable(),
-      ])
-      .optional(),
-    evs: z
-      .object({
-        hp: z.number().optional(),
-        atk: z.number().optional(),
-        def: z.number().optional(),
-        spa: z.number().optional(),
-        spd: z.number().optional(),
-        spe: z.number().optional(),
-      })
-      .optional(),
-    description: z.string().max(2000).optional(),
-  })
-  .loose();
+const statEnum = v.picklist(["hp", "atk", "def", "spa", "spd", "spe"] as const);
+const genderEnum = v.picklist(["male", "female", "unknown"] as const);
 
-export const trainedPokemonSchema = z
-  .object({
-    boxId: z.string().optional(),
-    identifier: z.string(),
-    slug: z.string().optional(),
-    description: z.string().max(2000).optional(),
-    item: z.number().nullable().optional(),
-    ability: z.number().nullable().optional(),
-    gender: z
-      .object({
-        fixed: z.boolean().optional(),
-        specified: z.enum(["male", "female", "unknown"]).optional(),
-      })
-      .optional(),
-    nature: z
-      .object({
-        plus: z.enum(["hp", "atk", "def", "spa", "spd", "spe"]).nullable().optional(),
-        minus: z.enum(["hp", "atk", "def", "spa", "spd", "spe"]).nullable().optional(),
-      })
-      .optional(),
-    moves: z.any().optional(),
-    evs: z.any().optional(),
-  })
-  .superRefine((data, ctx) => {
+export const trainedPokemonSaveSchema = v.looseObject({
+  boxId: v.string(),
+  identifier: v.string(),
+  slug: v.optional(v.string()),
+  item: v.optional(v.nullable(v.number())),
+  ability: v.optional(v.number()),
+  gender: v.optional(
+    v.object({
+      fixed: v.optional(v.boolean()),
+      specified: v.optional(genderEnum),
+    }),
+  ),
+  nature: v.optional(
+    v.object({
+      plus: v.optional(v.nullable(statEnum)),
+      minus: v.optional(v.nullable(statEnum)),
+    }),
+  ),
+  moves: v.optional(
+    v.tuple([
+      v.nullable(v.number()),
+      v.nullable(v.number()),
+      v.nullable(v.number()),
+      v.nullable(v.number()),
+    ]),
+  ),
+  evs: v.optional(
+    v.object({
+      hp: v.optional(v.number()),
+      atk: v.optional(v.number()),
+      def: v.optional(v.number()),
+      spa: v.optional(v.number()),
+      spd: v.optional(v.number()),
+      spe: v.optional(v.number()),
+    }),
+  ),
+  description: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+});
+
+export const trainedPokemonSchema = v.pipe(
+  v.object({
+    boxId: v.optional(v.string()),
+    identifier: v.string(),
+    slug: v.optional(v.string()),
+    description: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+    item: v.optional(v.nullable(v.number())),
+    ability: v.optional(v.nullable(v.number())),
+    gender: v.optional(
+      v.object({
+        fixed: v.optional(v.boolean()),
+        specified: v.optional(genderEnum),
+      }),
+    ),
+    nature: v.optional(
+      v.object({
+        plus: v.optional(v.nullable(statEnum)),
+        minus: v.optional(v.nullable(statEnum)),
+      }),
+    ),
+    moves: v.optional(v.unknown()),
+    evs: v.optional(v.unknown()),
+  }),
+  v.rawCheck(({ dataset, addIssue }) => {
+    if (!dataset.typed) return;
+    const data = dataset.value;
+
     const pokemonData = championsPokemonByIdentifier.get(data.identifier);
     if (!pokemonData) {
-      ctx.addIssue({
-        code: "custom",
+      addIssue({
         message: `Invalid Pokemon identifier: ${data.identifier}`,
-        path: ["identifier"],
+        path: [
+          {
+            type: "object",
+            origin: "value",
+            input: data,
+            key: "identifier",
+            value: data.identifier,
+          },
+        ],
       });
       return;
     }
 
     // 1. Ability validation
     if (data.ability === null || data.ability === undefined) {
-      ctx.addIssue({
-        code: "custom",
+      addIssue({
         message: `Ability is required`,
-        path: ["ability"],
+        path: [
+          { type: "object", origin: "value", input: data, key: "ability", value: data.ability },
+        ],
       });
     } else if (typeof data.ability !== "number" || !pokemonData.abilities.includes(data.ability)) {
-      ctx.addIssue({
-        code: "custom",
+      addIssue({
         message: `Ability ${data.ability} is not valid for ${data.identifier}`,
-        path: ["ability"],
+        path: [
+          { type: "object", origin: "value", input: data, key: "ability", value: data.ability },
+        ],
       });
     }
 
@@ -100,20 +113,21 @@ export const trainedPokemonSchema = z
       if (move !== null && move !== undefined) {
         hasMove = true;
         if (typeof move !== "number" || !pokemonData.moves.includes(move)) {
-          ctx.addIssue({
-            code: "custom",
+          addIssue({
             message: `Move ${move} is not valid for ${data.identifier}`,
-            path: ["moves", i],
+            path: [
+              { type: "object", origin: "value", input: data, key: "moves", value: data.moves },
+              { type: "array", origin: "value", input: movesList, key: i, value: move },
+            ],
           });
         }
       }
     }
 
     if (!hasMove) {
-      ctx.addIssue({
-        code: "custom",
+      addIssue({
         message: `Pokemon must have at least one move`,
-        path: ["moves"],
+        path: [{ type: "object", origin: "value", input: data, key: "moves", value: data.moves }],
       });
     }
 
@@ -127,20 +141,22 @@ export const trainedPokemonSchema = z
     for (const key of evKeys) {
       const val = typeof evsObj[key] === "number" ? evsObj[key] : 0;
       if (val > MAX_EV_PER_STAT) {
-        ctx.addIssue({
-          code: "custom",
+        addIssue({
           message: `${key.toUpperCase()} EV exceeds ${MAX_EV_PER_STAT}`,
-          path: ["evs", key],
+          path: [
+            { type: "object", origin: "value", input: data, key: "evs", value: data.evs },
+            { type: "object", origin: "value", input: evsObj, key, value: evsObj[key] },
+          ],
         });
       }
       evTotal += val;
     }
 
     if (evTotal > MAX_EV_TOTAL) {
-      ctx.addIssue({
-        code: "custom",
+      addIssue({
         message: `Total EVs exceed ${MAX_EV_TOTAL}`,
-        path: ["evs"],
+        path: [{ type: "object", origin: "value", input: data, key: "evs", value: data.evs }],
       });
     }
-  });
+  }),
+);

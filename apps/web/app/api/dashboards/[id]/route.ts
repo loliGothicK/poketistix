@@ -7,6 +7,7 @@ import { dashboards, type DashboardVariable } from "@/lib/db/schema";
 import { dashboardUpdateSchema, type Dashboard } from "@/store/dashboard/dashboard";
 import { withChildSpan } from "@/lib/otel";
 import type { InferSelectModel } from "drizzle-orm";
+import * as v from "valibot";
 
 type DashboardRow = InferSelectModel<typeof dashboards>;
 
@@ -68,12 +69,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = dashboardUpdateSchema.safeParse(body);
+  const parsed = v.safeParse(dashboardUpdateSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       const result = await withChildSpan(
         "db.dashboards.update",
         async (span) => {

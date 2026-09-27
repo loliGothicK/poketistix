@@ -65,6 +65,7 @@ import { TeamNotesWorkspace } from "@/components/client/team-builder/TeamNotesWo
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { teamSchema } from "@/lib/validator/team";
 import { formatTeamValidationIssues } from "@/lib/validator/format-issues";
+import * as v from "valibot";
 import { Chip, Tooltip } from "@mui/material";
 import { flexRowCenter } from "@/theme/sx";
 import UndoIcon from "@mui/icons-material/Undo";
@@ -918,7 +919,7 @@ export default function TeamBuilderPage({
                                 {team.name}
                               </Box>
                               {(() => {
-                                const result = teamSchema.safeParse(team);
+                                const result = v.safeParse(teamSchema, team);
                                 if (result.success) return null;
                                 const reasons = formatTeamValidationIssues(result, t, team.members);
                                 return (

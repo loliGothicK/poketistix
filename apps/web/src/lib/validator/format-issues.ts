@@ -1,24 +1,25 @@
 import { teamSchema } from "@/lib/validator/team";
 import { itemById } from "@/data/items";
 import { MAX_EV_PER_STAT, MAX_EV_TOTAL } from "@/store/team/lint";
+import * as v from "valibot";
 
 import type { TFunction } from "i18next";
 
 /**
- * teamSchema.safeParse の結果から、人間が読みやすいエラー文字列の配列を生成する。
+ * teamSchema の v.safeParse の結果から、人間が読みやすいエラー文字列の配列を生成する。
  * - スロット番号ではなくポケモン名を使用する
  * - アイテム ID ではなくアイテム名を使用する
- * - Zod の生メッセージではなくローカライズされた説明文を出力する
+ * - Valibot の生メッセージではなくローカライズされた説明文を出力する
  */
 export function formatTeamValidationIssues(
-  result: ReturnType<typeof teamSchema.safeParse>,
+  result: v.SafeParseResult<typeof teamSchema>,
   t: TFunction,
   members: readonly ({ identifier: string; item: number | null } | null)[],
 ): string[] {
   if (result.success) return [];
 
-  return result.error.issues.map((issue) => {
-    const path = issue.path;
+  return result.issues.map((issue) => {
+    const path = issue.path?.map((p) => p.key) ?? [];
 
     // 1. チーム全体のレベルのエラー
     if (path.length === 0 || (path.length === 1 && path[0] === "name")) {

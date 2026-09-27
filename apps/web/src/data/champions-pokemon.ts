@@ -1,39 +1,34 @@
 import { getPokemonData, Regulation } from "@poketistix/data";
 import { data as typesData } from "@poketistix/data/master/pokemon_types.json";
 import { data as typeData } from "@poketistix/data/master/types.json";
-import { z } from "zod";
+import * as v from "valibot";
 import { Type } from "@/types/pokemon";
 
-const ChampionsPokemonSchema = z
-  .object({
-    id: z.number(),
-    identifier: z.string(),
-    slug: z.string().nullable(),
-    abilities: z.array(z.number()),
-    status: z.tuple([z.number(), z.number(), z.number(), z.number(), z.number(), z.number()]),
-    moves: z.array(z.number()).readonly(),
-    species_id: z.number().optional(),
-    mega: z
-      .array(
-        z.object({
-          mega_id: z.number(),
-          stone_id: z.number(),
-        }),
-        {
-          error: (iss) => `${String(iss.input)}" is invalid`,
-        },
-      )
-      .optional(),
-    form: z.number().optional(),
-  })
-  .readonly();
+const ChampionsPokemonSchema = v.object({
+  id: v.number(),
+  identifier: v.string(),
+  slug: v.nullable(v.string()),
+  abilities: v.array(v.number()),
+  status: v.tuple([v.number(), v.number(), v.number(), v.number(), v.number(), v.number()]),
+  moves: v.array(v.number()),
+  species_id: v.optional(v.number()),
+  mega: v.optional(
+    v.array(
+      v.object({
+        mega_id: v.number(),
+        stone_id: v.number(),
+      }),
+    ),
+  ),
+  form: v.optional(v.number()),
+});
 
-export type ChampionsPokemon = z.infer<typeof ChampionsPokemonSchema> & {
+export type ChampionsPokemon = v.InferOutput<typeof ChampionsPokemonSchema> & {
   readonly types: readonly Type[];
 };
 
 export const championsPokemonList: readonly ChampionsPokemon[] = getPokemonData()
-  .map((entry) => ChampionsPokemonSchema.parse(entry))
+  .map((entry) => v.parse(ChampionsPokemonSchema, entry))
   .map((entry) => ({
     ...entry,
     types: typesData
@@ -64,7 +59,7 @@ export function getChampionsPokemonList(regulation?: Regulation): readonly Champ
 
   const rawList = getPokemonData(regulation);
   const result: readonly ChampionsPokemon[] = rawList
-    .map((entry) => ChampionsPokemonSchema.parse(entry))
+    .map((entry) => v.parse(ChampionsPokemonSchema, entry))
     .map((entry) => ({
       ...entry,
       types: typesData

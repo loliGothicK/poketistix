@@ -16,6 +16,7 @@ import { withChildSpan } from "@/lib/otel";
 import * as Sentry from "@sentry/nextjs";
 import type { InferSelectModel } from "drizzle-orm";
 import type { TrainedPokemon } from "@/store/team/team";
+import * as v from "valibot";
 
 type RecordRow = InferSelectModel<typeof battleRecords>;
 type OpponentRow = InferSelectModel<typeof battleRecordOpponents>;
@@ -108,12 +109,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = battleRecordInputSchema.safeParse(body);
+  const parsed = v.safeParse(battleRecordInputSchema, body);
   return match(parsed)
-    .with({ success: false }, ({ error }) =>
-      NextResponse.json({ error: error.issues }, { status: 422 }),
-    )
-    .with({ success: true }, async ({ data: input }) => {
+    .with({ success: false }, ({ issues }) => NextResponse.json({ error: issues }, { status: 422 }))
+    .with({ success: true }, async ({ output: input }) => {
       const id = input.id ?? genUlid();
 
       const dtoEither = await withChildSpan(

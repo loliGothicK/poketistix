@@ -7,6 +7,7 @@ import { isAuthenticatedAtom } from "@/store/auth";
 import { localTeamsAtom, type Team, type TrainedPokemon } from "@/store/team/team";
 import { fetchTeamsFromServer, saveTeamsToServer } from "@services/teams";
 import { teamSchema } from "@/lib/validator/team";
+import * as v from "valibot";
 
 export type SlotResolution = "local" | "server" | "none";
 
@@ -119,7 +120,7 @@ export const useAuthSync = (): AuthSyncResult => {
       const hasMember = t.members.some((m) => m !== null);
       if (!hasMember) continue;
 
-      if (teamSchema.safeParse(t).success) {
+      if (v.safeParse(teamSchema, t).success) {
         validTeams.push(t);
       } else {
         invalidTeams.push(t);

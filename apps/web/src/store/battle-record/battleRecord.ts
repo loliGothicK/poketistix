@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as v from "valibot";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { BattleFormat, BattleResult, OpponentSelectionRole } from "@/lib/db/schema";
 
@@ -59,75 +59,99 @@ export interface BattleRecord {
 }
 
 // =====================================================================
-// 入力バリデーション（Zod）
+// 入力バリデーション（Valibot）
 // =====================================================================
 
 /** "YYYY-MM-DD" 形式の日付文字列 */
-const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const dateString = v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"));
 
-const seasonInputObject = z.object({
-  id: z.string().min(1).optional(),
-  name: z.string().trim().min(1).max(100),
-  format: z.enum(["singles", "doubles"]),
-  ruleMark: z.string().trim().min(1).nullish(),
-  startedAt: dateString.nullish(),
-  endedAt: dateString.nullish(),
+const seasonInputObject = v.object({
+  id: v.optional(v.pipe(v.string(), v.minLength(1))),
+  name: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(100)),
+  format: v.picklist(["singles", "doubles"] as const),
+  ruleMark: v.nullish(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  startedAt: v.nullish(dateString),
+  endedAt: v.nullish(dateString),
 });
 
-export const seasonInputSchema = seasonInputObject.readonly();
+export const seasonInputSchema = seasonInputObject;
 
-export type SeasonInput = z.infer<typeof seasonInputSchema>;
+export type SeasonInput = v.InferOutput<typeof seasonInputSchema>;
 
 /** PATCH 用: id 以外を部分更新 */
-export const seasonUpdateSchema = seasonInputObject.omit({ id: true }).partial().readonly();
+export const seasonUpdateSchema = v.partial(v.omit(seasonInputObject, ["id"]));
 
-export type SeasonUpdate = z.infer<typeof seasonUpdateSchema>;
+export type SeasonUpdate = v.InferOutput<typeof seasonUpdateSchema>;
 
-export const opponentInputSchema = z
-  .object({
-    slotIndex: z.number().int().min(0).max(5),
-    pokemonSlug: z.string().trim().min(1),
-    itemSlug: z.string().trim().min(1).nullish(),
-    abilitySlug: z.string().trim().min(1).nullish(),
-    moves: z.array(z.string().trim().min(1)).nullish(),
-    selectionRole: z.enum(["lead", "back"]).nullish(),
-    notes: z.string().nullish(),
-  })
-  .readonly();
-
-const battleRecordInputObject = z.object({
-  id: z.string().min(1).optional(),
-  seasonId: z.string().min(1),
-  teamId: z.string().min(1).nullish(),
-  result: z.enum(["win", "loss", "draw"]),
-  // 中身は TrainedPokemon をクライアントが保証。ここでは構造のみ検証。
-  myTeam: z.array(z.object({}).loose()).max(6),
-  mySelection: z.array(z.number().int().min(0).max(5)).nullish(),
-  rating: z.number().min(0).max(100000).nullish(),
-  notes: z.string().nullish(),
-  /** ISO 8601。省略時はサーバ側で now() */
-  playedAt: z.iso.datetime({ offset: true }).nullish(),
-  opponents: z
-    .array(opponentInputSchema)
-    .max(6)
-    .refine(
-      (arr) => new Set(arr.map((o) => o.slotIndex)).size === arr.length,
-      "slotIndex must be unique",
-    ),
-  tags: z.array(z.string().trim().min(1)).nullish(),
+export const opponentInputSchema = v.object({
+  slotIndex: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(5)),
+  pokemonSlug: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  itemSlug: v.nullish(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  abilitySlug: v.nullish(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  moves: v.nullish(v.array(v.pipe(v.string(), v.trim(), v.minLength(1)))),
+  selectionRole: v.nullish(v.picklist(["lead", "back"] as const)),
+  notes: v.nullish(v.string()),
 });
 
-export const battleRecordInputSchema = battleRecordInputObject.readonly();
+const battleRecordInputObject = v.pipe(
+  v.object({
+    id: v.optional(v.pipe(v.string(), v.minLength(1))),
+    seasonId: v.pipe(v.string(), v.minLength(1)),
+    teamId: v.nullish(v.pipe(v.string(), v.minLength(1))),
+    result: v.picklist(["win", "loss", "draw"] as const),
+    // 中身は TrainedPokemon をクライアントが保証。ここでは構造のみ検証。
+    myTeam: v.pipe(v.array(v.looseObject({})), v.maxLength(6)),
+    mySelection: v.nullish(v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(5)))),
+    rating: v.nullish(v.pipe(v.number(), v.minValue(0), v.maxValue(100000))),
+    notes: v.nullish(v.string()),
+    /** ISO 8601。省略時はサーバ側で now() */
+    playedAt: v.nullish(v.pipe(v.string(), v.isoTimestamp())),
+    opponents: v.pipe(
+      v.array(opponentInputSchema),
+      v.maxLength(6),
+      v.check(
+        (arr) => new Set(arr.map((o) => o.slotIndex)).size === arr.length,
+        "slotIndex must be unique",
+      ),
+    ),
+    tags: v.nullish(v.array(v.pipe(v.string(), v.trim(), v.minLength(1)))),
+  }),
+);
 
-export type BattleRecordInput = z.infer<typeof battleRecordInputSchema>;
+export const battleRecordInputSchema = battleRecordInputObject;
+
+export type BattleRecordInput = v.InferOutput<typeof battleRecordInputSchema>;
 
 /** PATCH 用: id/seasonId 以外を部分更新 */
-export const battleRecordUpdateSchema = battleRecordInputObject
-  .omit({ id: true, seasonId: true })
-  .partial()
-  .readonly();
+export const battleRecordUpdateSchema = v.partial(
+  v.omit(
+    v.object({
+      id: v.optional(v.pipe(v.string(), v.minLength(1))),
+      seasonId: v.pipe(v.string(), v.minLength(1)),
+      teamId: v.nullish(v.pipe(v.string(), v.minLength(1))),
+      result: v.picklist(["win", "loss", "draw"] as const),
+      myTeam: v.pipe(v.array(v.looseObject({})), v.maxLength(6)),
+      mySelection: v.nullish(
+        v.array(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(5))),
+      ),
+      rating: v.nullish(v.pipe(v.number(), v.minValue(0), v.maxValue(100000))),
+      notes: v.nullish(v.string()),
+      playedAt: v.nullish(v.pipe(v.string(), v.isoTimestamp())),
+      opponents: v.pipe(
+        v.array(opponentInputSchema),
+        v.maxLength(6),
+        v.check(
+          (arr) => new Set(arr.map((o) => o.slotIndex)).size === arr.length,
+          "slotIndex must be unique",
+        ),
+      ),
+      tags: v.nullish(v.array(v.pipe(v.string(), v.trim(), v.minLength(1)))),
+    }),
+    ["id", "seasonId"],
+  ),
+);
 
-export type BattleRecordUpdate = z.infer<typeof battleRecordUpdateSchema>;
+export type BattleRecordUpdate = v.InferOutput<typeof battleRecordUpdateSchema>;
 
 /**
  * シーズン一覧から最新のシーズンを取得する。
