@@ -36,6 +36,7 @@ import { flexRowCenter } from "@/theme/sx";
 import { pokemonById, pokemonList } from "@/data/pokemon";
 import { championsPokemonList } from "@/data/champions-pokemon";
 import { itemList } from "@/data/items";
+import { getItemOptions, getCorrespondingMegaStones } from "./itemOptions";
 import { abilityById } from "@/data/abilities";
 import { moveById } from "@/data/moves";
 import { getStatLens, TrainedPokemon } from "@/store/team/team";
@@ -134,9 +135,18 @@ export function Training({
   const lintIssues = useAtomValue(lintIssuesAtom);
   const slotLintIssueAtom = useMemo(() => activeSlotLintIssueAtom(lintIssues), [lintIssues]);
   const issue = useAtomValue(slotLintIssueAtom);
+  const currentPokemon = ongoing ? DICTIONARY.get(ongoing.identifier) : null;
+  const correspondingMegaStones = useMemo(() => {
+    return getCorrespondingMegaStones(currentPokemon?.mega);
+  }, [currentPokemon?.mega]);
+
   const items = useMemo(() => {
-    return itemList.toSorted((a, b) => a.category.localeCompare(b.category));
-  }, []);
+    return getItemOptions({
+      battleData,
+      correspondingMegaStoneIds: correspondingMegaStones.map((s) => s.id),
+      getItemLabel: (id) => t(`items.${id}.name`),
+    });
+  }, [battleData, correspondingMegaStones, t]);
 
   // --- Drawerの状態管理 ---
   const [activeMoveSlot, setActiveMoveSlot] = useState<number | null>(null);
@@ -501,7 +511,8 @@ export function Training({
                 <Autocomplete
                   value={items.find(({ id }) => id === ongoing.item) || null}
                   options={items}
-                  groupBy={(option) => option.category}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  groupBy={(option) => t(`teamBuilder.itemGroups.${option.group}`)}
                   getOptionLabel={(option) => t(`items.${option.identifier}.name`)}
                   sx={{ flexGrow: 1 }}
                   renderInput={(params) => (
@@ -510,6 +521,7 @@ export function Training({
                       label={t("teamBuilder.heldItem")}
                       slotProps={{ ...params.slotProps, formHelperText: { component: "div" } }}
                       helperText={
+                        isLintOn &&
                         issue &&
                         remainingEvs === 0 &&
                         issue.item.length > 0 && (
@@ -540,7 +552,11 @@ export function Training({
                     >
                       <Chip
                         avatar={<Avatar src={itemSprite(value.identifier)} />}
-                        label={t(`items.${value.identifier}.name`)}
+                        label={
+                          value.percentage
+                            ? `${t(`items.${value.identifier}.name`)} (${value.percentage}%)`
+                            : t(`items.${value.identifier}.name`)
+                        }
                       />
                       <Typography
                         variant="body2"
@@ -549,7 +565,10 @@ export function Training({
                     </Stack>
                   )}
                   onChange={(_, value) => {
-                    setUseForm(false);
+                    const isMegaStone = pokemon.mega?.some(
+                      ({ stone_id }) => stone_id === value?.id,
+                    );
+                    setUseForm(isMegaStone ? true : false);
                     handleUpdate({ ...ongoing, item: value?.id || null });
                   }}
                 />

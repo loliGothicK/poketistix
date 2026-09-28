@@ -537,6 +537,16 @@
     "megaEvolve": "Mega Evolve",
     "changeForm": "Change Form",
     "heldItem": "Held Item",
+    "itemGroups": {
+      "popular": "Popular Items",
+      "power-boost": "Power Boost",
+      "defense": "Defense",
+      "recovery": "Recovery",
+      "stat-boost": "Stat Boost",
+      "effect-extend": "Effect Extend",
+      "mega-evolution": "Mega Stone",
+      "other": "Other"
+    },
     "noItem": "No Item",
     "gender": "Gender",
     "ability": "Ability",

@@ -608,6 +608,16 @@
     "megaEvolve": "メガシンカ",
     "changeForm": "フォルムチェンジ",
     "heldItem": "もちもの",
+    "itemGroups": {
+      "popular": "人気のアイテム",
+      "power-boost": "威力上昇",
+      "defense": "防御・耐久",
+      "recovery": "回復",
+      "stat-boost": "能力上昇",
+      "effect-extend": "効果延長",
+      "mega-evolution": "メガストーン",
+      "other": "その他"
+    },
     "noItem": "持ち物なし",
     "gender": "性別",
     "ability": "特性",
