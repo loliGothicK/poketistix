@@ -21,7 +21,7 @@ import {
 } from "@mui/material";
 import SportsMmaRounded from "@mui/icons-material/SportsMmaRounded";
 import { LocalizedLink as Link } from "@/components/client/LocalizedLink";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
 import { isAuthenticatedAtom } from "@/store/auth";
@@ -38,7 +38,7 @@ import {
   teamStats,
   winRatePercent,
 } from "@/store/battle-record/analytics";
-import { getLatestSeason } from "@/store/battle-record/battleRecord";
+import { getLatestSeason, selectedSeasonIdAtom } from "@/store/battle-record/battleRecord";
 
 function StatCard({
   label,
@@ -74,7 +74,7 @@ export default function BattleAnalyticsPage() {
   const isAuthenticated = useAtomValue(isAuthenticatedAtom);
   const { seasons, isLoading: seasonsLoading } = useSeasons();
 
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useAtom(selectedSeasonIdAtom);
   const activeSeason = useMemo(() => {
     if (selectedSeasonId && seasons.some((s) => s.id === selectedSeasonId)) {
       return seasons.find((s) => s.id === selectedSeasonId) ?? null;

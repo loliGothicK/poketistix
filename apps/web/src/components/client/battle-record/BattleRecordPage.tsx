@@ -48,6 +48,7 @@ import {
   type Season,
   type SeasonInput,
   getLatestSeason,
+  selectedSeasonIdAtom,
 } from "@/store/battle-record/battleRecord";
 import type { Team, TrainedPokemon } from "@/store/team/team";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
@@ -385,7 +386,7 @@ export default function BattleRecordPage() {
   const queryClient = useQueryClient();
   const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
   const isSubmittingRecordRef = useRef(false);
-  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useAtom(selectedSeasonIdAtom);
   const [filter, setFilter] = useState<ResultFilter>("all");
   const [snackbar, setSnackbar] = useState<{
     readonly open: boolean;

@@ -1,6 +1,17 @@
 import * as v from "valibot";
+import { atomWithStorage } from "jotai/utils";
 import type { TrainedPokemon } from "@/store/team/team";
 import type { BattleFormat, BattleResult, OpponentSelectionRole } from "@/lib/db/schema";
+
+// =====================================================================
+// 【一生残るAtom（純粋なクライアント状態）】
+// 選択中のシーズンIDはUIの状態。リロード後も維持するためlocalStorageに永続化。
+// シーズンが削除されていた場合は BattleRecordPage 側でフォールバック。
+// =====================================================================
+export const selectedSeasonIdAtom = atomWithStorage<string | null>(
+  "battle_record_selected_season_id",
+  null,
+);
 
 export type { BattleFormat, BattleResult, OpponentSelectionRole };
 
