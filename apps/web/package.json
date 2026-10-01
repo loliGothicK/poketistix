@@ -45,7 +45,7 @@
     "@mui/material-nextjs": "9.4.0",
     "@mui/system": "9.4.0",
     "@mui/x-data-grid": "9.14.0",
-    "@pierre/diffs": "1.5.0",
+    "@pierre/diffs": "1.5.1",
     "@pkmn/dex": "0.10.11",
     "@pkmn/sets": "5.2.0",
     "@pkmn/sim": "catalog:",
