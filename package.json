@@ -34,7 +34,7 @@
     "*.rs": "rustfmt --edition=2024"
   },
   "volta": {
-    "node": "26.9.0"
+    "node": "26.10.0"
   },
   "packageManager": "pnpm@12.6.0"
 }
