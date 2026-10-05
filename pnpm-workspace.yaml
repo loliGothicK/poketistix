@@ -7,7 +7,7 @@ catalog:
   '@pkmn/sim': 0.10.11
   '@types/node': 26.6.3
   outdent: 0.8.0
-  oxfmt: 0.70.0
+  oxfmt: 0.72.0
   oxlint: 1.85.0
   oxlint-plugin-eslint: 1.85.0
   oxlint-tsgolint: 7.0.2003
