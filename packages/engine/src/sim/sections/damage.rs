@@ -1,4 +1,5 @@
 use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent};
+use pkmn_meta::types::*;
 
 pub fn section_take_damage(battle: &mut Battle, target: PokemonIdent, damage: i32) {
     let mut ctx = EventContext::builder()
@@ -11,8 +12,7 @@ pub fn section_take_damage(battle: &mut Battle, target: PokemonIdent, damage: i3
     if !ctx.canceled && ctx.num_val > 0 {
         let mut endure = false;
         if let Some(t) = battle.get_pokemon(ctx.target)
-            && t.volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Endure)
+            && t.volatile_status.contains(&VolatileStatus::Endure)
             && t.hp.into_inner() > 0
             && ctx.num_val >= t.hp.into_inner()
         {

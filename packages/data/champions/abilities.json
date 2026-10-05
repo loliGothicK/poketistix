@@ -43,6 +43,9 @@
       "identifier": "aurabreak"
     },
     {
+      "identifier": "auraguard"
+    },
+    {
       "identifier": "baddreams"
     },
     {
@@ -373,11 +376,7 @@
     {
       "identifier": "intimidate",
       "on_start_stat_drop_foe": {
-        "atk": -1,
-        "def": 0,
-        "spa": 0,
-        "spd": 0,
-        "spe": 0
+        "atk": -1
       }
     },
     {
@@ -819,7 +818,10 @@
       "identifier": "superluck"
     },
     {
-      "identifier": "supersweetsyrup"
+      "identifier": "supersweetsyrup",
+      "on_start_stat_drop_foe": {
+        "evasion": -1
+      }
     },
     {
       "identifier": "supremeoverlord"
@@ -948,7 +950,6 @@
     },
     {
       "identifier": "waterbubble",
-      "attack_type_boost": ["water", 2],
       "immune_to_status": "brn",
       "waterbubble_fire_resist": true
     },

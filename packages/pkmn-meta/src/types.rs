@@ -158,6 +158,8 @@ pub enum VolatileStatus {
     Healblock,
     Beakblast,
     Throatchop,
+    Octolock,
+    Perishsong,
 }
 
 #[wasm_bindgen]

@@ -1,4 +1,81 @@
 use crate::sim::battle::{Battle, BattleLog, BattleLogEvent, PokemonIdent, Stat, TurnState};
+use pkmn_meta::types::*;
+
+/// Remove the active terrain (if any) and log its end.
+fn clear_terrain(battle: &mut Battle) {
+    let Some(terrain) = battle.terrain else {
+        return;
+    };
+    let terrain_name = match terrain {
+        Terrain::Electric => "Electric Terrain",
+        Terrain::Grassy => "Grassy Terrain",
+        Terrain::Misty => "Misty Terrain",
+        Terrain::Psychic => "Psychic Terrain",
+    };
+    battle.terrain = None;
+    battle.terrain_turns_left = 0;
+    battle
+        .log
+        .push(BattleLogEvent::new(BattleLog::TerrainChange {
+            terrain: terrain_name.to_string(),
+            is_start: false,
+        }));
+}
+
+fn check_aroma_veil(
+    battle: &mut Battle,
+    target_player: u8,
+    target_slot: usize,
+    source_player: u8,
+    source_slot: usize,
+) -> bool {
+    let source_ability = if source_player == 1 {
+        battle
+            .p1
+            .active
+            .get(source_slot)
+            .and_then(|p| p.ability.clone())
+    } else {
+        battle
+            .p2
+            .active
+            .get(source_slot)
+            .and_then(|p| p.ability.clone())
+    };
+    let mold_breaker = source_ability
+        .as_ref()
+        .map(|a| a.as_str())
+        .is_some_and(|a| matches!(a, "moldbreaker" | "teravolt" | "turboblaze"));
+    if mold_breaker {
+        return false;
+    }
+    let target_side = if target_player == 1 {
+        &battle.p1.active
+    } else {
+        &battle.p2.active
+    };
+    let mut holder = None;
+    for (slot_idx, p) in target_side.iter().enumerate() {
+        if p.hp.into_inner() > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("aromaveil") {
+            holder = Some(PokemonIdent {
+                player: target_player,
+                slot: slot_idx,
+            });
+            break;
+        }
+    }
+    if let Some(h) = holder {
+        let target_ident = PokemonIdent {
+            player: target_player,
+            slot: target_slot,
+        };
+        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            message: format!("|-block|{}|ability: Aroma Veil|[of] {}", target_ident, h),
+        }));
+        return true;
+    }
+    false
+}
 
 pub fn handle_move_target_effect(
     battle: &mut Battle,
@@ -7,7 +84,7 @@ pub fn handle_move_target_effect(
     target_slot: usize,
     source_player: u8,
     source_slot: usize,
-    flung_item: Option<pkmn_meta::types::ItemId>,
+    flung_item: Option<ItemId>,
 ) {
     if move_id == "clearsmog" {
         let target_ident = PokemonIdent {
@@ -41,7 +118,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::Status::Poison,
+            Status::Poison,
             Some(PokemonIdent {
                 player: source_player,
                 slot: source_slot,
@@ -53,7 +130,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Helpinghand,
+            VolatileStatus::Helpinghand,
         );
     } else if move_id == "healbell" {
         let active_len = if target_player == 1 {
@@ -85,7 +162,7 @@ pub fn handle_move_target_effect(
             slot: target_slot,
         })
     {
-        target.type1 = pkmn_meta::types::Type::Psychic;
+        target.type1 = Type::Psychic;
         target.type2 = None;
         target.added_type = None;
     } else if move_id == "simplebeam"
@@ -108,7 +185,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::Type::Ghost,
+            Type::Ghost,
         );
     }
     if move_id == "healpulse" || move_id == "milkdrink" {
@@ -391,10 +468,10 @@ pub fn handle_move_target_effect(
         let removed = target.volatile_status.iter().any(|vs| {
             matches!(
                 vs,
-                pkmn_meta::types::VolatileStatus::Protect
-                    | pkmn_meta::types::VolatileStatus::Kingsshield
-                    | pkmn_meta::types::VolatileStatus::Spikyshield
-                    | pkmn_meta::types::VolatileStatus::Banefulbunker
+                VolatileStatus::Protect
+                    | VolatileStatus::Kingsshield
+                    | VolatileStatus::Spikyshield
+                    | VolatileStatus::Banefulbunker
             )
         });
 
@@ -402,10 +479,10 @@ pub fn handle_move_target_effect(
             target.volatile_status.retain(|vs| {
                 !matches!(
                     vs,
-                    pkmn_meta::types::VolatileStatus::Protect
-                        | pkmn_meta::types::VolatileStatus::Kingsshield
-                        | pkmn_meta::types::VolatileStatus::Spikyshield
-                        | pkmn_meta::types::VolatileStatus::Banefulbunker
+                    VolatileStatus::Protect
+                        | VolatileStatus::Kingsshield
+                        | VolatileStatus::Spikyshield
+                        | VolatileStatus::Banefulbunker
                 )
             });
             battle.log.push(BattleLogEvent::new(BattleLog::Text {
@@ -497,7 +574,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Electrify,
+            VolatileStatus::Electrify,
         );
     }
 
@@ -510,22 +587,7 @@ pub fn handle_move_target_effect(
             Some(move_id),
         );
         // Remove terrain
-        if battle.terrain.is_some() {
-            let terrain_name = match battle.terrain.unwrap() {
-                pkmn_meta::types::Terrain::Electric => "Electric Terrain",
-                pkmn_meta::types::Terrain::Grassy => "Grassy Terrain",
-                pkmn_meta::types::Terrain::Misty => "Misty Terrain",
-                pkmn_meta::types::Terrain::Psychic => "Psychic Terrain",
-            };
-            battle.terrain = None;
-            battle.terrain_turns_left = 0;
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                    terrain: terrain_name.to_string(),
-                    is_start: false,
-                }));
-        }
+        clear_terrain(battle);
         // Remove side conditions
         let mut p1_removed = vec![];
         let mut p2_removed = vec![];
@@ -705,21 +767,8 @@ pub fn handle_move_target_effect(
         side.sticky_web = false;
     }
 
-    if move_id == "steelroller" && battle.terrain.is_some() {
-        let terrain_name = match battle.terrain.unwrap() {
-            pkmn_meta::types::Terrain::Electric => "Electric Terrain",
-            pkmn_meta::types::Terrain::Grassy => "Grassy Terrain",
-            pkmn_meta::types::Terrain::Misty => "Misty Terrain",
-            pkmn_meta::types::Terrain::Psychic => "Psychic Terrain",
-        };
-        battle.terrain = None;
-        battle.terrain_turns_left = 0;
-        battle
-            .log
-            .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                terrain: terrain_name.to_string(),
-                is_start: false,
-            }));
+    if move_id == "steelroller" {
+        clear_terrain(battle);
     }
 
     if move_id == "stoneaxe" {
@@ -754,7 +803,7 @@ pub fn handle_move_target_effect(
                 player: source_player,
                 slot: source_slot,
             },
-            pkmn_meta::types::VolatileStatus::Imprison,
+            VolatileStatus::Imprison,
         );
     }
 
@@ -764,7 +813,7 @@ pub fn handle_move_target_effect(
                 player: source_player,
                 slot: source_slot,
             },
-            pkmn_meta::types::VolatileStatus::Ingrain,
+            VolatileStatus::Ingrain,
         );
     }
 
@@ -779,10 +828,14 @@ pub fn handle_move_target_effect(
             slot: target_slot,
         }) && target_pkmn.hp > 0
         {
-            battle.force_switch_random(PokemonIdent {
-                player: target_player,
-                slot: target_slot,
-            });
+            let has_suction_cups =
+                target_pkmn.ability.as_ref().map(|a| a.as_str()) == Some("suctioncups");
+            if !has_suction_cups {
+                battle.force_switch_random(PokemonIdent {
+                    player: target_player,
+                    slot: target_slot,
+                });
+            }
         }
     }
 
@@ -807,23 +860,32 @@ pub fn handle_move_target_effect(
         }));
     }
 
-    if move_id == "yawn" {
+    if move_id == "octolock" {
         battle.section_apply_volatile(
             PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Yawn,
+            VolatileStatus::Octolock,
         );
     }
 
     if move_id == "torment" {
+        if check_aroma_veil(
+            battle,
+            target_player,
+            target_slot,
+            source_player,
+            source_slot,
+        ) {
+            return;
+        }
         battle.section_apply_volatile(
             PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Torment,
+            VolatileStatus::Torment,
         );
     }
 
@@ -833,7 +895,7 @@ pub fn handle_move_target_effect(
                 player: source_player,
                 slot: source_slot,
             },
-            pkmn_meta::types::VolatileStatus::Substitute,
+            VolatileStatus::Substitute,
         );
     }
 
@@ -853,7 +915,7 @@ pub fn handle_move_target_effect(
             slot: target_slot,
         })
     {
-        target.type1 = pkmn_meta::types::Type::Water;
+        target.type1 = Type::Water;
         target.type2 = None;
         target.added_type = None;
     }
@@ -899,7 +961,7 @@ pub fn handle_move_target_effect(
                 player: source_player,
                 slot: source_slot,
             },
-            pkmn_meta::types::VolatileStatus::Stockpile,
+            VolatileStatus::Stockpile,
         );
     }
 
@@ -949,7 +1011,7 @@ pub fn handle_move_target_effect(
                 player: source_player,
                 slot: source_slot,
             })
-            .map(|p| p.get_types().contains(&pkmn_meta::types::Type::Ghost))
+            .map(|p| p.get_types().contains(&Type::Ghost))
             .unwrap_or(false);
         if !is_ghost
             && let Some(target) = battle.get_pokemon_mut(PokemonIdent {
@@ -959,7 +1021,7 @@ pub fn handle_move_target_effect(
         {
             target
                 .volatile_status
-                .retain(|s| *s != pkmn_meta::types::VolatileStatus::Curse);
+                .retain(|s| *s != VolatileStatus::Curse);
         }
         if is_ghost {
             let damage = battle
@@ -994,7 +1056,7 @@ pub fn handle_move_target_effect(
                     player: target_player,
                     slot: target_slot,
                 },
-                pkmn_meta::types::VolatileStatus::Curse,
+                VolatileStatus::Curse,
             );
         } else {
             battle.apply_stat_change(
@@ -1073,27 +1135,33 @@ pub fn handle_move_target_effect(
         };
         match item.as_ref() {
             "light-ball" => {
-                battle.section_apply_status(
-                    target_ident,
-                    pkmn_meta::types::Status::Paralysis,
-                    None,
-                );
+                battle.section_apply_status(target_ident, Status::Paralysis, None);
             }
             "flame-orb" => {
-                battle.section_apply_status(target_ident, pkmn_meta::types::Status::Burn, None);
+                battle.section_apply_status(target_ident, Status::Burn, None);
             }
             "toxic-orb" => {
-                battle.section_apply_status(target_ident, pkmn_meta::types::Status::Toxic, None);
+                battle.section_apply_status(target_ident, Status::Toxic, None);
             }
             "poison-barb" => {
-                battle.section_apply_status(target_ident, pkmn_meta::types::Status::Poison, None);
+                battle.section_apply_status(target_ident, Status::Poison, None);
             }
             "kings-rock" | "razor-fang" => {
-                battle
-                    .section_apply_volatile(target_ident, pkmn_meta::types::VolatileStatus::Flinch);
+                battle.section_apply_volatile(target_ident, VolatileStatus::Flinch);
             }
             _ => {}
         }
+    }
+    if move_id == "encore"
+        && check_aroma_veil(
+            battle,
+            target_player,
+            target_slot,
+            source_player,
+            source_slot,
+        )
+    {
+        return;
     }
     if move_id == "encore"
         && let Some(target) = battle.get_pokemon(PokemonIdent {
@@ -1140,7 +1208,7 @@ pub fn handle_move_target_effect(
                     player: target_player,
                     slot: target_slot,
                 },
-                pkmn_meta::types::VolatileStatus::Encore,
+                VolatileStatus::Encore,
             );
 
             // If the target has a pending action this turn, update its move and priority
@@ -1174,6 +1242,17 @@ pub fn handle_move_target_effect(
         }
     }
 
+    if move_id == "disable"
+        && check_aroma_veil(
+            battle,
+            target_player,
+            target_slot,
+            source_player,
+            source_slot,
+        )
+    {
+        return;
+    }
     if move_id == "disable"
         && let Some(target) = battle.get_pokemon(PokemonIdent {
             player: target_player,
@@ -1480,7 +1559,22 @@ pub fn handle_move_target_effect(
             } else {
                 target_atk * 2 / (2 - stage)
             };
-            battle.section_heal(attacker_ident, final_atk.into());
+            let is_ooze = target_p.ability.as_ref().map(|a| a.as_str()) == Some("liquidooze");
+            if is_ooze {
+                battle.section_take_damage(attacker_ident, final_atk);
+                battle.log.push(crate::sim::log::BattleLogEvent::new(
+                    crate::sim::log::BattleLog::Damage {
+                        target: attacker_ident,
+                        damage: final_atk,
+                        is_crit: false,
+                        effectiveness: 0,
+                        absorbed: false,
+                        from_effect: Some("ability: Liquid Ooze".to_string()),
+                    },
+                ));
+            } else {
+                battle.section_heal(attacker_ident, final_atk.into());
+            }
             battle.apply_stat_change(
                 target_player,
                 target_slot,
@@ -1495,7 +1589,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Flinch,
+            VolatileStatus::Flinch,
         );
     } else if move_id == "throatchop" {
         battle.section_apply_volatile(
@@ -1503,7 +1597,7 @@ pub fn handle_move_target_effect(
                 player: target_player,
                 slot: target_slot,
             },
-            pkmn_meta::types::VolatileStatus::Throatchop,
+            VolatileStatus::Throatchop,
         );
     } else if move_id == "sparklingaria" {
         let target_ident = PokemonIdent {
@@ -1511,7 +1605,7 @@ pub fn handle_move_target_effect(
             slot: target_slot,
         };
         if let Some(target_p) = battle.get_pokemon_mut(target_ident)
-            && target_p.status == Some(pkmn_meta::types::Status::Burn)
+            && target_p.status == Some(Status::Burn)
         {
             target_p.status = None;
             battle.log.push(BattleLogEvent::new(BattleLog::CureStatus {
@@ -1519,33 +1613,27 @@ pub fn handle_move_target_effect(
             }));
         }
     } else if move_id == "toxic" {
-        if let Some(target) = battle.get_pokemon_mut(PokemonIdent {
+        let attacker_ident = PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        };
+        let target_ident = PokemonIdent {
             player: target_player,
             slot: target_slot,
-        }) {
-            if target.status.is_none()
-                && target.type1 != pkmn_meta::types::Type::Poison
-                && target.type2 != Some(pkmn_meta::types::Type::Poison)
-                && target.type1 != pkmn_meta::types::Type::Steel
-                && target.type2 != Some(pkmn_meta::types::Type::Steel)
-            {
-                target.status = Some(pkmn_meta::types::Status::Toxic);
-                target.tox_counter = 0;
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::StatusInflicted {
-                        target: PokemonIdent {
-                            player: target_player,
-                            slot: target_slot,
-                        },
-                        status: "tox".to_string(),
-                    }));
+        };
+        let attacker_corrosion = battle
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
+            == Some("corrosion");
+        if let Some(target) = battle.get_pokemon(target_ident) {
+            let target_types = target.get_types();
+            let type_immune = !attacker_corrosion
+                && (target_types.contains(&Type::Poison) || target_types.contains(&Type::Steel));
+            if target.status.is_none() && !type_immune {
+                battle.section_apply_status(target_ident, Status::Toxic, Some(attacker_ident));
             } else {
                 battle.log.push(BattleLogEvent::new(BattleLog::Fail {
-                    target: PokemonIdent {
-                        player: target_player,
-                        slot: target_slot,
-                    },
+                    target: target_ident,
                 }));
             }
         }
@@ -1575,12 +1663,33 @@ pub fn handle_move_target_effect(
             }));
         }
     } else if move_id == "taunt" {
-        println!("EXECUTING TAUNT LOGIC");
+        if check_aroma_veil(
+            battle,
+            target_player,
+            target_slot,
+            source_player,
+            source_slot,
+        ) {
+            return;
+        }
         let target_ident = PokemonIdent {
             player: target_player,
             slot: target_slot,
         };
         let p = battle.get_pokemon(target_ident).unwrap();
+        let source_ability = battle
+            .get_pokemon(PokemonIdent {
+                player: source_player,
+                slot: source_slot,
+            })
+            .and_then(|p| p.ability.clone());
+        let mold_breaker = source_ability
+            .as_ref()
+            .map(|a| a.as_str())
+            .is_some_and(|a| matches!(a, "moldbreaker" | "teravolt" | "turboblaze"));
+        if !mold_breaker && p.ability.as_ref().map(|a| a.as_str()) == Some("oblivious") {
+            return;
+        }
         if p.taunt_turns == 0 {
             let acted = p.turn_state.acted_this_turn;
             let turns = if acted { 4 } else { 3 };
@@ -1632,11 +1741,11 @@ pub fn handle_move_self_effect(
     move_id: &str,
     player: u8,
     slot: usize,
-    volatile_status: Option<pkmn_meta::types::VolatileStatus>,
+    volatile_status: Option<VolatileStatus>,
 ) {
     let target = PokemonIdent { player, slot };
     if let Some(volatile_status) = volatile_status {
-        if volatile_status == pkmn_meta::types::VolatileStatus::Powertrick
+        if volatile_status == VolatileStatus::Powertrick
             && battle
                 .get_pokemon(target)
                 .is_some_and(|pokemon| pokemon.volatile_status.contains(&volatile_status))
@@ -1673,101 +1782,45 @@ pub fn handle_move_self_effect(
                 Some(move_id),
             );
         }
-        "burnup" => {
+        "burnup" | "doubleshock" => {
+            let (lost_type, move_name) = if move_id == "burnup" {
+                (Type::Fire, "Burn Up")
+            } else {
+                (Type::Electric, "Double Shock")
+            };
             if let Some(p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
                 let mut changed = false;
-                if p.type1 == pkmn_meta::types::Type::Fire {
-                    p.type1 = pkmn_meta::types::Type::Typeless;
+                if p.type1 == lost_type {
+                    p.type1 = Type::Typeless;
                     changed = true;
                 }
-                if p.type2 == Some(pkmn_meta::types::Type::Fire) {
-                    p.type2 = Some(pkmn_meta::types::Type::Typeless);
+                if p.type2 == Some(lost_type) {
+                    p.type2 = Some(Type::Typeless);
                     changed = true;
                 }
-                if p.added_type == Some(pkmn_meta::types::Type::Fire) {
-                    p.added_type = Some(pkmn_meta::types::Type::Typeless);
+                if p.added_type == Some(lost_type) {
+                    p.added_type = Some(Type::Typeless);
                     changed = true;
                 }
                 if changed {
-                    let mut type_strings = Vec::new();
-                    let t1 = format!("{:?}", p.type1);
-                    type_strings.push(if t1 == "Typeless" {
-                        "???".to_string()
-                    } else {
-                        t1
-                    });
-                    if let Some(t2) = p.type2 {
-                        let t2s = format!("{:?}", t2);
-                        type_strings.push(if t2s == "Typeless" {
-                            "???".to_string()
-                        } else {
-                            t2s
-                        });
-                    }
-                    if let Some(ta) = p.added_type {
-                        let tas = format!("{:?}", ta);
-                        type_strings.push(if tas == "Typeless" {
-                            "???".to_string()
-                        } else {
-                            tas
-                        });
-                    }
+                    let type_strings: Vec<String> = std::iter::once(p.type1)
+                        .chain(p.type2)
+                        .chain(p.added_type)
+                        .map(|t| {
+                            if t == Type::Typeless {
+                                "???".to_string()
+                            } else {
+                                format!("{:?}", t)
+                            }
+                        })
+                        .collect();
 
                     battle.log.push(BattleLogEvent::new(BattleLog::Start {
                         target: PokemonIdent { player, slot },
                         effect: format!(
-                            "typechange|{}|[from] move: Burn Up",
-                            type_strings.join("/")
-                        ),
-                    }));
-                }
-            }
-        }
-        "doubleshock" => {
-            if let Some(p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
-                let mut changed = false;
-                if p.type1 == pkmn_meta::types::Type::Electric {
-                    p.type1 = pkmn_meta::types::Type::Typeless;
-                    changed = true;
-                }
-                if p.type2 == Some(pkmn_meta::types::Type::Electric) {
-                    p.type2 = Some(pkmn_meta::types::Type::Typeless);
-                    changed = true;
-                }
-                if p.added_type == Some(pkmn_meta::types::Type::Electric) {
-                    p.added_type = Some(pkmn_meta::types::Type::Typeless);
-                    changed = true;
-                }
-                if changed {
-                    let mut type_strings = Vec::new();
-                    let t1 = format!("{:?}", p.type1);
-                    type_strings.push(if t1 == "Typeless" {
-                        "???".to_string()
-                    } else {
-                        t1
-                    });
-                    if let Some(t2) = p.type2 {
-                        let t2s = format!("{:?}", t2);
-                        type_strings.push(if t2s == "Typeless" {
-                            "???".to_string()
-                        } else {
-                            t2s
-                        });
-                    }
-                    if let Some(ta) = p.added_type {
-                        let tas = format!("{:?}", ta);
-                        type_strings.push(if tas == "Typeless" {
-                            "???".to_string()
-                        } else {
-                            tas
-                        });
-                    }
-
-                    battle.log.push(BattleLogEvent::new(BattleLog::Start {
-                        target: PokemonIdent { player, slot },
-                        effect: format!(
-                            "typechange|{}|[from] move: Double Shock",
-                            type_strings.join("/")
+                            "typechange|{}|[from] move: {}",
+                            type_strings.join("/"),
+                            move_name
                         ),
                     }));
                 }
@@ -1842,10 +1895,7 @@ pub fn handle_move_self_effect(
             battle.apply_stat_change(player, slot, vec![(Stat::Spd, 2)], player, Some(move_id));
         }
         "aquaring" => {
-            battle.section_apply_volatile(
-                PokemonIdent { player, slot },
-                pkmn_meta::types::VolatileStatus::Aquaring,
-            );
+            battle.section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Aquaring);
         }
         "autotomize" => {
             battle.apply_stat_change(player, slot, vec![(Stat::Spe, 2)], player, Some(move_id));
@@ -1949,7 +1999,7 @@ pub fn handle_move_self_effect(
                     absorbed: false,
                     from_effect: None,
                 }));
-                battle.section_apply_volatile(ident, pkmn_meta::types::VolatileStatus::Substitute);
+                battle.section_apply_volatile(ident, VolatileStatus::Substitute);
             }
         }
         "magneticflux" => {
@@ -2042,8 +2092,13 @@ pub fn handle_move_self_effect(
             );
         }
         "growth" => {
-            let boost = if battle.weather == Some(pkmn_meta::types::Weather::HashSunlight)
-                || battle.weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight)
+            let is_megasol = battle
+                .get_pokemon(PokemonIdent { player, slot })
+                .and_then(|p| p.ability.as_ref())
+                .is_some_and(|a| a.as_str() == "megasol");
+            let boost = if battle.weather == Some(Weather::HashSunlight)
+                || battle.weather == Some(Weather::ExtremelyHarshSunlight)
+                || is_megasol
             {
                 2
             } else {
@@ -2067,12 +2122,17 @@ pub fn handle_move_self_effect(
                 } else {
                     let is_weather_healing =
                         ["moonlight", "synthesis", "morningsun"].contains(&move_id);
+                    let is_megasol = p.ability.as_ref().is_some_and(|a| a.as_str() == "megasol");
                     let heal_fraction = if is_weather_healing {
-                        match battle.weather {
-                            Some(pkmn_meta::types::Weather::HashSunlight)
-                            | Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight) => 2.0 / 3.0,
-                            Some(_) => 0.25,
-                            None => 0.5,
+                        if is_megasol {
+                            2.0 / 3.0
+                        } else {
+                            match battle.weather {
+                                Some(Weather::HashSunlight)
+                                | Some(Weather::ExtremelyHarshSunlight) => 2.0 / 3.0,
+                                Some(_) => 0.25,
+                                None => 0.5,
+                            }
                         }
                     } else {
                         0.5
@@ -2082,7 +2142,7 @@ pub fn handle_move_self_effect(
                     if move_id == "roost" {
                         battle.section_apply_volatile(
                             PokemonIdent { player, slot },
-                            pkmn_meta::types::VolatileStatus::Roost,
+                            VolatileStatus::Roost,
                         );
                     }
                 }
@@ -2106,7 +2166,8 @@ pub fn handle_move_self_effect(
             } else {
                 battle.section_heal(PokemonIdent { player, slot }, maxhp.into());
                 if let Some(mut_p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
-                    mut_p.status = Some(pkmn_meta::types::Status::Sleep);
+                    mut_p.status = Some(Status::Sleep);
+                    mut_p.sleep_turns = 3;
                 }
                 battle
                     .log
@@ -2151,14 +2212,14 @@ pub fn handle_move_self_effect(
                 || move_id == "chillyreception"
             {
                 let weather = match move_id {
-                    "sunnyday" => pkmn_meta::types::Weather::HashSunlight,
-                    "raindance" => pkmn_meta::types::Weather::Rain,
-                    "sandstorm" => pkmn_meta::types::Weather::Sandstorm,
-                    "snowscape" | "hail" | "chillyreception" => pkmn_meta::types::Weather::Snow,
+                    "sunnyday" => Weather::HashSunlight,
+                    "raindance" => Weather::Rain,
+                    "sandstorm" => Weather::Sandstorm,
+                    "snowscape" | "hail" | "chillyreception" => Weather::Snow,
                     _ => unreachable!(),
                 };
 
-                let log_str = if weather == pkmn_meta::types::Weather::Snow {
+                let log_str = if weather == Weather::Snow {
                     "Snowscape".to_string()
                 } else if move_id == "sunnyday" {
                     "SunnyDay".to_string()
@@ -2186,18 +2247,15 @@ pub fn handle_move_self_effect(
                     };
                 }
                 battle.weather = Some(weather);
+                battle.update_forecast();
                 battle.weather_turns_left = if battle
                     .get_pokemon(PokemonIdent { player, slot })
                     .is_some_and(|p| {
                         p.item.as_ref().is_some_and(|i| {
-                            (weather == pkmn_meta::types::Weather::HashSunlight
-                                && i.to_string() == "heatrock")
-                                || (weather == pkmn_meta::types::Weather::Rain
-                                    && i.to_string() == "damprock")
-                                || (weather == pkmn_meta::types::Weather::Sandstorm
-                                    && i.to_string() == "smoothrock")
-                                || (weather == pkmn_meta::types::Weather::Snow
-                                    && i.to_string() == "icyrock")
+                            (weather == Weather::HashSunlight && i.to_string() == "heatrock")
+                                || (weather == Weather::Rain && i.to_string() == "damprock")
+                                || (weather == Weather::Sandstorm && i.to_string() == "smoothrock")
+                                || (weather == Weather::Snow && i.to_string() == "icyrock")
                         })
                     }) {
                     8
@@ -2206,10 +2264,10 @@ pub fn handle_move_self_effect(
                 };
             } else {
                 let terrain = match move_id {
-                    "electricterrain" => pkmn_meta::types::Terrain::Electric,
-                    "grassyterrain" => pkmn_meta::types::Terrain::Grassy,
-                    "mistyterrain" => pkmn_meta::types::Terrain::Misty,
-                    "psychicterrain" => pkmn_meta::types::Terrain::Psychic,
+                    "electricterrain" => Terrain::Electric,
+                    "grassyterrain" => Terrain::Grassy,
+                    "mistyterrain" => Terrain::Misty,
+                    "psychicterrain" => Terrain::Psychic,
                     _ => unreachable!(),
                 };
                 battle
@@ -2230,6 +2288,7 @@ pub fn handle_move_self_effect(
                 } else {
                     5
                 };
+                battle.update_mimicry();
             }
         }
         "fairylock" => {
@@ -2240,10 +2299,10 @@ pub fn handle_move_self_effect(
         }
         "protect" | "detect" | "spikyshield" | "kingsshield" | "banefulbunker" => {
             let vs = match move_id {
-                "kingsshield" => pkmn_meta::types::VolatileStatus::Kingsshield,
-                "spikyshield" => pkmn_meta::types::VolatileStatus::Spikyshield,
-                "banefulbunker" => pkmn_meta::types::VolatileStatus::Banefulbunker,
-                _ => pkmn_meta::types::VolatileStatus::Protect,
+                "kingsshield" => VolatileStatus::Kingsshield,
+                "spikyshield" => VolatileStatus::Spikyshield,
+                "banefulbunker" => VolatileStatus::Banefulbunker,
+                _ => VolatileStatus::Protect,
             };
             battle.section_apply_volatile(PokemonIdent { player, slot }, vs);
             battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
@@ -2252,10 +2311,7 @@ pub fn handle_move_self_effect(
             }));
         }
         "charge" => {
-            battle.section_apply_volatile(
-                PokemonIdent { player, slot },
-                pkmn_meta::types::VolatileStatus::Charge,
-            );
+            battle.section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Charge);
             battle.apply_stat_change(player, slot, vec![(Stat::Spd, 1)], player, Some(move_id));
         }
         "howl" => {
@@ -2275,20 +2331,33 @@ pub fn handle_move_self_effect(
             battle.apply_stat_change(player, slot, vec![(Stat::Def, 2)], player, Some(move_id));
         }
         "focusenergy" => {
-            battle.section_apply_volatile(
-                PokemonIdent { player, slot },
-                pkmn_meta::types::VolatileStatus::Focusenergy,
-            );
+            battle
+                .section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Focusenergy);
         }
         "endure" => {
-            battle.section_apply_volatile(
-                PokemonIdent { player, slot },
-                pkmn_meta::types::VolatileStatus::Endure,
-            );
+            battle.section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Endure);
             battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
                 target: PokemonIdent { player, slot },
                 effect: "endure".to_string(),
             }));
+        }
+        "perishsong" => {
+            let active_targets = [
+                PokemonIdent { player: 1, slot: 0 },
+                PokemonIdent { player: 1, slot: 1 },
+                PokemonIdent { player: 2, slot: 0 },
+                PokemonIdent { player: 2, slot: 1 },
+            ];
+            for target_ident in active_targets {
+                if let Some(target_p) = battle.get_pokemon(target_ident)
+                    && target_p.hp > 0
+                    && !target_p
+                        .volatile_status
+                        .contains(&VolatileStatus::Perishsong)
+                {
+                    battle.section_apply_volatile(target_ident, VolatileStatus::Perishsong);
+                }
+            }
         }
         _ => {}
     }
@@ -2308,9 +2377,9 @@ pub fn handle_target_secondary_effect(
         use rand::RngExt;
         let r = rng.random_range(0..3);
         let status = match r {
-            0 => pkmn_meta::types::Status::Poison,
-            1 => pkmn_meta::types::Status::Paralysis,
-            _ => pkmn_meta::types::Status::Sleep,
+            0 => Status::Poison,
+            1 => Status::Paralysis,
+            _ => Status::Sleep,
         };
         let target_ident = PokemonIdent {
             player: target_player,

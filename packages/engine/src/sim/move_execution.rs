@@ -1,6 +1,6 @@
 use crate::sim::battle::{Battle, BattleLog, BattleLogEvent, PokemonIdent, Stat};
 use itertools::Itertools;
-use pkmn_meta::types::Type;
+use pkmn_meta::types::*;
 use rand::RngExt;
 
 struct HitResult {
@@ -9,7 +9,80 @@ struct HitResult {
     immune_stop: bool,
 }
 
+/// Flatten a move's `Boosts` into (stat, stage change) pairs.
+fn boost_pairs(boosts: &pkmn_meta::Boosts) -> [(Stat, i8); 7] {
+    [
+        (Stat::Atk, boosts.atk.into_inner()),
+        (Stat::Def, boosts.def.into_inner()),
+        (Stat::Spa, boosts.spa.into_inner()),
+        (Stat::Spd, boosts.spd.into_inner()),
+        (Stat::Spe, boosts.spe.into_inner()),
+        (Stat::Accuracy, boosts.accuracy.into_inner()),
+        (Stat::Evasion, boosts.evasion.into_inner()),
+    ]
+}
+
 impl Battle {
+    /// Whether `target` still has a queued damaging move (optionally requiring positive priority).
+    fn target_will_attack(&self, target: PokemonIdent, needs_priority: bool) -> bool {
+        self.turn_actions.iter().any(|a| {
+            if let crate::sim::action::Action::Move(m) = a
+                && m.player == target.player
+                && m.slot == target.slot
+                && let Some(target_meta) = pkmn_meta::move_meta::get_move_meta(&m.original_move_id)
+            {
+                *target_meta.category() != Category::Status && (!needs_priority || m.priority > 0)
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Check if a move makes contact, taking attacker's Long Reach ability into account.
+    fn check_is_contact(
+        &self,
+        attacker_ident: PokemonIdent,
+        meta_opt: Option<&pkmn_meta::move_meta::MoveMeta>,
+    ) -> (Option<crate::sim::values::Ability>, bool) {
+        let attacker_ability = self
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.clone());
+        let is_contact = if attacker_ability.as_ref().map(|a| a.as_str()) == Some("longreach") {
+            false
+        } else {
+            meta_opt.map(|m| *m.flags_contact()).unwrap_or(false)
+        };
+        (attacker_ability, is_contact)
+    }
+
+    /// Roll the 30% trigger for contact abilities, honouring the `secondary` rng override.
+    fn roll_secondary_trigger(&self) -> bool {
+        if let Some(config) = &self.rng_config
+            && let Some(sec_config) = &config.secondary
+        {
+            sec_config.as_str() != "never"
+        } else {
+            rand::rng().random_range(1..=100) <= 30
+        }
+    }
+
+    /// Fixed ability damage to `target` (e.g. Rough Skin, Aftermath), logging damage and any faint.
+    fn deal_ability_damage(&mut self, target: PokemonIdent, dmg: i32) {
+        self.section_take_damage(target, dmg);
+        self.log.push(BattleLogEvent::new(BattleLog::Damage {
+            target,
+            damage: dmg,
+            is_crit: false,
+            effectiveness: 0,
+            absorbed: false,
+            from_effect: None,
+        }));
+        if self.get_pokemon(target).is_some_and(|p| p.hp == 0) {
+            self.log
+                .push(BattleLogEvent::new(BattleLog::Faint { target }));
+        }
+    }
+
     pub fn execute_move(&mut self, action: &crate::sim::action::MoveAction) -> Result<(), String> {
         let mut action = action.clone();
         let mut from_move = None;
@@ -18,9 +91,7 @@ impl Battle {
         if let Some(p) = self.get_pokemon(PokemonIdent {
             player: action.player,
             slot: action.slot,
-        }) && p
-            .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Encore)
+        }) && p.volatile_status.contains(&VolatileStatus::Encore)
             && let Some(encored) = &p.encored_move
         {
             action.move_id = encored.clone();
@@ -67,12 +138,10 @@ impl Battle {
         let range = meta_opt
             .as_ref()
             .map(|m| m.range())
-            .unwrap_or(&pkmn_meta::types::Range::SingleTarget);
+            .unwrap_or(&Range::SingleTarget);
 
         let log_target = match range {
-            pkmn_meta::types::Range::Self_
-            | pkmn_meta::types::Range::AllOpponents
-            | pkmn_meta::types::Range::AllPokemon => None,
+            Range::Self_ | Range::AllOpponents | Range::AllPokemon => None,
             _ => Some(PokemonIdent {
                 player: action.target_player,
                 slot: action.target_slot.into(),
@@ -93,6 +162,24 @@ impl Battle {
             player: action.player,
             slot: action.slot,
         };
+
+        if matches!(
+            action.move_id.as_str(),
+            "explosion" | "selfdestruct" | "mindblown" | "mistyexplosion"
+        ) {
+            let damp_pokemon = self
+                .all_active_pokemon()
+                .into_iter()
+                .find(|(_, p)| p.ability.as_ref().map(|a| a.as_str()) == Some("damp"));
+            if let Some((damp_ident, _)) = damp_pokemon {
+                self.log.push(BattleLogEvent::new(BattleLog::Cant {
+                    target: damp_ident,
+                    reason: "ability: Damp".to_string(),
+                    move_id: Some(format!("{}|[of] {}", action.move_id, attacker_ident)),
+                }));
+                return Ok(());
+            }
+        }
         let attacker_status = self.get_pokemon(attacker_ident).and_then(|p| p.status);
 
         if (action.move_id == "sleeptalk" || action.move_id == "snore")
@@ -126,9 +213,9 @@ impl Battle {
 
         if action.move_id == "doubleshock"
             && let Some(p) = self.get_pokemon(attacker_ident)
-            && p.type1 != pkmn_meta::types::Type::Electric
-            && p.type2 != Some(pkmn_meta::types::Type::Electric)
-            && p.added_type != Some(pkmn_meta::types::Type::Electric)
+            && p.type1 != Type::Electric
+            && p.type2 != Some(Type::Electric)
+            && p.added_type != Some(Type::Electric)
         {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
@@ -138,9 +225,9 @@ impl Battle {
 
         if action.move_id == "burnup"
             && let Some(p) = self.get_pokemon(attacker_ident)
-            && p.type1 != pkmn_meta::types::Type::Fire
-            && p.type2 != Some(pkmn_meta::types::Type::Fire)
-            && p.added_type != Some(pkmn_meta::types::Type::Fire)
+            && p.type1 != Type::Fire
+            && p.type2 != Some(Type::Fire)
+            && p.added_type != Some(Type::Fire)
         {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
@@ -148,49 +235,13 @@ impl Battle {
             return Ok(());
         }
 
-        if action.move_id == "suckerpunch" {
+        if action.move_id == "suckerpunch" || action.move_id == "upperhand" {
             let target_ident = PokemonIdent {
                 player: action.target_player,
                 slot: action.target_slot.into(),
             };
-            let target_will_attack = self.turn_actions.iter().any(|a| {
-                if let crate::sim::action::Action::Move(m) = a
-                    && m.player == target_ident.player
-                    && m.slot == target_ident.slot
-                    && let Some(target_meta) =
-                        pkmn_meta::move_meta::get_move_meta(&m.original_move_id)
-                {
-                    *target_meta.category() != pkmn_meta::types::Category::Status
-                } else {
-                    false
-                }
-            });
-            if !target_will_attack {
-                self.log.push(BattleLogEvent::new(BattleLog::Fail {
-                    target: attacker_ident,
-                }));
-                return Ok(());
-            }
-        }
-
-        if action.move_id == "upperhand" {
-            let target_ident = PokemonIdent {
-                player: action.target_player,
-                slot: action.target_slot.into(),
-            };
-            let target_will_priority_attack = self.turn_actions.iter().any(|a| {
-                if let crate::sim::action::Action::Move(m) = a
-                    && m.player == target_ident.player
-                    && m.slot == target_ident.slot
-                    && let Some(target_meta) =
-                        pkmn_meta::move_meta::get_move_meta(&m.original_move_id)
-                {
-                    *target_meta.category() != pkmn_meta::types::Category::Status && m.priority > 0
-                } else {
-                    false
-                }
-            });
-            if !target_will_priority_attack {
+            let needs_priority = action.move_id == "upperhand";
+            if !self.target_will_attack(target_ident, needs_priority) {
                 self.log.push(BattleLogEvent::new(BattleLog::Fail {
                     target: attacker_ident,
                 }));
@@ -241,8 +292,7 @@ impl Battle {
         }
 
         if let Some(p) = self.get_pokemon(attacker_ident)
-            && p.volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Throatchop)
+            && p.volatile_status.contains(&VolatileStatus::Throatchop)
             && let Some(meta) = pkmn_meta::move_meta::get_move_meta(&action.move_id)
             && *meta.is_sound()
         {
@@ -252,33 +302,25 @@ impl Battle {
             return Ok(());
         }
 
-        if action.move_id == "electricterrain"
-            && self.terrain == Some(pkmn_meta::types::Terrain::Electric)
-        {
+        if action.move_id == "electricterrain" && self.terrain == Some(Terrain::Electric) {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
             }));
             return Ok(());
         }
-        if action.move_id == "grassyterrain"
-            && self.terrain == Some(pkmn_meta::types::Terrain::Grassy)
-        {
+        if action.move_id == "grassyterrain" && self.terrain == Some(Terrain::Grassy) {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
             }));
             return Ok(());
         }
-        if action.move_id == "mistyterrain"
-            && self.terrain == Some(pkmn_meta::types::Terrain::Misty)
-        {
+        if action.move_id == "mistyterrain" && self.terrain == Some(Terrain::Misty) {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
             }));
             return Ok(());
         }
-        if action.move_id == "psychicterrain"
-            && self.terrain == Some(pkmn_meta::types::Terrain::Psychic)
-        {
+        if action.move_id == "psychicterrain" && self.terrain == Some(Terrain::Psychic) {
             self.log.push(BattleLogEvent::new(BattleLog::Fail {
                 target: attacker_ident,
             }));
@@ -305,12 +347,12 @@ impl Battle {
 
         if let Some(meta) = &meta_opt
             && let Some(vs) = meta.volatile_status()
-            && (*vs == pkmn_meta::types::VolatileStatus::Protect
-                || *vs == pkmn_meta::types::VolatileStatus::Kingsshield
-                || *vs == pkmn_meta::types::VolatileStatus::Spikyshield
-                || *vs == pkmn_meta::types::VolatileStatus::Banefulbunker
-                || *vs == pkmn_meta::types::VolatileStatus::Followme
-                || *vs == pkmn_meta::types::VolatileStatus::Ragepowder)
+            && (*vs == VolatileStatus::Protect
+                || *vs == VolatileStatus::Kingsshield
+                || *vs == VolatileStatus::Spikyshield
+                || *vs == VolatileStatus::Banefulbunker
+                || *vs == VolatileStatus::Followme
+                || *vs == VolatileStatus::Ragepowder)
         {
             if let Some(p) = self.get_pokemon_mut(attacker_ident) {
                 p.volatile_status.push(*vs);
@@ -321,31 +363,36 @@ impl Battle {
         if let Some(meta) = &meta_opt
             && *meta.flags_charge()
         {
-            let is_charging = self.get_pokemon(attacker_ident).is_some_and(|p| {
-                p.volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Twoturnmove)
-            });
+            let is_charging = self
+                .get_pokemon(attacker_ident)
+                .is_some_and(|p| p.volatile_status.contains(&VolatileStatus::Twoturnmove));
 
-            let is_sun = self.weather == Some(pkmn_meta::types::Weather::HashSunlight)
-                || self.weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight);
+            let is_sun = self.weather == Some(Weather::HashSunlight)
+                || self.weather == Some(Weather::ExtremelyHarshSunlight)
+                || self
+                    .get_pokemon(attacker_ident)
+                    .and_then(|p| p.ability.as_ref())
+                    .is_some_and(|a| a.as_str() == "megasol");
             let skip_charge = (action.move_id == "electroshot"
-                && (self.weather == Some(pkmn_meta::types::Weather::Rain)
-                    || self.weather == Some(pkmn_meta::types::Weather::HeavyRain)))
+                && (self.weather == Some(Weather::Rain)
+                    || self.weather == Some(Weather::HeavyRain)))
                 || ((action.move_id == "solarbeam" || action.move_id == "solarblade") && is_sun);
+
+            if !is_charging {
+                self.log.push(BattleLogEvent::new(BattleLog::Prepare {
+                    target: attacker_ident,
+                    move_id: action.move_id.clone(),
+                }));
+            }
 
             if !is_charging && !skip_charge {
                 if let Some(p) = self.get_pokemon_mut(attacker_ident) {
-                    p.volatile_status
-                        .push(pkmn_meta::types::VolatileStatus::Twoturnmove);
+                    p.volatile_status.push(VolatileStatus::Twoturnmove);
 
                     if let Ok(specific_volatile) = std::str::FromStr::from_str(&action.move_id) {
                         p.volatile_status.push(specific_volatile);
                     }
                 }
-                self.log.push(BattleLogEvent::new(BattleLog::Prepare {
-                    target: attacker_ident,
-                    move_id: action.move_id.clone(),
-                }));
 
                 if action.move_id == "electroshot" || action.move_id == "meteorbeam" {
                     self.apply_stat_change(
@@ -371,7 +418,7 @@ impl Battle {
 
                 if let Some(p) = self.get_pokemon_mut(attacker_ident) {
                     p.volatile_status
-                        .retain(|s| s != &pkmn_meta::types::VolatileStatus::Twoturnmove);
+                        .retain(|s| s != &VolatileStatus::Twoturnmove);
 
                     if let Ok(specific_volatile) = std::str::FromStr::from_str(&action.move_id) {
                         p.volatile_status.retain(|s| s != &specific_volatile);
@@ -381,6 +428,29 @@ impl Battle {
         }
 
         let alive_targets = self.get_move_targets(&action);
+
+        if let Some(attacker) = self.get_pokemon_mut(attacker_ident) {
+            let is_libero = attacker.ability.as_ref().map(|a| a.as_str()) == Some("libero");
+            let is_protean = attacker.ability.as_ref().map(|a| a.as_str()) == Some("protean");
+            if (is_libero || is_protean) && !attacker.libero_activated {
+                attacker.libero_activated = true;
+                if let Some(meta) = pkmn_meta::move_meta::get_move_meta(&action.move_id) {
+                    let m_type = *meta.move_type();
+                    if attacker.type1 != m_type || attacker.type2.is_some() {
+                        attacker.type1 = m_type;
+                        attacker.type2 = None;
+                        let ability_name = if is_libero { "Libero" } else { "Protean" };
+                        self.log.push(BattleLogEvent::new(BattleLog::Start {
+                            target: attacker_ident,
+                            effect: format!(
+                                "typechange|{:?}|[from] ability: {}",
+                                m_type, ability_name
+                            ),
+                        }));
+                    }
+                }
+            }
+        }
 
         if action.move_id == "allyswitch" {
             let side = if action.player == 1 {
@@ -433,10 +503,10 @@ impl Battle {
         }
 
         if action.move_id == "auroraveil" {
-            let is_snow = self.weather == Some(pkmn_meta::types::Weather::Snow)
-                || self.weather == Some(pkmn_meta::types::Weather::Snow)
-                || self.weather == Some(pkmn_meta::types::Weather::Snow)
-                || self.weather == Some(pkmn_meta::types::Weather::Snow);
+            let is_snow = self.weather == Some(Weather::Snow)
+                || self.weather == Some(Weather::Snow)
+                || self.weather == Some(Weather::Snow)
+                || self.weather == Some(Weather::Snow);
             if !is_snow {
                 self.log.push(BattleLogEvent::new(BattleLog::Fail {
                     target: attacker_ident,
@@ -459,8 +529,13 @@ impl Battle {
         let mut hit_count = if let Some(meta) = &meta_opt
             && let Some((min_hits, max_hits)) = meta.multihit()
         {
-            if min_hits == max_hits {
-                *min_hits
+            let attacker_has_skill_link = self
+                .get_pokemon(attacker_ident)
+                .and_then(|p| p.ability.as_ref())
+                .is_some_and(|a| a.as_str() == "skilllink");
+
+            if min_hits == max_hits || attacker_has_skill_link {
+                *max_hits
             } else {
                 let mut rng = rand::rng();
                 let force_damage_roll = self
@@ -478,6 +553,20 @@ impl Battle {
         } else {
             1
         };
+
+        let attacker_has_parental_bond = self
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.as_ref())
+            .is_some_and(|a| a.as_str() == "parentalbond");
+        if attacker_has_parental_bond
+            && hit_count == 1
+            && !is_spread
+            && meta_opt
+                .as_ref()
+                .is_some_and(|m| *m.category() != Category::Status)
+        {
+            hit_count = 2;
+        }
 
         if action.move_id == "beatup" {
             let (active, benched) = if action.player == 1 {
@@ -521,21 +610,16 @@ impl Battle {
                             if p.hp.into_inner() == 0 {
                                 return false;
                             }
-                            let is_fairy = p.type1 == pkmn_meta::types::Type::Fairy
-                                || p.type2 == Some(pkmn_meta::types::Type::Fairy)
-                                || p.added_type == Some(pkmn_meta::types::Type::Fairy);
+                            let is_fairy = p.type1 == Type::Fairy
+                                || p.type2 == Some(Type::Fairy)
+                                || p.added_type == Some(Type::Fairy);
                             if is_fairy {
                                 return false;
                             }
-                            let protecting = p
-                                .volatile_status
-                                .contains(&pkmn_meta::types::VolatileStatus::Protect)
-                                || p.volatile_status
-                                    .contains(&pkmn_meta::types::VolatileStatus::Spikyshield)
-                                || p.volatile_status
-                                    .contains(&pkmn_meta::types::VolatileStatus::Banefulbunker)
-                                || p.volatile_status
-                                    .contains(&pkmn_meta::types::VolatileStatus::Kingsshield);
+                            let protecting = p.volatile_status.contains(&VolatileStatus::Protect)
+                                || p.volatile_status.contains(&VolatileStatus::Spikyshield)
+                                || p.volatile_status.contains(&VolatileStatus::Banefulbunker)
+                                || p.volatile_status.contains(&VolatileStatus::Kingsshield);
                             if protecting {
                                 return false;
                             }
@@ -610,10 +694,10 @@ impl Battle {
                     fainted_targets.insert(target_ident);
 
                     // Destiny Bond check
-                    if self.get_pokemon(target_ident).is_some_and(|p| {
-                        p.volatile_status
-                            .contains(&pkmn_meta::types::VolatileStatus::Destinybond)
-                    }) && let Some(attacker) = self.get_pokemon_mut(attacker_ident)
+                    if self
+                        .get_pokemon(target_ident)
+                        .is_some_and(|p| p.volatile_status.contains(&VolatileStatus::Destinybond))
+                        && let Some(attacker) = self.get_pokemon_mut(attacker_ident)
                         && attacker.hp.into_inner() > 0
                     {
                         attacker.hp = 0.into();
@@ -624,6 +708,21 @@ impl Battle {
                         self.log.push(BattleLogEvent::new(BattleLog::Faint {
                             target: attacker_ident,
                         }));
+                    }
+
+                    // Moxie check
+                    if target_ident.player != attacker_ident.player
+                        && self.get_pokemon(attacker_ident).is_some_and(|p| {
+                            p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("moxie")
+                        })
+                    {
+                        self.apply_stat_change(
+                            attacker_ident.player,
+                            attacker_ident.slot,
+                            vec![(Stat::Atk, 1)],
+                            attacker_ident.player,
+                            Some("moxie"),
+                        );
                     }
                 }
             }
@@ -693,14 +792,20 @@ impl Battle {
         }
 
         if move_successful && let Some(meta) = &meta_opt {
-            let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| p.item);
+            let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| {
+                if p.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
+                    None
+                } else {
+                    p.item
+                }
+            });
 
             crate::sim::moves::handle_move_self_effect(
                 self,
                 &action.move_id,
                 action.player,
                 action.slot,
-                (*meta.range() == pkmn_meta::types::Range::Self_)
+                (*meta.range() == Range::Self_)
                     .then(|| meta.volatile_status().as_ref().copied())
                     .flatten(),
             );
@@ -736,9 +841,7 @@ impl Battle {
                     effect: "Light Screen".to_string(),
                 }));
             }
-            if action.move_id == "auroraveil"
-                && self.weather == Some(pkmn_meta::types::Weather::Snow)
-            {
+            if action.move_id == "auroraveil" && self.weather == Some(Weather::Snow) {
                 if action.player == 1 {
                     self.p1.aurora_veil_turns = turns;
                 } else {
@@ -778,39 +881,35 @@ impl Battle {
             if let Some(attacker) = self.get_pokemon(attacker_ident)
                 && attacker
                     .volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Electrify)
+                    .contains(&VolatileStatus::Electrify)
             {
-                move_type = pkmn_meta::types::Type::Electric;
+                move_type = Type::Electric;
             }
             if let Some(attacker) = self.get_pokemon(attacker_ident)
                 && let Some(ability_id) = attacker.ability.as_ref()
-                && let Some(ability) = crate::sim::abilities::get_ability(ability_id)
-                && ability.has_on_modify_type
-                && let Some(new_type) = crate::sim::abilities::on_modify_type(ability_id, move_type)
             {
-                move_type = new_type;
+                if ability_id.as_str() == "liquidvoice" && *meta.is_sound() {
+                    move_type = Type::Water;
+                } else if let Some(ability) = crate::sim::abilities::get_ability(ability_id)
+                    && ability.has_on_modify_type
+                    && let Some(new_type) =
+                        crate::sim::abilities::on_modify_type(ability_id, move_type)
+                {
+                    move_type = new_type;
+                }
             }
 
-            if move_type == pkmn_meta::types::Type::Electric
+            if move_type == Type::Electric
                 && action.move_id != "charge"
                 && let Some(p) = self.get_pokemon_mut(attacker_ident)
             {
-                p.volatile_status
-                    .retain(|s| s != &pkmn_meta::types::VolatileStatus::Charge);
+                p.volatile_status.retain(|s| s != &VolatileStatus::Charge);
             }
 
             if let Some(self_eff) = meta.self_effect().as_ref()
                 && let Some(boosts) = self_eff.boosts().as_ref()
             {
-                let stats = [
-                    (Stat::Atk, boosts.atk.into_inner()),
-                    (Stat::Def, boosts.def.into_inner()),
-                    (Stat::Spa, boosts.spa.into_inner()),
-                    (Stat::Spd, boosts.spd.into_inner()),
-                    (Stat::Spe, boosts.spe.into_inner()),
-                    (Stat::Accuracy, boosts.accuracy.into_inner()),
-                    (Stat::Evasion, boosts.evasion.into_inner()),
-                ];
+                let stats = boost_pairs(boosts);
                 for (stat, amount) in stats {
                     let amount = if action.move_id == "makeitrain" && stat == Stat::Spa {
                         -2
@@ -830,10 +929,7 @@ impl Battle {
             }
 
             if *meta.flags_recharge() {
-                self.section_apply_volatile(
-                    attacker_ident,
-                    pkmn_meta::types::VolatileStatus::Mustrecharge,
-                );
+                self.section_apply_volatile(attacker_ident, VolatileStatus::Mustrecharge);
             }
 
             if let Some(item_meta) = attacker_item
@@ -841,9 +937,13 @@ impl Battle {
                 .and_then(pkmn_meta::item_meta::get_item_meta)
                 && *item_meta.is_life_orb()
                 && total_damage_dealt > 0
+                && !self
+                    .get_pokemon(attacker_ident)
+                    .and_then(|p| p.ability.as_ref())
+                    .is_some_and(|a| a.as_str() == "magicguard")
                 && !meta_opt
                     .as_ref()
-                    .is_some_and(|m| *m.category() == pkmn_meta::types::Category::Status)
+                    .is_some_and(|m| *m.category() == Category::Status)
             {
                 let attacker_maxhp = self
                     .get_pokemon(attacker_ident)
@@ -866,11 +966,11 @@ impl Battle {
                 }
             }
 
-            if attacker_item == Some(pkmn_meta::types::ItemId::ShellBell)
+            if attacker_item == Some(ItemId::ShellBell)
                 && total_damage_dealt > 0
                 && !meta_opt
                     .as_ref()
-                    .is_some_and(|m| *m.category() == pkmn_meta::types::Category::Status)
+                    .is_some_and(|m| *m.category() == Category::Status)
             {
                 let heal_amount = std::cmp::max(1, total_damage_dealt / 8);
                 if let Some(p) = self.get_pokemon_mut(attacker_ident) {
@@ -926,8 +1026,7 @@ impl Battle {
             if let Some(p) = self.get_pokemon(attacker_ident) {
                 (
                     p.hp > 0,
-                    p.volatile_status
-                        .contains(&pkmn_meta::types::VolatileStatus::Flinch),
+                    p.volatile_status.contains(&VolatileStatus::Flinch),
                     p.status,
                 )
             } else {
@@ -939,22 +1038,36 @@ impl Battle {
         }
 
         if attacker_has_flinch {
+            if let Some(p) = self.get_pokemon_mut(attacker_ident) {
+                p.volatile_status.retain(|s| s != &VolatileStatus::Flinch);
+            }
             self.log.push(BattleLogEvent::new(BattleLog::Cant {
                 target: attacker_ident,
                 reason: "flinch".to_string(),
                 move_id: None,
             }));
+            let has_steadfast = self
+                .get_pokemon(attacker_ident)
+                .and_then(|p| p.ability.as_ref())
+                .map(|a| a.as_str())
+                == Some("steadfast");
+            if has_steadfast {
+                self.apply_stat_change(
+                    attacker_ident.player,
+                    attacker_ident.slot,
+                    vec![(Stat::Spe, 1)],
+                    attacker_ident.player,
+                    Some("steadfast"),
+                );
+            }
             return false;
         }
 
         if let Some(p) = self.get_pokemon(attacker_ident) {
             let is_status = pkmn_meta::move_meta::get_move_meta(&action.move_id)
-                .map(|m| *m.category() == pkmn_meta::types::Category::Status)
+                .map(|m| *m.category() == Category::Status)
                 .unwrap_or(false);
-            if is_status
-                && p.volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Taunt)
-            {
+            if is_status && p.volatile_status.contains(&VolatileStatus::Taunt) {
                 self.log.push(BattleLogEvent::new(BattleLog::Cant {
                     target: attacker_ident,
                     reason: "Taunt".to_string(),
@@ -1027,8 +1140,33 @@ impl Battle {
         }
 
         if attacker_status.as_ref().map(|s| s.as_ref()) == Some("slp") {
-            if move_id != "sleeptalk" && move_id != "snore" {
-                return false;
+            let mut woke_up = false;
+            let early_bird = self
+                .get_pokemon(attacker_ident)
+                .and_then(|p| p.ability.as_ref())
+                .map(|a| a.as_str())
+                == Some("earlybird");
+            let dec = if early_bird { 2 } else { 1 };
+            if let Some(p) = self.get_pokemon_mut(attacker_ident) {
+                p.sleep_turns = p.sleep_turns.saturating_sub(dec);
+                if p.sleep_turns == 0 {
+                    p.status = None;
+                    woke_up = true;
+                }
+            }
+            if woke_up {
+                self.log.push(BattleLogEvent::new(BattleLog::CureStatus {
+                    target: attacker_ident,
+                }));
+            } else {
+                self.log.push(BattleLogEvent::new(BattleLog::Cant {
+                    target: attacker_ident,
+                    reason: "slp".to_string(),
+                    move_id: None,
+                }));
+                if move_id != "sleeptalk" && move_id != "snore" {
+                    return false;
+                }
             }
         } else if attacker_status.as_ref().map(|s| s.as_ref()) == Some("frz") {
             return false;
@@ -1037,11 +1175,10 @@ impl Battle {
         let mut skip_turn = false;
 
         if let Some(p) = self.get_pokemon_mut(attacker_ident)
-            && p.volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Mustrecharge)
+            && p.volatile_status.contains(&VolatileStatus::Mustrecharge)
         {
             p.volatile_status
-                .retain(|s| s != &pkmn_meta::types::VolatileStatus::Mustrecharge);
+                .retain(|s| s != &VolatileStatus::Mustrecharge);
             skip_turn = true;
         }
 
@@ -1052,8 +1189,7 @@ impl Battle {
         let hits_self = max_roll || rand::rng().random_range(1..=3) == 1;
 
         if let Some(p) = self.get_pokemon_mut(attacker_ident)
-            && p.volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Confusion)
+            && p.volatile_status.contains(&VolatileStatus::Confusion)
             && hits_self
         {
             let attack = p.attack.apply_boost(p.boosts.atk).into_inner();
@@ -1090,11 +1226,11 @@ impl Battle {
         let range = meta_opt
             .as_ref()
             .map(|m| m.range())
-            .unwrap_or(&pkmn_meta::types::Range::SingleTarget);
+            .unwrap_or(&Range::SingleTarget);
 
         let mut range = *range;
         if action.move_id == "expandingforce"
-            && self.terrain == Some(pkmn_meta::types::Terrain::Psychic)
+            && self.terrain == Some(Terrain::Psychic)
             && self
                 .get_pokemon(PokemonIdent {
                     player: action.player,
@@ -1102,27 +1238,27 @@ impl Battle {
                 })
                 .is_some_and(|p| p.is_grounded())
         {
-            range = pkmn_meta::types::Range::AllOpponents;
+            range = Range::AllOpponents;
         }
         if action.move_id == "mistyexplosion" {
-            range = pkmn_meta::types::Range::AllPokemon;
+            range = Range::AllPokemon;
         } else if action.move_id == "mountaingale" || action.move_id == "psyshieldbash" {
-            range = pkmn_meta::types::Range::SingleTarget;
+            range = Range::SingleTarget;
         }
 
         let targets = match range {
-            pkmn_meta::types::Range::Self_ => vec![(action.player, action.slot)],
-            pkmn_meta::types::Range::AllOpponents => {
+            Range::Self_ => vec![(action.player, action.slot)],
+            Range::AllOpponents => {
                 vec![(action.target_player, 0), (action.target_player, 1)]
             }
-            pkmn_meta::types::Range::AllPokemon => {
+            Range::AllPokemon => {
                 vec![
                     (action.player, if action.slot == 0 { 1 } else { 0 }),
                     (action.target_player, 0),
                     (action.target_player, 1),
                 ]
             }
-            pkmn_meta::types::Range::UserSSide | pkmn_meta::types::Range::AllAllies => {
+            Range::UserSSide | Range::AllAllies => {
                 let active_len = if action.player == 1 {
                     self.p1.active.len()
                 } else {
@@ -1130,10 +1266,10 @@ impl Battle {
                 };
                 (0..active_len).map(|slot| (action.player, slot)).collect()
             }
-            pkmn_meta::types::Range::SingleAlly => {
+            Range::SingleAlly => {
                 vec![(action.target_player, action.target_slot.into())]
             }
-            pkmn_meta::types::Range::RandomOpponent => {
+            Range::RandomOpponent => {
                 let opponent_active_len = if action.target_player == 1 {
                     self.p1.active.len()
                 } else {
@@ -1206,10 +1342,10 @@ impl Battle {
 
         if let Some(p) = self.get_pokemon(target_ident) {
             for vs in [
-                pkmn_meta::types::VolatileStatus::Protect,
-                pkmn_meta::types::VolatileStatus::Kingsshield,
-                pkmn_meta::types::VolatileStatus::Spikyshield,
-                pkmn_meta::types::VolatileStatus::Banefulbunker,
+                VolatileStatus::Protect,
+                VolatileStatus::Kingsshield,
+                VolatileStatus::Spikyshield,
+                VolatileStatus::Banefulbunker,
             ] {
                 if p.volatile_status.contains(&vs) {
                     target_is_protected = true;
@@ -1227,9 +1363,9 @@ impl Battle {
         if let Some(meta) = &meta_opt {
             if target_is_protected && *meta.flags_protect() {
                 let effect_str = match target_protection_vs {
-                    Some(pkmn_meta::types::VolatileStatus::Kingsshield) => "move: King's Shield",
-                    Some(pkmn_meta::types::VolatileStatus::Spikyshield) => "move: Spiky Shield",
-                    Some(pkmn_meta::types::VolatileStatus::Banefulbunker) => "move: Baneful Bunker",
+                    Some(VolatileStatus::Kingsshield) => "move: King's Shield",
+                    Some(VolatileStatus::Spikyshield) => "move: Spiky Shield",
+                    Some(VolatileStatus::Banefulbunker) => "move: Baneful Bunker",
                     _ => "move: Protect",
                 };
 
@@ -1238,26 +1374,31 @@ impl Battle {
                     effect: effect_str.to_string(),
                 }));
 
-                if *meta.flags_contact()
-                    && let Some(pkmn_meta::types::VolatileStatus::Banefulbunker) =
-                        target_protection_vs
+                let attacker_ability = self
+                    .get_pokemon(attacker_ident)
+                    .and_then(|p| p.ability.clone());
+                let attacker_ability = attacker_ability.as_ref().map(|a| a.as_str());
+                let makes_contact = *meta.flags_contact() && attacker_ability != Some("longreach");
+
+                if makes_contact
+                    && let Some(VolatileStatus::Banefulbunker) = target_protection_vs
                     && let Some(p) = self.get_pokemon_mut(attacker_ident)
                     && p.status.is_none()
-                    && p.type1 != pkmn_meta::types::Type::Poison
-                    && p.type2 != Some(pkmn_meta::types::Type::Poison)
-                    && p.type1 != pkmn_meta::types::Type::Steel
-                    && p.type2 != Some(pkmn_meta::types::Type::Steel)
+                    && p.type1 != Type::Poison
+                    && p.type2 != Some(Type::Poison)
+                    && p.type1 != Type::Steel
+                    && p.type2 != Some(Type::Steel)
                 {
-                    p.status = Some(pkmn_meta::types::Status::Poison);
+                    p.status = Some(Status::Poison);
                     self.log
                         .push(BattleLogEvent::new(BattleLog::StatusInflicted {
                             target: attacker_ident,
                             status: "psn".to_string(),
                         }));
                 }
-                if *meta.flags_contact()
-                    && let Some(pkmn_meta::types::VolatileStatus::Spikyshield) =
-                        target_protection_vs
+                if makes_contact
+                    && attacker_ability != Some("magicguard")
+                    && let Some(VolatileStatus::Spikyshield) = target_protection_vs
                     && let Some(p) = self.get_pokemon_mut(attacker_ident)
                     && p.hp.into_inner() > 0
                 {
@@ -1281,12 +1422,21 @@ impl Battle {
                     }
                 }
 
-                return HitResult {
-                    damage_dealt: 0,
-                    hit_anyone: false,
-                    immune_stop: false,
-                };
-            } else if self.terrain == Some(pkmn_meta::types::Terrain::Psychic)
+                let attacker_has_piercing_drill =
+                    matches!(attacker_ability, Some("piercingdrill") | Some("unseenfist"))
+                        && makes_contact;
+                if attacker_has_piercing_drill {
+                    self.log.push(BattleLogEvent::new(BattleLog::Text {
+                        message: format!("|-zbroken|{}", target_ident),
+                    }));
+                } else {
+                    return HitResult {
+                        damage_dealt: 0,
+                        hit_anyone: false,
+                        immune_stop: false,
+                    };
+                }
+            } else if self.terrain == Some(Terrain::Psychic)
                 && action.priority > 0
                 && target_is_grounded
                 && t_player != action.player
@@ -1295,6 +1445,95 @@ impl Battle {
                     damage_dealt: 0,
                     hit_anyone: false,
                     immune_stop: false,
+                };
+            } else if action.priority > 0 && t_player != action.player {
+                let def_side_has_priority_block = {
+                    let mut blocked = false;
+                    let def_active = if t_player == 1 {
+                        &self.p1.active
+                    } else {
+                        &self.p2.active
+                    };
+                    for p in def_active {
+                        if p.hp.into_inner() > 0
+                            && let Some(ab) = p.ability.as_deref()
+                            && (ab == "armortail" || ab == "queenlymajesty" || ab == "dazzling")
+                        {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    blocked
+                };
+                let attacker_ability = self
+                    .get_pokemon(attacker_ident)
+                    .and_then(|p| p.ability.clone());
+                let mold_breaker = attacker_ability.as_ref().map(|a| a.as_str())
+                    == Some("moldbreaker")
+                    || attacker_ability.as_ref().map(|a| a.as_str()) == Some("teravolt")
+                    || attacker_ability.as_ref().map(|a| a.as_str()) == Some("turboblaze");
+                if def_side_has_priority_block && !mold_breaker {
+                    return HitResult {
+                        damage_dealt: 0,
+                        hit_anyone: false,
+                        immune_stop: false,
+                    };
+                }
+            }
+        }
+
+        if let Some(target) = self.get_pokemon(target_ident) {
+            let defender_ability = target.ability.as_ref().map(|a| a.as_str());
+            let is_status = meta_opt
+                .as_ref()
+                .is_some_and(|m| *m.category() == Category::Status);
+            if defender_ability == Some("goodasgold") && attacker_ident != target_ident && is_status
+            {
+                self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                    target: target_ident,
+                }));
+                return HitResult {
+                    damage_dealt: 0,
+                    hit_anyone: false,
+                    immune_stop: true,
+                };
+            }
+            let is_powder = meta_opt.as_ref().is_some_and(|m| *m.is_powder());
+            if defender_ability == Some("overcoat") && is_powder {
+                self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                    target: target_ident,
+                }));
+                return HitResult {
+                    damage_dealt: 0,
+                    hit_anyone: false,
+                    immune_stop: true,
+                };
+            }
+            if defender_ability == Some("magicbounce")
+                && attacker_ident != target_ident
+                && attacker_ident.player != target_ident.player
+                && is_status
+                && !action.is_bounced
+            {
+                self.log.push(BattleLogEvent::new(BattleLog::Text {
+                    message: format!("|-ability|{}|Magic Bounce", target_ident),
+                }));
+                let bounced_action = crate::sim::action::MoveAction {
+                    player: target_ident.player,
+                    slot: target_ident.slot,
+                    move_id: action.move_id.clone(),
+                    original_move_id: action.original_move_id.clone(),
+                    target_player: attacker_ident.player,
+                    target_slot: attacker_ident.slot as u8,
+                    priority: 0,
+                    speed: 0,
+                    is_bounced: true,
+                };
+                let _ = self.execute_move(&bounced_action);
+                return HitResult {
+                    damage_dealt: 0,
+                    hit_anyone: false,
+                    immune_stop: true,
                 };
             }
         }
@@ -1325,10 +1564,7 @@ impl Battle {
                 ignore_invuln = true;
             }
 
-            if !ignore_invuln
-                && p.volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Twoturnmove)
-            {
+            if !ignore_invuln && p.volatile_status.contains(&VolatileStatus::Twoturnmove) {
                 is_invuln = true;
             }
 
@@ -1341,16 +1577,40 @@ impl Battle {
             && let Some(meta) = &meta_opt
             && let Some(mut acc) = *meta.accuracy()
         {
-            let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| p.item);
-            let defender_item = self.get_pokemon(target_ident).and_then(|p| p.item);
+            let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| {
+                if p.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
+                    None
+                } else {
+                    p.item
+                }
+            });
+            let defender_item = self.get_pokemon(target_ident).and_then(|p| {
+                if p.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
+                    None
+                } else {
+                    p.item
+                }
+            });
 
             if attacker_item.as_ref().map(|a| a.as_ref()) == Some("widelens") {
                 acc = (acc as f32 * 1.1) as i32;
             } else if attacker_item.as_ref().map(|a| a.as_ref()) == Some("zoomlens") {
-                acc = (acc as f32 * 1.2) as i32;
+                let target_acted = self
+                    .get_pokemon(target_ident)
+                    .is_some_and(|p| p.turn_state.acted_this_turn);
+                if target_acted {
+                    acc = (acc as f32 * 1.2) as i32;
+                }
             }
             if defender_item.as_ref().map(|a| a.as_ref()) == Some("brightpowder") {
                 acc = (acc as f32 * 0.9) as i32;
+            }
+
+            let attacker_ability = self
+                .get_pokemon(attacker_ident)
+                .and_then(|p| p.ability.as_ref().map(|a| a.as_str()));
+            if attacker_ability == Some("hustle") && *meta.category() == Category::Physical {
+                acc = (acc as f32 * 0.8) as i32;
             }
 
             let force_acc = self
@@ -1361,12 +1621,11 @@ impl Battle {
 
             // Weather bypasses
             let mut bypass = false;
-            if action.move_id == "blizzard" && self.weather == Some(pkmn_meta::types::Weather::Snow)
-            {
+            if action.move_id == "blizzard" && self.weather == Some(Weather::Snow) {
                 bypass = true;
             }
             if (action.move_id == "thunder" || action.move_id == "hurricane")
-                && self.weather == Some(pkmn_meta::types::Weather::Rain)
+                && self.weather == Some(Weather::Rain)
             {
                 bypass = true;
             }
@@ -1387,8 +1646,7 @@ impl Battle {
                             base_acc = 30.0;
                             if action.move_id == "sheercold" {
                                 let attacker = self.get_pokemon(attacker_ident).unwrap();
-                                if attacker.type1 != pkmn_meta::types::Type::Ice
-                                    && attacker.type2 != Some(pkmn_meta::types::Type::Ice)
+                                if attacker.type1 != Type::Ice && attacker.type2 != Some(Type::Ice)
                                 {
                                     base_acc = 20.0;
                                 }
@@ -1404,11 +1662,30 @@ impl Battle {
                             .map(|p| p.boosts.clone())
                             .unwrap_or_default();
 
-                        let acc_stage = attacker_boosts.accuracy.into_inner().clamp(-6, 6);
-                        let mut eva_stage = defender_boosts.evasion.into_inner().clamp(-6, 6);
-                        if action.move_id == "darkestlariat"
+                        let attacker_ability = self
+                            .get_pokemon(attacker_ident)
+                            .and_then(|p| p.ability.as_ref().map(|a| a.as_ref()));
+                        let defender_ability = self
+                            .get_pokemon(target_ident)
+                            .and_then(|p| p.ability.as_ref().map(|a| a.as_ref()));
+
+                        let acc_stage = if defender_ability == Some("unaware") {
+                            0
+                        } else {
+                            attacker_boosts.accuracy.into_inner().clamp(-6, 6)
+                        };
+                        let mut eva_stage = if attacker_ability == Some("unaware")
+                            || action.move_id == "darkestlariat"
                             || action.move_id == "sacredsword"
                             || action.move_id == "chipaway"
+                        {
+                            0
+                        } else {
+                            defender_boosts.evasion.into_inner().clamp(-6, 6)
+                        };
+                        if (attacker_ability == Some("keeneye")
+                            || attacker_ability == Some("illuminate"))
+                            && eva_stage > 0
                         {
                             eva_stage = 0;
                         }
@@ -1428,10 +1705,10 @@ impl Battle {
                                 self.get_pokemon(attacker_ident).and_then(|p| p.item);
                             let defender_item = self.get_pokemon(target_ident).and_then(|p| p.item);
 
-                            if attacker_item == Some(pkmn_meta::types::ItemId::WideLens) {
+                            if attacker_item == Some(ItemId::WideLens) {
                                 final_acc = ((final_acc * 4505) + 2047) / 4096;
                             }
-                            if attacker_item == Some(pkmn_meta::types::ItemId::ZoomLens) {
+                            if attacker_item == Some(ItemId::ZoomLens) {
                                 let target_acted = self
                                     .get_pokemon(target_ident)
                                     .is_some_and(|p| p.turn_state.acted_this_turn);
@@ -1439,14 +1716,20 @@ impl Battle {
                                     final_acc = ((final_acc * 4915) + 2047) / 4096;
                                 }
                             }
-                            if defender_item == Some(pkmn_meta::types::ItemId::BrightPowder) {
+                            if defender_item == Some(ItemId::BrightPowder) {
                                 final_acc = ((final_acc * 3686) + 2047) / 4096;
                             }
                         }
 
-                        let mut rng = rand::rng();
-                        let roll = rng.random_range(1..=100);
-                        hit = roll <= final_acc;
+                        if attacker_ability == Some("noguard")
+                            || defender_ability == Some("noguard")
+                        {
+                            hit = true;
+                        } else {
+                            let mut rng = rand::rng();
+                            let roll = rng.random_range(1..=100);
+                            hit = roll <= final_acc;
+                        }
                     }
                 }
             }
@@ -1504,22 +1787,23 @@ impl Battle {
             hit_index,
         );
 
-        let is_status_move = meta_opt.as_ref().is_some_and(|m| {
-            *m.category() == pkmn_meta::types::Category::Status && action.move_id != "sheercold"
-        }) || action.move_id == "shedtail"
+        let is_status_move = meta_opt
+            .as_ref()
+            .is_some_and(|m| *m.category() == Category::Status && action.move_id != "sheercold")
+            || action.move_id == "shedtail"
             || action.move_id == "spicyextract";
 
         let defender_type1 = self
             .get_pokemon(target_ident)
             .map(|p| p.type1)
-            .unwrap_or(pkmn_meta::types::Type::Normal);
+            .unwrap_or(Type::Normal);
         let defender_type2 = self.get_pokemon(target_ident).and_then(|p| p.type2);
         let defender_added = self.get_pokemon(target_ident).and_then(|p| p.added_type);
 
         let mut move_type = meta_opt
             .as_ref()
             .map(|m| *m.move_type())
-            .unwrap_or(pkmn_meta::types::Type::Normal);
+            .unwrap_or(Type::Normal);
 
         if action.move_id == "terrainpulse"
             && self
@@ -1528,31 +1812,43 @@ impl Battle {
             && let Some(terrain) = self.terrain
         {
             move_type = match terrain {
-                pkmn_meta::types::Terrain::Electric => pkmn_meta::types::Type::Electric,
-                pkmn_meta::types::Terrain::Grassy => pkmn_meta::types::Type::Grass,
-                pkmn_meta::types::Terrain::Misty => pkmn_meta::types::Type::Fairy,
-                pkmn_meta::types::Terrain::Psychic => pkmn_meta::types::Type::Psychic,
+                Terrain::Electric => Type::Electric,
+                Terrain::Grassy => Type::Grass,
+                Terrain::Misty => Type::Fairy,
+                Terrain::Psychic => Type::Psychic,
             };
         }
 
         if let Some(attacker) = self.get_pokemon(attacker_ident)
             && attacker
                 .volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Electrify)
+                .contains(&VolatileStatus::Electrify)
         {
-            move_type = pkmn_meta::types::Type::Electric;
+            move_type = Type::Electric;
+        }
+
+        if action.move_id == "aurawheel"
+            && let Some(attacker) = self.get_pokemon(attacker_ident)
+            && attacker.species.contains("hangry")
+        {
+            move_type = Type::Dark;
         }
 
         let attacker_ability_id = self
             .get_pokemon(attacker_ident)
             .and_then(|p| p.ability.as_ref());
 
-        if let Some(ability_id) = &attacker_ability_id
-            && let Some(ability) = crate::sim::abilities::get_ability(ability_id)
-            && ability.has_on_modify_type
-            && let Some(new_type) = crate::sim::abilities::on_modify_type(ability_id, move_type)
-        {
-            move_type = new_type;
+        if let Some(ability_id) = &attacker_ability_id {
+            if ability_id.as_str() == "liquidvoice"
+                && meta_opt.as_ref().is_some_and(|m| *m.is_sound())
+            {
+                move_type = Type::Water;
+            } else if let Some(ability) = crate::sim::abilities::get_ability(ability_id)
+                && ability.has_on_modify_type
+                && let Some(new_type) = crate::sim::abilities::on_modify_type(ability_id, move_type)
+            {
+                move_type = new_type;
+            }
         }
 
         let mut effectiveness = damage_calc::type_effectiveness_shift(
@@ -1566,15 +1862,10 @@ impl Battle {
             let mut shift = effectiveness;
             let types = [Some(defender_type1), defender_type2, defender_added];
             for t in types.into_iter().flatten() {
-                if damage_calc::is_immune(pkmn_meta::types::Type::Flying, t, None, None) {
+                if damage_calc::is_immune(Type::Flying, t, None, None) {
                     shift = -999;
                 } else {
-                    shift += damage_calc::type_effectiveness_shift(
-                        pkmn_meta::types::Type::Flying,
-                        t,
-                        None,
-                        None,
-                    );
+                    shift += damage_calc::type_effectiveness_shift(Type::Flying, t, None, None);
                 }
             }
             if shift > -900 {
@@ -1604,18 +1895,17 @@ impl Battle {
             if !immune {
                 effectiveness = shift;
             }
-        } else if move_type == pkmn_meta::types::Type::Ground
+        } else if move_type == Type::Ground
             && (self.gravity_turns_left > 0
                 || self
                     .get_pokemon(target_ident)
                     .is_some_and(|p| p.is_grounded()))
         {
             let def_poke = self.get_pokemon(target_ident);
-            let def_has_flying = defender_type1 == pkmn_meta::types::Type::Flying
-                || defender_type2 == Some(pkmn_meta::types::Type::Flying)
-                || defender_added == Some(pkmn_meta::types::Type::Flying);
-            let has_iron_ball =
-                def_poke.is_some_and(|p| p.item == Some(pkmn_meta::types::ItemId::IronBall));
+            let def_has_flying = defender_type1 == Type::Flying
+                || defender_type2 == Some(Type::Flying)
+                || defender_added == Some(Type::Flying);
+            let has_iron_ball = def_poke.is_some_and(|p| p.item == Some(ItemId::IronBall));
             if has_iron_ball && def_has_flying && self.gravity_turns_left == 0 {
                 effectiveness = 0;
             } else {
@@ -1623,7 +1913,7 @@ impl Battle {
                 let mut immune = false;
                 let types = [Some(defender_type1), defender_type2, defender_added];
                 for t in types.into_iter().flatten() {
-                    if t == pkmn_meta::types::Type::Flying {
+                    if t == Type::Flying {
                         shift += 0;
                     } else if damage_calc::is_immune(move_type, t, None, None) {
                         immune = true;
@@ -1635,6 +1925,23 @@ impl Battle {
                     effectiveness = shift;
                 }
             }
+        } else if (attacker_ability_id.map(|a| a.as_str()) == Some("scrappy")
+            || attacker_ability_id.map(|a| a.as_str()) == Some("mindseye"))
+            && (move_type == Type::Normal || move_type == Type::Fighting)
+            && (defender_type1 == Type::Ghost
+                || defender_type2 == Some(Type::Ghost)
+                || defender_added == Some(Type::Ghost))
+        {
+            let mut shift = 0;
+            let types = [Some(defender_type1), defender_type2, defender_added];
+            for t in types.into_iter().flatten() {
+                if t == Type::Ghost {
+                    shift += 0;
+                } else if !damage_calc::is_immune(move_type, t, None, None) {
+                    shift += damage_calc::type_effectiveness_shift(move_type, t, None, None);
+                }
+            }
+            effectiveness = shift;
         }
         let mut is_crit = is_crit;
 
@@ -1660,28 +1967,50 @@ impl Battle {
 
         let attacker_ability = self
             .get_pokemon(attacker_ident)
-            .and_then(|p| p.ability.as_ref().map(|a| a.as_str()));
+            .and_then(|p| p.ability.as_ref().map(|a| a.to_string()));
 
         if is_status_move
-            && attacker_ability == Some("prankster")
+            && attacker_ability.as_deref() == Some("prankster")
             && t_player != action.player
-            && (defender_type1 == pkmn_meta::types::Type::Dark
-                || defender_type2 == Some(pkmn_meta::types::Type::Dark)
-                || defender_added == Some(pkmn_meta::types::Type::Dark))
+            && (defender_type1 == Type::Dark
+                || defender_type2 == Some(Type::Dark)
+                || defender_added == Some(Type::Dark))
         {
             is_immune = true;
         }
 
-        if move_type == pkmn_meta::types::Type::Ground
+        let defender_ability = self
+            .get_pokemon(target_ident)
+            .and_then(|p| p.ability.as_ref().map(|a| a.to_string()));
+
+        if !is_status_move
+            && t_player == action.player
+            && target_ident != attacker_ident
+            && defender_ability.as_deref() == Some("telepathy")
+        {
+            is_immune = true;
+        }
+
+        if move_type == Type::Ground
             && (self.gravity_turns_left > 0
                 || self
                     .get_pokemon(target_ident)
                     .is_some_and(|p| p.is_grounded()))
-            && (defender_type1 == pkmn_meta::types::Type::Flying
-                || defender_type2 == Some(pkmn_meta::types::Type::Flying)
-                || defender_added == Some(pkmn_meta::types::Type::Flying))
+            && (defender_type1 == Type::Flying
+                || defender_type2 == Some(Type::Flying)
+                || defender_added == Some(Type::Flying))
         {
             // Grounded defender nullifies Flying's Ground immunity
+            is_immune = false;
+        }
+
+        if (attacker_ability.as_deref() == Some("scrappy")
+            || attacker_ability.as_deref() == Some("mindseye"))
+            && (move_type == Type::Normal || move_type == Type::Fighting)
+            && (defender_type1 == Type::Ghost
+                || defender_type2 == Some(Type::Ghost)
+                || defender_added == Some(Type::Ghost))
+        {
             is_immune = false;
         }
 
@@ -1719,7 +2048,7 @@ impl Battle {
         if let Some(ability) = absorbed_by {
             let mut effect_applied = false;
             match ability.as_str() {
-                "voltabsorb" | "waterabsorb" | "eartheater" => {
+                "voltabsorb" | "waterabsorb" | "eartheater" | "dryskin" => {
                     let (hp, maxhp) = self
                         .get_pokemon(target_ident)
                         .map(|p| (p.hp.into_inner(), p.maxhp.into_inner()))
@@ -1760,6 +2089,35 @@ impl Battle {
                         effect_applied = true;
                     }
                 }
+                "motordrive" => {
+                    let can_boost = self
+                        .get_pokemon(target_ident)
+                        .is_some_and(|p| p.boosts.spe < 6.into());
+                    if can_boost {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Spe, 1)],
+                            t_player,
+                            Some("motordrive"),
+                        );
+                        effect_applied = true;
+                    }
+                }
+                "flashfire" => {
+                    if let Some(target_p) = self.get_pokemon_mut(target_ident)
+                        && !target_p
+                            .volatile_status
+                            .contains(&VolatileStatus::Flashfire)
+                    {
+                        target_p.volatile_status.push(VolatileStatus::Flashfire);
+                        self.log.push(BattleLogEvent::new(BattleLog::Start {
+                            target: target_ident,
+                            effect: "ability: Flash Fire".to_string(),
+                        }));
+                        effect_applied = true;
+                    }
+                }
                 _ => {}
             }
 
@@ -1775,9 +2133,19 @@ impl Battle {
                 immune_stop,
             };
         } else if is_immune {
-            self.log.push(BattleLogEvent::new(BattleLog::Immune {
-                target: target_ident,
-            }));
+            if defender_ability.as_deref() == Some("telepathy")
+                && t_player == action.player
+                && target_ident != attacker_ident
+            {
+                self.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    target: target_ident,
+                    effect: "ability: Telepathy".to_string(),
+                }));
+            } else {
+                self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                    target: target_ident,
+                }));
+            }
             let immune_stop = !is_spread;
             return HitResult {
                 damage_dealt: 0,
@@ -1805,6 +2173,23 @@ impl Battle {
             };
         }
 
+        let mut disguise_broken = false;
+        let mold_breaker = self
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
+            == Some("moldbreaker");
+        if !is_status_move
+            && damage > 0
+            && !mold_breaker
+            && let Some(target_p) = self.get_pokemon_mut(target_ident)
+            && target_p.ability.as_ref().map(|a| a.as_str()) == Some("disguise")
+            && !target_p.disguise_busted
+        {
+            target_p.disguise_busted = true;
+            disguise_broken = true;
+            damage = 0;
+        }
+
         self.section_take_damage(target_ident, damage);
 
         let hp_after = self
@@ -1813,7 +2198,33 @@ impl Battle {
             .unwrap_or(0);
         let actual_damage = hp_before - hp_after;
 
-        if !is_status_move {
+        if disguise_broken {
+            self.log.push(BattleLogEvent::new(BattleLog::Activate {
+                target: target_ident,
+                effect: "ability: Disguise".to_string(),
+            }));
+            self.log.push(BattleLogEvent::new(BattleLog::Damage {
+                target: target_ident,
+                from_effect: None,
+                damage: 0,
+                is_crit: false,
+                effectiveness: 0,
+                absorbed: false,
+            }));
+            let bust_recoil = self
+                .get_pokemon(target_ident)
+                .map(|p| std::cmp::max(1, p.maxhp.into_inner() / 8))
+                .unwrap_or(0);
+            self.section_take_damage(target_ident, bust_recoil);
+            self.log.push(BattleLogEvent::new(BattleLog::Damage {
+                target: target_ident,
+                from_effect: Some("ability: Disguise".to_string()),
+                damage: bust_recoil,
+                is_crit: false,
+                effectiveness: 0,
+                absorbed: false,
+            }));
+        } else if !is_status_move {
             self.log.push(BattleLogEvent::new(BattleLog::Damage {
                 target: target_ident,
                 from_effect: None,
@@ -1864,15 +2275,7 @@ impl Battle {
                 );
             }
             if let Some(boosts) = meta.boosts().as_ref() {
-                let stats = [
-                    (Stat::Atk, boosts.atk.into_inner()),
-                    (Stat::Def, boosts.def.into_inner()),
-                    (Stat::Spa, boosts.spa.into_inner()),
-                    (Stat::Spd, boosts.spd.into_inner()),
-                    (Stat::Spe, boosts.spe.into_inner()),
-                    (Stat::Accuracy, boosts.accuracy.into_inner()),
-                    (Stat::Evasion, boosts.evasion.into_inner()),
-                ];
+                let stats = boost_pairs(boosts);
                 self.apply_stat_change(
                     t_player,
                     t_slot,
@@ -1887,13 +2290,14 @@ impl Battle {
 
             if let Some(status) = meta.status().as_ref()
                 && action.move_id != "toxic"
+                && action.move_id != "yawn"
             {
                 self.section_apply_status(target_ident, *status, Some(attacker_ident));
             }
             if let Some(volatile) = meta.volatile_status().as_ref()
-                && *meta.range() != pkmn_meta::types::Range::Self_
+                && *meta.range() != Range::Self_
             {
-                if *volatile == pkmn_meta::types::VolatileStatus::Attract {
+                if *volatile == VolatileStatus::Attract {
                     self.log.push(BattleLogEvent::new(BattleLog::Immune {
                         target: target_ident,
                     }));
@@ -1912,12 +2316,15 @@ impl Battle {
                     meta_opt
                         .as_ref()
                         .map(|m| *m.category())
-                        .unwrap_or(pkmn_meta::types::Category::Status),
+                        .unwrap_or(Category::Status),
                 ));
             }
 
             if let Some(meta) = &meta_opt {
-                if let Some((num, den)) = meta.recoil() {
+                if let Some((num, den)) = meta.recoil()
+                    && attacker_ability.as_deref() != Some("rockhead")
+                    && attacker_ability.as_deref() != Some("magicguard")
+                {
                     let n = *num;
                     let d = *den;
                     let recoil_damage = std::cmp::max(1, (actual_damage * n + (d / 2)) / d);
@@ -1940,23 +2347,39 @@ impl Battle {
                         1,
                         ((actual_damage * (*num)) as f32 / (*den) as f32).round() as i32,
                     );
-                    if attacker_item == Some(pkmn_meta::types::ItemId::BigRoot) {
+                    if attacker_item == Some(ItemId::BigRoot) {
                         base_drain = (base_drain as f32 * 1.3).floor() as i32; // Not sure if floor or round? Usually Big Root is (drain * 5324 / 4096)
                     }
                     drain_heal += base_drain;
                 }
 
-                if drain_heal > 0
-                    && let Some(p) = self.get_pokemon_mut(attacker_ident)
-                {
-                    let old_hp = p.hp.into_inner();
-                    if old_hp < p.maxhp.into_inner() {
-                        p.hp = std::cmp::min(p.maxhp.into_inner(), p.hp.into_inner() + drain_heal)
-                            .into();
-                        self.log.push(BattleLogEvent::new(BattleLog::Heal {
+                if drain_heal > 0 {
+                    let defender_is_ooze = self
+                        .get_pokemon(target_ident)
+                        .and_then(|p| p.ability.as_ref())
+                        .is_some_and(|a| a.as_str() == "liquidooze");
+
+                    if defender_is_ooze {
+                        self.section_take_damage(attacker_ident, drain_heal);
+                        self.log.push(BattleLogEvent::new(BattleLog::Damage {
                             target: attacker_ident,
-                            amount: drain_heal,
+                            damage: drain_heal,
+                            is_crit: false,
+                            effectiveness: 0,
+                            absorbed: false,
+                            from_effect: Some("ability: Liquid Ooze".to_string()),
                         }));
+                    } else if let Some(p) = self.get_pokemon_mut(attacker_ident) {
+                        let old_hp = p.hp.into_inner();
+                        if old_hp < p.maxhp.into_inner() {
+                            p.hp =
+                                std::cmp::min(p.maxhp.into_inner(), p.hp.into_inner() + drain_heal)
+                                    .into();
+                            self.log.push(BattleLogEvent::new(BattleLog::Heal {
+                                target: attacker_ident,
+                                amount: drain_heal,
+                            }));
+                        }
                     }
                 }
             }
@@ -1975,7 +2398,7 @@ impl Battle {
 
         if actual_damage > 0 {
             let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| p.item);
-            if attacker_item == Some(pkmn_meta::types::ItemId::KingsRock) {
+            if attacker_item == Some(ItemId::KingsRock) {
                 let trigger = if let Some(config) = &self.rng_config
                     && let Some(sec_config) = &config.secondary
                 {
@@ -1989,10 +2412,7 @@ impl Battle {
                     rng.random_range(1..=100) <= 10
                 };
                 if trigger {
-                    self.section_apply_volatile(
-                        target_ident,
-                        pkmn_meta::types::VolatileStatus::Flinch,
-                    );
+                    self.section_apply_volatile(target_ident, VolatileStatus::Flinch);
                 }
             }
 
@@ -2000,70 +2420,392 @@ impl Battle {
                 .get_pokemon(target_ident)
                 .and_then(|p| p.ability.clone());
 
-            let is_contact = meta_opt
-                .as_ref()
-                .map(|m| *m.flags_contact())
-                .unwrap_or(false);
+            let (attacker_ability_val, is_contact) =
+                self.check_is_contact(attacker_ident, meta_opt.as_ref());
+            let attacker_ability = attacker_ability_val.as_ref().map(|a| a.as_str());
 
             if is_contact
                 && let Some(defender) = self.get_pokemon(target_ident)
                 && defender
                     .volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Beakblast)
+                    .contains(&VolatileStatus::Beakblast)
             {
-                self.section_apply_status(attacker_ident, pkmn_meta::types::Status::Burn, None);
+                self.section_apply_status(attacker_ident, Status::Burn, None);
             }
 
             if let Some(ability) = defender_ability {
                 match ability.as_str() {
                     "ironbarbs" | "roughskin" => {
-                        if is_contact {
+                        let attacker_has_mg = attacker_ability == Some("magicguard");
+                        if is_contact && !attacker_has_mg {
                             let maxhp = self
                                 .get_pokemon(attacker_ident)
                                 .map(|p| p.maxhp.into_inner())
                                 .unwrap_or(0);
-                            let dmg = std::cmp::max(1, maxhp / 8);
-                            self.section_take_damage(attacker_ident, dmg);
-                            self.log.push(BattleLogEvent::new(BattleLog::Damage {
-                                target: attacker_ident,
-                                damage: dmg,
-                                is_crit: false,
-                                effectiveness: 0,
-                                absorbed: false,
-                                from_effect: None,
-                            }));
-                            if self.get_pokemon(attacker_ident).is_some_and(|p| p.hp == 0) {
-                                self.log.push(BattleLogEvent::new(BattleLog::Faint {
-                                    target: attacker_ident,
-                                }));
-                            }
+                            self.deal_ability_damage(attacker_ident, std::cmp::max(1, maxhp / 8));
                         }
                     }
                     "effectspore" => {
                         if is_contact {
-                            let status = match 1 {
-                                1 => pkmn_meta::types::Status::Paralysis,
-                                2 => pkmn_meta::types::Status::Poison,
-                                _ => pkmn_meta::types::Status::Sleep,
+                            let is_immune = if let Some(atk) = self.get_pokemon(attacker_ident) {
+                                atk.get_types().contains(&Type::Grass)
+                                    || atk.ability.as_ref().map(|a| a.as_str()) == Some("overcoat")
+                                    || atk.item.as_ref().map(|i| i.as_ref())
+                                        == Some("safetygoggles")
+                            } else {
+                                false
                             };
-                            self.section_apply_status(attacker_ident, status, None);
+                            if !is_immune {
+                                let trigger = if let Some(config) = &self.rng_config
+                                    && let Some(sec_config) = &config.secondary
+                                {
+                                    match sec_config.as_str() {
+                                        "always" => true,
+                                        "never" => false,
+                                        _ => true,
+                                    }
+                                } else {
+                                    rand::rng().random_range(1..=100) <= 30
+                                };
+                                if trigger {
+                                    let status = match rand::rng().random_range(0..3) {
+                                        0 => Status::Sleep,
+                                        1 => Status::Paralysis,
+                                        _ => Status::Poison,
+                                    };
+                                    self.section_apply_status(
+                                        attacker_ident,
+                                        status,
+                                        Some(target_ident),
+                                    );
+                                }
+                            }
                         }
                     }
-                    "static" => {
-                        if is_contact {
+                    "static" if is_contact => {
+                        let trigger = self.roll_secondary_trigger();
+                        if trigger {
                             self.section_apply_status(
                                 attacker_ident,
-                                pkmn_meta::types::Status::Paralysis,
-                                None,
+                                Status::Paralysis,
+                                Some(target_ident),
                             );
                         }
                     }
-                    "flamebody" if is_contact => {
-                        self.section_apply_status(
-                            attacker_ident,
-                            pkmn_meta::types::Status::Burn,
-                            None,
+                    "mummy" if is_contact => {
+                        let unchangeable = [
+                            "mummy",
+                            "disguise",
+                            "stancechange",
+                            "multitype",
+                            "schooling",
+                            "shieldsdown",
+                            "battlebond",
+                            "powerconstruct",
+                            "zerotohero",
+                            "commander",
+                        ];
+                        if let Some(attacker) = self.get_pokemon_mut(attacker_ident)
+                            && let Some(cur_ab) = &attacker.ability
+                            && !unchangeable.contains(&cur_ab.as_str())
+                        {
+                            attacker.ability = Some("mummy".to_string().into());
+                            self.log.push(BattleLogEvent::new(BattleLog::Text {
+                                message: format!(
+                                    "|-ability|{}|Mummy|[from] ability: Mummy|[of] {}",
+                                    attacker_ident, target_ident
+                                ),
+                            }));
+                        }
+                    }
+                    "gooey" | "tanglinghair" if is_contact => {
+                        self.apply_stat_change(
+                            attacker_ident.player,
+                            attacker_ident.slot,
+                            vec![(Stat::Spe, -1)],
+                            target_ident.player,
+                            Some("gooey"),
                         );
+                    }
+                    "flamebody" if is_contact => {
+                        let trigger = self.roll_secondary_trigger();
+                        if trigger {
+                            self.section_apply_status(
+                                attacker_ident,
+                                Status::Burn,
+                                Some(target_ident),
+                            );
+                        }
+                    }
+                    "poisonpoint" if is_contact => {
+                        let trigger = self.roll_secondary_trigger();
+                        if trigger {
+                            self.section_apply_status(
+                                attacker_ident,
+                                Status::Poison,
+                                Some(target_ident),
+                            );
+                        }
+                    }
+                    "pickpocket" if is_contact => {
+                        let defender_item_none = self
+                            .get_pokemon(target_ident)
+                            .is_some_and(|p| p.item.is_none());
+                        let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| p.item);
+                        if defender_item_none && let Some(item_id) = attacker_item {
+                            let disp_name = item_id.to_string();
+                            if let Some(attacker) = self.get_pokemon_mut(attacker_ident) {
+                                attacker.item = None;
+                            }
+                            if let Some(target) = self.get_pokemon_mut(target_ident) {
+                                target.item = Some(item_id);
+                            }
+                            self.log.push(BattleLogEvent::new(BattleLog::Item {
+                                target: target_ident,
+                                item: disp_name,
+                                from_move: "ability: Pickpocket".to_string(),
+                                of: attacker_ident,
+                            }));
+                        }
+                    }
+                    "cutecharm" if is_contact => {
+                        let trigger = self.roll_secondary_trigger();
+                        if trigger {
+                            self.section_apply_volatile(attacker_ident, VolatileStatus::Attract);
+                        }
+                    }
+                    "cursedbody" => {
+                        let trigger = self.roll_secondary_trigger();
+                        if trigger
+                            && let Some(attacker_p) = self.get_pokemon_mut(attacker_ident)
+                            && attacker_p.disabled_move.is_none()
+                            && action.move_id != "struggle"
+                        {
+                            attacker_p.disabled_move = Some(action.move_id.clone());
+                            attacker_p.disable_turns = 4;
+                            self.log.push(BattleLogEvent::new(BattleLog::Ability {
+                                target: target_ident,
+                                ability: "Cursed Body".to_string(),
+                                from_move: None,
+                                of: Some(attacker_ident),
+                            }));
+                            self.log.push(BattleLogEvent::new(BattleLog::Start {
+                                target: attacker_ident,
+                                effect: format!("Disable|{}", action.move_id),
+                            }));
+                        }
+                    }
+                    "aftermath" => {
+                        if is_contact && hp_after == 0 {
+                            let maxhp = self
+                                .get_pokemon(attacker_ident)
+                                .map(|p| p.maxhp.into_inner())
+                                .unwrap_or(0);
+                            self.deal_ability_damage(attacker_ident, std::cmp::max(1, maxhp / 4));
+                        }
+                    }
+                    "innardsout" => {
+                        if hp_after == 0 && actual_damage > 0 {
+                            self.deal_ability_damage(attacker_ident, actual_damage);
+                        }
+                    }
+                    "angerpoint" if is_crit && hp_after > 0 => {
+                        let current_atk = self
+                            .get_pokemon(target_ident)
+                            .map(|p| p.boosts.atk.into_inner())
+                            .unwrap_or(0);
+                        let diff = 6 - current_atk;
+                        if diff > 0 {
+                            self.apply_stat_change(
+                                t_player,
+                                t_slot,
+                                vec![(Stat::Atk, diff)],
+                                t_player,
+                                Some("angerpoint"),
+                            );
+                        }
+                    }
+                    "stamina" if hp_after > 0 => {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Def, 1)],
+                            t_player,
+                            Some("stamina"),
+                        );
+                    }
+                    "justified" if move_type == Type::Dark && hp_after > 0 => {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Atk, 1)],
+                            t_player,
+                            Some("justified"),
+                        );
+                    }
+                    "rattled"
+                        if (move_type == Type::Bug
+                            || move_type == Type::Ghost
+                            || move_type == Type::Dark)
+                            && hp_after > 0 =>
+                    {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Spe, 1)],
+                            t_player,
+                            Some("rattled"),
+                        );
+                    }
+                    "sandspit" => {
+                        if self.weather != Some(Weather::Sandstorm) {
+                            self.weather = Some(Weather::Sandstorm);
+                            let item_str = self
+                                .get_pokemon(target_ident)
+                                .and_then(|p| p.item.as_ref())
+                                .map(|i| i.as_ref());
+                            if item_str == Some("smoothrock") {
+                                self.weather_turns_left = 8;
+                            } else {
+                                self.weather_turns_left = 5;
+                            }
+                            self.log.push(BattleLogEvent::new(BattleLog::WeatherChange {
+                                weather: "Sandstorm".to_string(),
+                                is_start: true,
+                            }));
+                            self.update_forecast();
+                        }
+                    }
+                    "seedsower" => {
+                        if self.terrain != Some(Terrain::Grassy) {
+                            self.terrain = Some(Terrain::Grassy);
+                            let item_str = self
+                                .get_pokemon(target_ident)
+                                .and_then(|p| p.item.as_ref())
+                                .map(|i| i.as_ref());
+                            if item_str == Some("terrainextender") {
+                                self.terrain_turns_left = 8;
+                            } else {
+                                self.terrain_turns_left = 5;
+                            }
+                            self.log.push(BattleLogEvent::new(BattleLog::TerrainChange {
+                                terrain: "GrassyTerrain".to_string(),
+                                is_start: true,
+                            }));
+                            self.update_mimicry();
+                        }
+                    }
+                    "spicyspray" => {
+                        self.section_apply_status(attacker_ident, Status::Burn, Some(target_ident));
+                    }
+                    "toxicdebris"
+                        if meta_opt
+                            .as_ref()
+                            .map(|m| *m.category() == Category::Physical)
+                            .unwrap_or(false) =>
+                    {
+                        let opp_player = if target_ident.player == 1 { 2 } else { 1 };
+                        let side = if opp_player == 1 {
+                            &mut self.p1
+                        } else {
+                            &mut self.p2
+                        };
+                        if side.toxic_spikes < 2 {
+                            side.toxic_spikes += 1;
+                            self.log.push(BattleLogEvent::new(BattleLog::SideStart {
+                                player: opp_player,
+                                effect: "Toxic Spikes".to_string(),
+                            }));
+                        }
+                    }
+                    "watercompaction" if move_type == Type::Water && hp_after > 0 => {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Def, 2)],
+                            t_player,
+                            Some("watercompaction"),
+                        );
+                    }
+                    "steamengine"
+                        if (move_type == Type::Fire || move_type == Type::Water)
+                            && hp_after > 0 =>
+                    {
+                        let current_spe = self
+                            .get_pokemon(target_ident)
+                            .map(|p| p.boosts.spe.into_inner())
+                            .unwrap_or(0);
+                        let diff = 6 - current_spe;
+                        if diff > 0 {
+                            self.apply_stat_change(
+                                t_player,
+                                t_slot,
+                                vec![(Stat::Spe, diff)],
+                                t_player,
+                                Some("steamengine"),
+                            );
+                        }
+                    }
+                    "weakarmor"
+                        if meta_opt
+                            .as_ref()
+                            .is_some_and(|m| *m.category() == Category::Physical)
+                            && hp_after > 0 =>
+                    {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Def, -1), (Stat::Spe, 2)],
+                            t_player,
+                            Some("weakarmor"),
+                        );
+                    }
+                    "thermalexchange" if move_type == Type::Fire && hp_after > 0 => {
+                        self.apply_stat_change(
+                            t_player,
+                            t_slot,
+                            vec![(Stat::Atk, 1)],
+                            t_player,
+                            Some("thermalexchange"),
+                        );
+                    }
+                    "electromorphosis" if hp_after > 0 => {
+                        self.section_apply_volatile(target_ident, VolatileStatus::Charge);
+                    }
+                    "berserk" if hp_after > 0 => {
+                        let maxhp = self
+                            .get_pokemon(target_ident)
+                            .map(|p| p.maxhp.into_inner())
+                            .unwrap_or(0);
+                        let prev_hp = hp_after + actual_damage;
+                        if prev_hp * 2 >= maxhp && hp_after * 2 < maxhp {
+                            self.apply_stat_change(
+                                t_player,
+                                t_slot,
+                                vec![(Stat::Spa, 1)],
+                                t_player,
+                                Some("berserk"),
+                            );
+                        }
+                    }
+                    "emergencyexit" | "wimpout" if hp_after > 0 => {
+                        let maxhp = self
+                            .get_pokemon(target_ident)
+                            .map(|p| p.maxhp.into_inner())
+                            .unwrap_or(0);
+                        let prev_hp = hp_after + actual_damage;
+                        if prev_hp * 2 > maxhp && hp_after * 2 <= maxhp {
+                            let ability_name = if ability.as_str() == "wimpout" {
+                                "ability: Wimp Out"
+                            } else {
+                                "ability: Emergency Exit"
+                            };
+                            self.log.push(BattleLogEvent::new(BattleLog::Activate {
+                                target: target_ident,
+                                effect: ability_name.to_string(),
+                            }));
+                            self.force_switch_random(target_ident);
+                        }
                     }
                     _ => {}
                 }
@@ -2089,10 +2831,7 @@ impl Battle {
                             .map(|p| p.turn_state.stats_raised)
                             .unwrap_or(false);
                         if stats_raised {
-                            self.section_apply_volatile(
-                                target_ident,
-                                pkmn_meta::types::VolatileStatus::Confusion,
-                            );
+                            self.section_apply_volatile(target_ident, VolatileStatus::Confusion);
                         }
                     }
                     if action.move_id == "burningjealousy" {
@@ -2103,21 +2842,13 @@ impl Battle {
                         if stats_raised {
                             self.section_apply_status(
                                 target_ident,
-                                pkmn_meta::types::Status::Burn,
+                                Status::Burn,
                                 Some(attacker_ident),
                             );
                         }
                     }
                     if let Some(boosts) = sec.boosts().as_ref() {
-                        let stats = [
-                            (Stat::Atk, boosts.atk.into_inner()),
-                            (Stat::Def, boosts.def.into_inner()),
-                            (Stat::Spa, boosts.spa.into_inner()),
-                            (Stat::Spd, boosts.spd.into_inner()),
-                            (Stat::Spe, boosts.spe.into_inner()),
-                            (Stat::Accuracy, boosts.accuracy.into_inner()),
-                            (Stat::Evasion, boosts.evasion.into_inner()),
-                        ];
+                        let stats = boost_pairs(boosts);
                         for (stat, amount) in stats {
                             if amount != 0 {
                                 self.apply_stat_change(
@@ -2151,9 +2882,9 @@ impl Battle {
                         use rand::RngExt;
                         let r = rng.random_range(0..3);
                         let status = match r {
-                            0 => pkmn_meta::types::Status::Poison,
-                            1 => pkmn_meta::types::Status::Paralysis,
-                            _ => pkmn_meta::types::Status::Sleep,
+                            0 => Status::Poison,
+                            1 => Status::Paralysis,
+                            _ => Status::Sleep,
                         };
                         self.section_apply_status(target_ident, status, Some(attacker_ident));
                     }
@@ -2162,13 +2893,24 @@ impl Battle {
                         use rand::RngExt;
                         let r = rng.random_range(0..3);
                         let status = match r {
-                            0 => pkmn_meta::types::Status::Burn,
-                            1 => pkmn_meta::types::Status::Paralysis,
-                            _ => pkmn_meta::types::Status::Frozen,
+                            0 => Status::Burn,
+                            1 => Status::Paralysis,
+                            _ => Status::Frozen,
                         };
                         self.section_apply_status(target_ident, status, Some(attacker_ident));
                     }
                 }
+            }
+        }
+
+        let (attacker_ability_val, is_contact) =
+            self.check_is_contact(attacker_ident, meta_opt.as_ref());
+        let attacker_ability = attacker_ability_val.as_ref().map(|a| a.as_str());
+
+        if is_contact && actual_damage > 0 && attacker_ability == Some("poisontouch") {
+            let trigger = self.roll_secondary_trigger();
+            if trigger {
+                self.section_apply_status(target_ident, Status::Poison, Some(attacker_ident));
             }
         }
 
@@ -2182,13 +2924,28 @@ impl Battle {
             flung_item,
         );
 
+        let is_magician = self
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.as_ref())
+            .is_some_and(|a| a.as_str() == "magician");
+
         if actual_damage > 0
             && (action.move_id == "thief"
                 || action.move_id == "covet"
-                || action.move_id == "knockoff")
+                || action.move_id == "knockoff"
+                || (is_magician
+                    && self
+                        .get_pokemon(attacker_ident)
+                        .is_some_and(|p| p.item.is_none())))
         {
+            let defender_has_sticky_hold = self
+                .get_pokemon(target_ident)
+                .and_then(|p| p.ability.as_ref())
+                .map(|a| a.as_str())
+                == Some("stickyhold");
             let mut stolen = None;
-            if let Some(target) = self.get_pokemon_mut(target_ident)
+            if !defender_has_sticky_hold
+                && let Some(target) = self.get_pokemon_mut(target_ident)
                 && target.item.is_some()
             {
                 stolen = target.item.take();
@@ -2205,6 +2962,15 @@ impl Battle {
                         self.log.push(BattleLogEvent::new(BattleLog::EndItem {
                             target: target_ident,
                             item: disp_name,
+                        }));
+                    } else if is_magician && action.move_id != "thief" && action.move_id != "covet"
+                    {
+                        attacker.item = Some(item_id);
+                        self.log.push(BattleLogEvent::new(BattleLog::Text {
+                            message: format!(
+                                "|-item|{}|{}|[from] ability: Magician|[of] {}",
+                                attacker_ident, disp_name, target_ident
+                            ),
                         }));
                     } else if attacker.item.is_none() {
                         attacker.item = Some(item_id);
@@ -2272,15 +3038,9 @@ impl Battle {
                     slot: i,
                 }) && foe.hp.into_inner() > 0
                 {
-                    if foe
-                        .volatile_status
-                        .contains(&pkmn_meta::types::VolatileStatus::Followme)
-                    {
+                    if foe.volatile_status.contains(&VolatileStatus::Followme) {
                         return (target_player, i);
-                    } else if foe
-                        .volatile_status
-                        .contains(&pkmn_meta::types::VolatileStatus::Ragepowder)
-                    {
+                    } else if foe.volatile_status.contains(&VolatileStatus::Ragepowder) {
                         let is_grass = atk.type1 == Type::Grass
                             || atk.type2 == Some(Type::Grass)
                             || atk.added_type == Some(Type::Grass);

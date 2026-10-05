@@ -1,5 +1,7 @@
 use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent, Stat};
-use pkmn_meta::types::Type;
+use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::wasm_api::Boosts;
+use pkmn_meta::types::*;
 
 #[derive(Default)]
 pub struct Condition {
@@ -36,14 +38,10 @@ pub fn execute_ability(
             "insomnia" | "vitalspirit" | "sweetveil" => status == "slp",
             "purifyingsalt" | "comatose" | "shieldsdown" => true,
             "leafguard" => {
-                battle.weather == Some(pkmn_meta::types::Weather::HashSunlight)
-                    || battle.weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight)
+                battle.weather == Some(Weather::HashSunlight)
+                    || battle.weather == Some(Weather::ExtremelyHarshSunlight)
             }
-            "hydration" => {
-                battle.weather == Some(pkmn_meta::types::Weather::Rain)
-                    || battle.weather == Some(pkmn_meta::types::Weather::HeavyRain)
-            }
-            "icebody" | "snowcloak" => battle.weather == Some(pkmn_meta::types::Weather::Snow),
+            "icebody" | "snowcloak" => battle.weather == Some(Weather::Snow),
             _ => false,
         };
 
@@ -58,8 +56,19 @@ pub fn execute_ability(
         let volatile = ctx.string_val.as_str();
 
         let immune = match ability_id {
-            "owntempo" => matches!(volatile, "confusion"),
-            "oblivious" => matches!(volatile, "attract" | "taunt"),
+            "owntempo" => {
+                matches!(volatile, "confusion")
+                    || ctx.volatile_status_val == Some(VolatileStatus::Confusion)
+            }
+            "oblivious" => {
+                matches!(volatile, "attract" | "taunt")
+                    || ctx.volatile_status_val == Some(VolatileStatus::Attract)
+                    || ctx.volatile_status_val == Some(VolatileStatus::Taunt)
+            }
+            "innerfocus" => {
+                matches!(volatile, "flinch")
+                    || ctx.volatile_status_val == Some(VolatileStatus::Flinch)
+            }
             _ => false,
         };
 
@@ -100,6 +109,27 @@ pub fn execute_ability(
                 }
                 _ => {}
             }
+        }
+    }
+
+    if let EventId::BeforeTakeDamage = event_id
+        && ctx.target == ident
+        && ability_id == "sturdy"
+    {
+        let (hp, maxhp) = battle.hp_and_max(ident);
+        if hp.into_inner() > 0
+            && hp.into_inner() == maxhp.into_inner()
+            && ctx.num_val >= hp.into_inner()
+        {
+            ctx.num_val = hp.into_inner() - 1;
+            battle.log.push(crate::sim::log::BattleLogEvent::new(
+                crate::sim::log::BattleLog::Ability {
+                    target: ctx.target,
+                    ability: "Sturdy".to_string(),
+                    from_move: None,
+                    of: None,
+                },
+            ));
         }
     }
 }
@@ -185,7 +215,10 @@ pub fn get_ability(id: &str) -> Option<Condition> {
         }),
         "bigpecks" => Some(Condition {
             name: "Big Pecks".to_string(),
-
+            ..Default::default()
+        }),
+        "auraguard" => Some(Condition {
+            name: "Aura Guard".to_string(),
             ..Default::default()
         }),
         "intimidate" => Some(Condition {
@@ -417,6 +450,7 @@ pub fn get_ability(id: &str) -> Option<Condition> {
         }),
         "dragonize" => Some(Condition {
             name: "Dragonize".to_string(),
+            has_on_modify_type: true,
             has_on_base_power: true,
             ..Default::default()
         }),
@@ -1454,8 +1488,8 @@ pub fn on_try_boost(
             }
             true
         }
-        "keeneye" => {
-            if target != source && amount < 0 && stat == crate::sim::battle::Stat::Accuracy {
+        "keeneye" | "illuminate" => {
+            if target != source && amount < 0 && stat == Stat::Accuracy {
                 return false;
             }
             true
@@ -1501,7 +1535,119 @@ pub fn on_modify_boost(
     }
 }
 
-pub fn on_start(_ability_id: &str, _battle: &mut Battle, _target: PokemonIdent) {}
+pub fn on_start(ability_id: &str, battle: &mut Battle, target: PokemonIdent) {
+    if ability_id == "anticipation" {
+        let foes: Vec<_> = if target.player == 1 {
+            battle.p2.active.clone()
+        } else {
+            battle.p1.active.clone()
+        };
+        let user = battle.get_pokemon(target);
+        if let Some(user) = user {
+            let u_type1 = user.type1;
+            let u_type2 = user.type2;
+            let u_type3 = user.added_type;
+            let mut shudder = false;
+            for foe in &foes {
+                if foe.hp.into_inner() <= 0 {
+                    continue;
+                }
+                for m_id in &foe.moves {
+                    if let Some(meta) = pkmn_meta::move_meta::get_move_meta(m_id) {
+                        if *meta.category() == Category::Status {
+                            continue;
+                        }
+                        if [
+                            "fissure",
+                            "sheercold",
+                            "guillotine",
+                            "horndrill",
+                            "selfdestruct",
+                            "explosion",
+                        ]
+                        .contains(&m_id.as_str())
+                        {
+                            shudder = true;
+                            break;
+                        }
+                        let m_type = *meta.move_type();
+                        if !damage_calc::is_immune(m_type, u_type1, u_type2, u_type3)
+                            && damage_calc::type_effectiveness_shift(
+                                m_type, u_type1, u_type2, u_type3,
+                            ) > 0
+                        {
+                            shudder = true;
+                            break;
+                        }
+                    }
+                }
+                if shudder {
+                    break;
+                }
+            }
+            if shudder {
+                battle
+                    .log
+                    .push(crate::sim::log::BattleLogEvent::new(BattleLog::Ability {
+                        target,
+                        ability: "Anticipation".to_string(),
+                        from_move: None,
+                        of: None,
+                    }));
+            }
+        }
+    }
+    if ability_id == "curiousmedicine" {
+        let ally_ident = PokemonIdent {
+            player: target.player,
+            slot: 1 - target.slot,
+        };
+        if let Some(ally) = battle.get_pokemon_mut(ally_ident)
+            && ally.hp.into_inner() > 0
+        {
+            ally.boosts = Boosts::default();
+            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                message: format!(
+                    "|-clearboost|{}|[from] ability: Curious Medicine|[of] {}",
+                    ally_ident, target
+                ),
+            }));
+        }
+    }
+    if ability_id == "trace" {
+        let foes = if target.player == 1 {
+            &battle.p2.active
+        } else {
+            &battle.p1.active
+        };
+        let mut target_ability = None;
+        let mut target_foe_ident = None;
+        for (f_slot, foe) in foes.iter().enumerate() {
+            if foe.hp.into_inner() > 0 && foe.ability.is_some() {
+                target_ability = foe.ability.clone();
+                target_foe_ident = Some(PokemonIdent {
+                    player: if target.player == 1 { 2 } else { 1 },
+                    slot: f_slot,
+                });
+                break;
+            }
+        }
+        if let Some(ab) = target_ability
+            && let Some(user) = battle.get_pokemon_mut(target)
+        {
+            user.ability = Some(ab.clone());
+            let ab_name = crate::sim::abilities::get_ability(ab.as_str())
+                .map(|c| c.name)
+                .unwrap_or_else(|| ab.to_string());
+            battle.log.push(BattleLogEvent::new(BattleLog::Ability {
+                target,
+                ability: ab_name,
+                from_move: None,
+                of: target_foe_ident,
+            }));
+        }
+    }
+}
 
 pub fn on_modify_type(ability_id: &str, orig: Type) -> Option<Type> {
     match ability_id {
@@ -1529,6 +1675,13 @@ pub fn on_modify_type(ability_id: &str, orig: Type) -> Option<Type> {
         "galvanize" => {
             if orig == Type::Normal {
                 Some(Type::Electric)
+            } else {
+                None
+            }
+        }
+        "dragonize" => {
+            if orig == Type::Normal {
+                Some(Type::Dragon)
             } else {
                 None
             }

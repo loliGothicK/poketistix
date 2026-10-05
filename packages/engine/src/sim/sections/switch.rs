@@ -1,6 +1,14 @@
+use crate::sim::abilities::on_start;
 use crate::sim::battle::{Battle, Stat};
+use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::sim::pokemon::PokemonIdent;
+use pkmn_meta::types::*;
 
 pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
+    if let Some(p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
+        p.libero_activated = false;
+    }
+
     let ability = if player == 1 {
         battle.p1.active.get(slot).and_then(|p| p.ability.clone())
     } else {
@@ -14,11 +22,7 @@ pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
     };
 
     if let Some(ability_id) = ability.as_ref() {
-        crate::sim::abilities::on_start(
-            ability_id.as_ref(),
-            battle,
-            crate::sim::pokemon::PokemonIdent { player, slot },
-        );
+        on_start(ability_id.as_ref(), battle, PokemonIdent { player, slot });
     }
 
     if let Some(meta) = ability
@@ -26,44 +30,50 @@ pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
         .map(|a| a.as_ref())
         .and_then(pkmn_meta::ability_meta::get_ability_meta)
     {
-        if let Some(w) = meta.on_start_weather() {
+        if let Some(w) = meta.on_start_weather()
+            && battle.weather != Some(*w)
+        {
             battle.weather = Some(*w);
             let item_str = item.as_ref().map(|i| i.as_ref());
-            if (*w == pkmn_meta::types::Weather::Rain && item_str == Some("damprock"))
-                || (*w == pkmn_meta::types::Weather::HashSunlight && item_str == Some("heatrock"))
-                || (*w == pkmn_meta::types::Weather::Sandstorm && item_str == Some("smoothrock"))
-                || (*w == pkmn_meta::types::Weather::Snow && item_str == Some("icyrock"))
+            if (*w == Weather::Rain && item_str == Some("damprock"))
+                || (*w == Weather::HashSunlight && item_str == Some("heatrock"))
+                || (*w == Weather::Sandstorm && item_str == Some("smoothrock"))
+                || (*w == Weather::Snow && item_str == Some("icyrock"))
             {
                 battle.weather_turns_left = 8;
             } else {
                 battle.weather_turns_left = 5;
             }
             // Emit log
-            let log_weather = if *w == pkmn_meta::types::Weather::Snow {
+            let log_weather = if *w == Weather::Snow {
                 "Snowscape"
             } else {
                 w.as_ref()
             };
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::WeatherChange {
+            battle
+                .log
+                .push(BattleLogEvent::new(BattleLog::WeatherChange {
                     weather: log_weather.to_string(),
                     is_start: true,
-                },
-            ));
+                }));
+            battle.update_forecast();
         }
-        if let Some(t) = meta.on_start_terrain() {
+        if let Some(t) = meta.on_start_terrain()
+            && battle.terrain != Some(*t)
+        {
             battle.terrain = Some(*t);
             if item.as_ref().map(|i| i.as_ref()) == Some("terrainextender") {
                 battle.terrain_turns_left = 8;
             } else {
                 battle.terrain_turns_left = 5;
             }
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::TerrainChange {
+            battle
+                .log
+                .push(BattleLogEvent::new(BattleLog::TerrainChange {
                     terrain: t.as_ref().to_string() + "Terrain",
                     is_start: true,
-                },
-            ));
+                }));
+            battle.update_mimicry();
         }
         if let Some(drop) = meta.on_start_stat_drop_foe().as_ref() {
             let targets = if player == 1 {
@@ -72,49 +82,154 @@ pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
                 (0..std::cmp::min(2, battle.p1.active.len())).collect::<Vec<_>>()
             };
 
-            for t_slot in targets {
-                let target_player = if player == 1 { 2 } else { 1 };
-                let hp = if target_player == 1 {
-                    battle
-                        .p1
-                        .active
-                        .get(t_slot)
-                        .map(|p| p.hp.into_inner())
-                        .unwrap_or(0)
-                } else {
-                    battle
-                        .p2
-                        .active
-                        .get(t_slot)
-                        .map(|p| p.hp.into_inner())
-                        .unwrap_or(0)
-                };
+            let mut drops = Vec::new();
+            if drop.atk.into_inner() != 0 {
+                drops.push((Stat::Atk, drop.atk.into_inner()));
+            }
+            if drop.def.into_inner() != 0 {
+                drops.push((Stat::Def, drop.def.into_inner()));
+            }
+            if drop.spa.into_inner() != 0 {
+                drops.push((Stat::Spa, drop.spa.into_inner()));
+            }
+            if drop.spd.into_inner() != 0 {
+                drops.push((Stat::Spd, drop.spd.into_inner()));
+            }
+            if drop.spe.into_inner() != 0 {
+                drops.push((Stat::Spe, drop.spe.into_inner()));
+            }
+            if drop.accuracy.into_inner() != 0 {
+                drops.push((Stat::Accuracy, drop.accuracy.into_inner()));
+            }
+            if drop.evasion.into_inner() != 0 {
+                drops.push((Stat::Evasion, drop.evasion.into_inner()));
+            }
 
-                if hp > 0 {
-                    battle.apply_stat_change(
-                        target_player,
-                        t_slot,
-                        vec![(Stat::Atk, drop.atk.into_inner())],
-                        player,
-                        ability.as_ref().map(|a| a.as_ref()),
-                    );
+            if !drops.is_empty() {
+                for t_slot in targets {
+                    let target_player = if player == 1 { 2 } else { 1 };
+                    let hp = if target_player == 1 {
+                        battle
+                            .p1
+                            .active
+                            .get(t_slot)
+                            .map(|p| p.hp.into_inner())
+                            .unwrap_or(0)
+                    } else {
+                        battle
+                            .p2
+                            .active
+                            .get(t_slot)
+                            .map(|p| p.hp.into_inner())
+                            .unwrap_or(0)
+                    };
+
+                    if hp > 0 {
+                        battle.apply_stat_change(
+                            target_player,
+                            t_slot,
+                            drops.clone(),
+                            player,
+                            ability.as_ref().map(|a| a.as_ref()),
+                        );
+                    }
                 }
             }
         }
         if let Some(boost) = meta.on_start_stat_boost_self().as_ref() {
-            if player == 1 {
-                if let Some(p) = battle.p1.active.get_mut(slot) {
-                    p.boosts.atk = (p.boosts.atk.into_inner() + boost.atk.into_inner())
-                        .clamp(-6, 6)
-                        .into();
-                }
-            } else {
-                if let Some(p) = battle.p2.active.get_mut(slot) {
-                    p.boosts.atk = (p.boosts.atk.into_inner() + boost.atk.into_inner())
-                        .clamp(-6, 6)
-                        .into();
-                }
+            let mut boosts = Vec::new();
+            if boost.atk.into_inner() != 0 {
+                boosts.push((Stat::Atk, boost.atk.into_inner()));
+            }
+            if boost.def.into_inner() != 0 {
+                boosts.push((Stat::Def, boost.def.into_inner()));
+            }
+            if boost.spa.into_inner() != 0 {
+                boosts.push((Stat::Spa, boost.spa.into_inner()));
+            }
+            if boost.spd.into_inner() != 0 {
+                boosts.push((Stat::Spd, boost.spd.into_inner()));
+            }
+            if boost.spe.into_inner() != 0 {
+                boosts.push((Stat::Spe, boost.spe.into_inner()));
+            }
+            if boost.accuracy.into_inner() != 0 {
+                boosts.push((Stat::Accuracy, boost.accuracy.into_inner()));
+            }
+            if boost.evasion.into_inner() != 0 {
+                boosts.push((Stat::Evasion, boost.evasion.into_inner()));
+            }
+
+            if !boosts.is_empty() {
+                battle.apply_stat_change(
+                    player,
+                    slot,
+                    boosts,
+                    player,
+                    ability.as_ref().map(|a| a.as_ref()),
+                );
             }
         }
+        if ability.as_ref().map(|a| a.as_str()) == Some("hospitality") {
+            let ally_ident = PokemonIdent {
+                player,
+                slot: 1 - slot,
+            };
+            if let Some(ally) = battle.get_pokemon(ally_ident)
+                && ally.hp.into_inner() > 0
+                && ally.hp < ally.maxhp
+            {
+                let heal_amount = std::cmp::max(1, ally.maxhp.into_inner() / 4);
+                battle.section_heal(ally_ident, heal_amount.into());
+            }
+        }
+        if ability.as_ref().map(|a| a.as_str()) == Some("immunity") {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon(ident)
+                && (p.status == Some(Status::Poison) || p.status == Some(Status::Toxic))
+            {
+                battle.section_cure_status(ident);
+            }
+        }
+        if ability.as_ref().map(|a| a.as_str()) == Some("limber") {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon(ident)
+                && p.status == Some(Status::Paralysis)
+            {
+                battle.section_cure_status(ident);
+            }
+        }
+        if ability.as_ref().map(|a| a.as_str()) == Some("magmaarmor") {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon(ident)
+                && p.status == Some(Status::Frozen)
+            {
+                battle.section_cure_status(ident);
+            }
+        }
+        if matches!(
+            ability.as_ref().map(|a| a.as_str()),
+            Some("waterveil") | Some("waterbubble")
+        ) {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon(ident)
+                && p.status == Some(Status::Burn)
+            {
+                battle.section_cure_status(ident);
+            }
+        }
+        if matches!(
+            ability.as_ref().map(|a| a.as_str()),
+            Some("insomnia") | Some("vitalspirit")
+        ) {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon(ident)
+                && p.status == Some(Status::Sleep)
+            {
+                battle.section_cure_status(ident);
+            }
+        }
+        battle.update_forecast();
+        battle.update_mimicry();
     }
 }

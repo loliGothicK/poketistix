@@ -20,6 +20,7 @@ pub struct MoveAction {
     pub target_slot: u8,
     pub priority: i32,
     pub speed: i32,
+    pub is_bounced: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +87,33 @@ impl Action {
                             active[s.slot].leech_seeded_by = None;
                             active[s.slot].last_move_used = None;
                             active[s.slot].consecutive_move_counter = 0;
+
+                            if active[s.slot].ability.as_ref().map(|a| a.as_str())
+                                == Some("naturalcure")
+                                && active[s.slot].status.is_some()
+                            {
+                                active[s.slot].status = None;
+                                battle.log.push(crate::sim::log::BattleLogEvent::new(
+                                    crate::sim::log::BattleLog::CureStatus {
+                                        target: crate::sim::battle::PokemonIdent {
+                                            player: s.player,
+                                            slot: s.slot,
+                                        },
+                                    },
+                                ));
+                            }
+                            if active[s.slot].ability.as_ref().map(|a| a.as_str())
+                                == Some("regenerator")
+                                && active[s.slot].hp > 0
+                            {
+                                let heal = std::cmp::max(1, active[s.slot].maxhp.into_inner() / 3);
+                                active[s.slot].hp = std::cmp::min(
+                                    active[s.slot].maxhp.into_inner(),
+                                    active[s.slot].hp.into_inner() + heal,
+                                )
+                                .into();
+                            }
+
                             std::mem::swap(&mut active[s.slot], &mut team[bench_idx]);
                             let prefix = if s.player == 1 { "p1" } else { "p2" };
                             active[s.slot].ident =

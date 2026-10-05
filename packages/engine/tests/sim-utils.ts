@@ -27,6 +27,49 @@ const slashMove = championsDex.moves.get("slash");
 if (slashMove) Reflect.set(slashMove, "basePower", 80);
 const milkDrink = championsDex.moves.get("milkdrink");
 if (milkDrink) Reflect.set(milkDrink, "target", "adjacentAlly");
+Reflect.set(championsDex.data.Abilities, "auraguard", {
+  name: "Aura Guard",
+  id: "auraguard",
+  exists: true,
+  num: 314,
+  onSourceModifyDamage(
+    this: Battle,
+    _damage: number,
+    _source: Pokemon,
+    _target: Pokemon,
+    move: Move,
+  ) {
+    if (move.flags?.contact) {
+      this.chainModify(0.5);
+    }
+  },
+});
+const lucarioMegaZ = championsDex.species.get("lucario-mega-z");
+if (lucarioMegaZ) {
+  Reflect.set(lucarioMegaZ, "abilities", { 0: "Aura Guard" });
+}
+const indeedeeF = championsDex.species.get("indeedee-f");
+if (indeedeeF) {
+  Reflect.set(championsDex.data.Species, "indeedeefemale", indeedeeF);
+}
+const indeedeeM = championsDex.species.get("indeedee");
+if (indeedeeM) {
+  Reflect.set(championsDex.data.Species, "indeedeemale", indeedeeM);
+}
+Reflect.set(championsDex.data.Abilities, "firemane", {
+  name: "Fire Mane",
+  id: "firemane",
+  exists: true,
+  num: 313,
+  onModifyAtkPriority: 5,
+  onModifyAtk(this: Battle) {
+    this.chainModify(1.5);
+  },
+  onModifySpAPriority: 5,
+  onModifySpA(this: Battle) {
+    this.chainModify(1.5);
+  },
+});
 const ABILITY_DICTIONARY = new Map(
   abilitiesData.data.map(({ id, identifier }) => [id, identifier]),
 );
@@ -44,6 +87,7 @@ export type DeterministicMoveOptions =
       basePower?: number | "inherit";
       multihit?: number | number[] | "inherit";
       damage_roll?: "min" | "max" | "random";
+      willCrit?: boolean;
     };
 
 /**
@@ -64,6 +108,9 @@ export function withDeterministicMoves(
     secondary: Move["secondary"];
     secondaries: Move["secondaries"];
     multihit: Move["multihit"];
+    basePower: Move["basePower"];
+    onBasePower: Move["onBasePower"];
+    willCrit: Move["willCrit"];
   }[] = [];
   try {
     for (const config of moves) {
@@ -81,6 +128,9 @@ export function withDeterministicMoves(
         secondary: move.secondary,
         secondaries: move.secondaries,
         multihit: move.multihit,
+        basePower: move.basePower,
+        onBasePower: Reflect.get(move, "onBasePower"),
+        willCrit: move.willCrit,
       });
       const forceAccuracy = configAccuracy === "inherit" ? move.accuracy : configAccuracy;
       const configBasePower =
@@ -91,6 +141,7 @@ export function withDeterministicMoves(
       }
       if (configBasePower !== "inherit") {
         Reflect.set(move, "basePower", configBasePower);
+        Reflect.set(move, "onBasePower", undefined);
       }
 
       const configMultihit =
@@ -105,6 +156,11 @@ export function withDeterministicMoves(
           Reflect.set(move, "secondaries", null);
         }
       }
+
+      const configCrit = typeof config === "string" ? undefined : config.willCrit;
+      if (configCrit !== undefined) {
+        Reflect.set(move, "willCrit", configCrit);
+      }
     }
     fn();
   } finally {
@@ -116,6 +172,9 @@ export function withDeterministicMoves(
       secondary,
       secondaries,
       multihit,
+      basePower,
+      onBasePower,
+      willCrit,
     } of originals) {
       if (configAccuracy !== "inherit") {
         Reflect.set(move, "accuracy", accuracy);
@@ -127,6 +186,13 @@ export function withDeterministicMoves(
       if (multihit !== undefined) {
         Reflect.set(move, "multihit", multihit);
       }
+      if (basePower !== undefined) {
+        Reflect.set(move, "basePower", basePower);
+      }
+      if (onBasePower !== undefined) {
+        Reflect.set(move, "onBasePower", onBasePower);
+      }
+      Reflect.set(move, "willCrit", willCrit);
     }
   }
 }
@@ -161,14 +227,18 @@ export function pokemon(
       );
     }
   }
+  const resolvedMoves = Array.isArray(pokemon.moves)
+    ? pokemon.moves
+    : pokemonData.data.find(({ id }) => id === pokemon.species_id)?.moves || [];
+
   if (
     opts.moves &&
     opts.moves.some(
-      (move) => !pokemon.moves.map((id) => toId(MOVE_DICTIONARY.get(id))).includes(toId(move)),
+      (move) => !resolvedMoves.map((id) => toId(MOVE_DICTIONARY.get(id))).includes(toId(move)),
     )
   ) {
     const invalidMoves = opts.moves.filter(
-      (move) => !pokemon.moves.map((id) => toId(MOVE_DICTIONARY.get(id))).includes(toId(move)),
+      (move) => !resolvedMoves.map((id) => toId(MOVE_DICTIONARY.get(id))).includes(toId(move)),
     );
     throw new Error(`Invalid moves with ${pokemon.identifier}: ${invalidMoves.join(", ")}.`);
   }
@@ -449,6 +519,7 @@ export class TestEnvironment {
           : p.ability
             ? toId(p.ability)
             : "",
+        moves: (p.moves || []).map(toId),
       };
     };
 
@@ -1075,11 +1146,13 @@ export class TestEnvironment {
         else if (w === "snow") w = "Snow";
         normalizedEngine.push({ type: "weather", target: w });
       } else if (e.type === "TerrainChange") {
-        let t = "terrain" in e ? String(e.terrain) : "";
-        if (t === "electricTerrain") t = "move: Electric Terrain";
-        else if (t === "grassyTerrain") t = "move: Grassy Terrain";
-        else if (t === "mistyTerrain") t = "move: Misty Terrain";
-        else if (t === "psychicTerrain") t = "move: Psychic Terrain";
+        const raw = "terrain" in e ? String(e.terrain) : "";
+        const lower = raw.toLowerCase();
+        let t = raw;
+        if (lower === "electricterrain") t = "move: Electric Terrain";
+        else if (lower === "grassyterrain") t = "move: Grassy Terrain";
+        else if (lower === "mistyterrain") t = "move: Misty Terrain";
+        else if (lower === "psychicterrain") t = "move: Psychic Terrain";
         normalizedEngine.push({ type: "terrain", target: t });
       } else if (e.type === "Swap") {
         normalizedEngine.push({

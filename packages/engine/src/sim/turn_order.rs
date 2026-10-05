@@ -1,5 +1,5 @@
 use crate::sim::battle::{Battle, Pokemon};
-use pkmn_meta::types::Type;
+use pkmn_meta::types::*;
 
 pub struct TurnOrderResolver<'a> {
     battle: &'a Battle,
@@ -16,14 +16,14 @@ impl<'a> TurnOrderResolver<'a> {
 
         let is_prankster = pkmn.ability.as_ref().map(|x| x.as_ref()) == Some("prankster");
         let is_status = pkmn_meta::move_meta::get_move_meta(move_id)
-            .is_some_and(|m| *m.category() == pkmn_meta::types::Category::Status);
+            .is_some_and(|m| *m.category() == Category::Status);
 
-        let _is_galewings = pkmn.ability.as_ref().map(|x| x.as_ref()) == Some("galewings")
+        let is_galewings = pkmn.ability.as_ref().map(|a| a.as_str()) == Some("galewings")
             && pkmn.hp.into_inner() == pkmn.maxhp.into_inner()
             && pkmn_meta::move_meta::get_move_meta(move_id)
                 .is_some_and(|m| *m.move_type() == Type::Flying);
 
-        if is_prankster && is_status {
+        if (is_prankster && is_status) || is_galewings {
             priority += 1;
         } else if pkmn.ability.as_ref().map(|x| x.as_ref()) == Some("triage")
             && (move_id == "recover"
@@ -66,17 +66,15 @@ impl<'a> TurnOrderResolver<'a> {
         let pkmn_ability = pkmn.ability.as_ref().map(|a| a.as_ref());
         let active_weather = self.battle.get_active_weather();
         if (pkmn_ability == Some("swiftswim")
-            && (active_weather == Some(pkmn_meta::types::Weather::Rain)
-                || active_weather == Some(pkmn_meta::types::Weather::HeavyRain)))
+            && (active_weather == Some(Weather::Rain)
+                || active_weather == Some(Weather::HeavyRain)))
             || (pkmn_ability == Some("chlorophyll")
-                && (active_weather == Some(pkmn_meta::types::Weather::HashSunlight)
-                    || active_weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight)))
-            || (pkmn_ability == Some("sandrush")
-                && active_weather == Some(pkmn_meta::types::Weather::Sandstorm))
-            || (pkmn_ability == Some("slushrush")
-                && active_weather == Some(pkmn_meta::types::Weather::Snow))
+                && (active_weather == Some(Weather::HashSunlight)
+                    || active_weather == Some(Weather::ExtremelyHarshSunlight)))
+            || (pkmn_ability == Some("sandrush") && active_weather == Some(Weather::Sandstorm))
+            || (pkmn_ability == Some("slushrush") && active_weather == Some(Weather::Snow))
             || (pkmn_ability == Some("surgesurfer")
-                && self.battle.terrain == Some(pkmn_meta::types::Terrain::Electric))
+                && self.battle.terrain == Some(Terrain::Electric))
         {
             speed = speed * 2.0;
         }

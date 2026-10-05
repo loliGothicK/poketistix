@@ -1,8 +1,9 @@
-use crate::sim::abilities::get_ability;
+use crate::sim::abilities::{Condition, get_ability};
 use crate::sim::items::get_item;
+use pkmn_meta::types::*;
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
-fn format_type(t: &pkmn_meta::types::Type) -> String {
+fn format_type(t: &Type) -> String {
     format!("{:?}", t)
 }
 
@@ -33,10 +34,35 @@ pub struct BattleState {
     pub p2: PokemonState,
 }
 
-#[wasm_bindgen]
-pub fn check_ability(id: &str) -> Option<tsify::Ts<ConditionJs>> {
-    if let Some(cond) = get_ability(id) {
-        let js = ConditionJs {
+fn side_data(side: &crate::sim::battle::Side) -> SideData {
+    SideData {
+        tailwind: side.tailwind,
+        tailwind_turns: side.tailwind_turns,
+        aurora_veil_turns: side.aurora_veil_turns,
+        reflect_turns: side.reflect_turns,
+        lightscreen_turns: side.lightscreen_turns,
+        safeguard_turns: side.safeguard_turns,
+        spikes: side.spikes,
+        toxic_spikes: side.toxic_spikes,
+        stealth_rock: side.stealth_rock,
+        sticky_web: side.sticky_web,
+        active: side.active.iter().map(convert_pokemon).collect(),
+        team: side.team.iter().map(convert_pokemon).collect(),
+    }
+}
+
+fn battle_logs_to_ts(
+    battle: &crate::sim::battle::Battle,
+) -> Result<tsify::Ts<crate::sim::log::BattleLogs>, wasm_bindgen::JsError> {
+    let logs = crate::sim::log::BattleLogs {
+        events: battle.log.clone(),
+    };
+    tsify::Ts::from_rust(&logs).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+impl From<Condition> for ConditionJs {
+    fn from(cond: Condition) -> Self {
+        ConditionJs {
             name: cond.name,
             has_on_modify_priority: cond.has_on_modify_priority,
             has_on_modify_atk: cond.has_on_modify_atk,
@@ -45,30 +71,22 @@ pub fn check_ability(id: &str) -> Option<tsify::Ts<ConditionJs>> {
             has_on_modify_spd: cond.has_on_modify_spd,
             has_on_base_power: cond.has_on_base_power,
             boosts_spa: cond.boosts_spa,
-        };
-        Some(tsify::Ts::from_rust(&js).unwrap())
-    } else {
-        None
+        }
     }
+}
+
+fn condition_to_ts(cond: Option<Condition>) -> Option<tsify::Ts<ConditionJs>> {
+    cond.map(|c| tsify::Ts::from_rust(&ConditionJs::from(c)).unwrap())
+}
+
+#[wasm_bindgen]
+pub fn check_ability(id: &str) -> Option<tsify::Ts<ConditionJs>> {
+    condition_to_ts(get_ability(id))
 }
 
 #[wasm_bindgen]
 pub fn check_item(id: &str) -> Option<tsify::Ts<ConditionJs>> {
-    if let Some(cond) = get_item(id) {
-        let js = ConditionJs {
-            name: cond.name,
-            has_on_modify_priority: cond.has_on_modify_priority,
-            has_on_modify_atk: cond.has_on_modify_atk,
-            has_on_modify_def: cond.has_on_modify_def,
-            has_on_modify_spa: cond.has_on_modify_spa,
-            has_on_modify_spd: cond.has_on_modify_spd,
-            has_on_base_power: cond.has_on_base_power,
-            boosts_spa: cond.boosts_spa,
-        };
-        Some(tsify::Ts::from_rust(&js).unwrap())
-    } else {
-        None
-    }
+    condition_to_ts(get_item(id))
 }
 use crate::sim::moves_effects::get_move_effect;
 
@@ -147,6 +165,7 @@ pub struct InputPokemonData {
     pub consecutive_move_counter: u8,
     pub pp_used: std::collections::HashMap<String, u8>,
     pub taunt_turns: u8,
+    pub moves: Vec<String>,
 }
 
 impl Default for PokemonData {
@@ -418,6 +437,7 @@ impl Simulator {
         self.battle.run_switch_in(1, 1);
         self.battle.run_switch_in(2, 0);
         self.battle.run_switch_in(2, 1);
+        self.battle.update_forecast();
         Ok(())
     }
 
@@ -474,49 +494,20 @@ impl Simulator {
         crate::sim::turn::process_turn_actions(&mut self.battle)
             .map_err(|e| wasm_bindgen::JsError::new(&e))?;
 
-        let logs = crate::sim::log::BattleLogs {
-            events: self.battle.log.clone(),
-        };
-        tsify::Ts::from_rust(&logs).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+        battle_logs_to_ts(&self.battle)
     }
 
     #[wasm_bindgen]
     pub fn get_state(&self) -> Result<tsify::Ts<FullBattleState>, wasm_bindgen::JsError> {
-        let mut out = FullBattleState {
+        let out = FullBattleState {
             turn_state: match self.battle.turn_state {
                 crate::sim::battle::TurnState::Ready => "Ready".to_string(),
                 crate::sim::battle::TurnState::WaitingForSwitch { .. } => {
                     "WaitingForSwitch".to_string()
                 }
             },
-            p1: SideData {
-                tailwind: self.battle.p1.tailwind,
-                tailwind_turns: self.battle.p1.tailwind_turns,
-                aurora_veil_turns: self.battle.p1.aurora_veil_turns,
-                reflect_turns: self.battle.p1.reflect_turns,
-                lightscreen_turns: self.battle.p1.lightscreen_turns,
-                safeguard_turns: self.battle.p1.safeguard_turns,
-                spikes: self.battle.p1.spikes,
-                toxic_spikes: self.battle.p1.toxic_spikes,
-                stealth_rock: self.battle.p1.stealth_rock,
-                sticky_web: self.battle.p1.sticky_web,
-                active: vec![],
-                team: vec![],
-            },
-            p2: SideData {
-                tailwind: self.battle.p2.tailwind,
-                tailwind_turns: self.battle.p2.tailwind_turns,
-                aurora_veil_turns: self.battle.p2.aurora_veil_turns,
-                reflect_turns: self.battle.p2.reflect_turns,
-                lightscreen_turns: self.battle.p2.lightscreen_turns,
-                safeguard_turns: self.battle.p2.safeguard_turns,
-                spikes: self.battle.p2.spikes,
-                toxic_spikes: self.battle.p2.toxic_spikes,
-                stealth_rock: self.battle.p2.stealth_rock,
-                sticky_web: self.battle.p2.sticky_web,
-                active: vec![],
-                team: vec![],
-            },
+            p1: side_data(&self.battle.p1),
+            p2: side_data(&self.battle.p2),
             weather: self.battle.weather.as_ref().map(|w| w.to_string()),
             weather_turns_left: self.battle.weather_turns_left,
             terrain: self.battle.terrain.as_ref().map(|t| t.to_string()),
@@ -526,18 +517,6 @@ impl Simulator {
             fairy_lock_turns: self.battle.fairy_lock_turns,
         };
 
-        for p in &self.battle.p1.active {
-            out.p1.active.push(convert_pokemon(p));
-        }
-        for p in &self.battle.p1.team {
-            out.p1.team.push(convert_pokemon(p));
-        }
-        for p in &self.battle.p2.active {
-            out.p2.active.push(convert_pokemon(p));
-        }
-        for p in &self.battle.p2.team {
-            out.p2.team.push(convert_pokemon(p));
-        }
         Ok(tsify::Ts::from_rust(&out)?)
     }
 
@@ -611,10 +590,7 @@ impl Simulator {
             )
             .map_err(|e| wasm_bindgen::JsError::new(&e))?;
 
-        let logs = crate::sim::log::BattleLogs {
-            events: self.battle.log.clone(),
-        };
-        tsify::Ts::from_rust(&logs).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+        battle_logs_to_ts(&self.battle)
     }
 }
 
@@ -852,7 +828,17 @@ fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         } else {
             0
         },
+        sleep_turns: if p.status.as_deref() == Some("slp") {
+            3
+        } else {
+            0
+        },
         eaten_berry: false,
+        cud_chew_berry: None,
+        cud_chew_counter: 0,
+        last_consumed_berry: None,
+        disguise_busted: false,
+        libero_activated: false,
         partially_trapped_by: None,
         leech_seeded_by: None,
         partially_trapped_turns: 0,
@@ -862,6 +848,13 @@ fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         encored_move: None,
         encore_turns: 0,
         taunt_turns: p.taunt_turns,
+        yawn_turns: 0,
+        perish_turns: 0,
+        magnet_rise_turns: 0,
+        telekinesis_turns: 0,
+        syrup_bomb_turns: 0,
+        syrup_bomb_source: None,
+        moves: p.moves.clone(),
     }
 }
 

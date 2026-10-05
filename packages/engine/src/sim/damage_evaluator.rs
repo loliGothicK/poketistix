@@ -1,6 +1,6 @@
 use crate::sim::battle::Battle;
 use damage_calc::{calculate_input, types::DamageInput};
-use pkmn_meta::types::Type;
+use pkmn_meta::types::*;
 use rand::RngExt;
 
 pub struct DamageEvaluator<'a> {
@@ -63,11 +63,11 @@ impl<'a> DamageEvaluator<'a> {
             let mut last_damage = 0;
             for &(_, _, dmg, cat) in attacker.turn_state.damage_taken_from.iter().rev() {
                 if dmg > 0 {
-                    if move_id == "counter" && cat == pkmn_meta::types::Category::Physical {
+                    if move_id == "counter" && cat == Category::Physical {
                         last_damage = dmg;
                         break;
                     }
-                    if move_id == "mirrorcoat" && cat == pkmn_meta::types::Category::Special {
+                    if move_id == "mirrorcoat" && cat == Category::Special {
                         last_damage = dmg;
                         break;
                     }
@@ -127,20 +127,24 @@ impl<'a> DamageEvaluator<'a> {
                 }
             }
 
-            if move_id == "weatherball"
-                && let Some(weather) = self.battle.get_active_weather()
-            {
-                base_power = 100;
-                move_type = match weather {
-                    pkmn_meta::types::Weather::HashSunlight
-                    | pkmn_meta::types::Weather::ExtremelyHarshSunlight => Type::Fire,
-                    pkmn_meta::types::Weather::Rain | pkmn_meta::types::Weather::HeavyRain => {
-                        Type::Water
-                    }
-                    pkmn_meta::types::Weather::Sandstorm => Type::Rock,
-                    pkmn_meta::types::Weather::Snow => Type::Ice,
-                    pkmn_meta::types::Weather::StrongWinds => Type::Normal,
-                };
+            if move_id == "weatherball" {
+                let is_sun = self.battle.get_active_weather().is_some_and(|w| {
+                    matches!(w, Weather::HashSunlight | Weather::ExtremelyHarshSunlight)
+                }) || attacker.ability.as_ref().map(|a| a.as_str()) == Some("megasol");
+
+                if is_sun {
+                    base_power = 100;
+                    move_type = Type::Fire;
+                } else if let Some(weather) = self.battle.get_active_weather() {
+                    base_power = 100;
+                    move_type = match weather {
+                        Weather::HashSunlight | Weather::ExtremelyHarshSunlight => Type::Fire,
+                        Weather::Rain | Weather::HeavyRain => Type::Water,
+                        Weather::Sandstorm => Type::Rock,
+                        Weather::Snow => Type::Ice,
+                        Weather::StrongWinds => Type::Normal,
+                    };
+                }
             }
 
             if move_id == "terrainpulse"
@@ -149,17 +153,25 @@ impl<'a> DamageEvaluator<'a> {
             {
                 base_power = 100;
                 move_type = match terrain {
-                    pkmn_meta::types::Terrain::Electric => Type::Electric,
-                    pkmn_meta::types::Terrain::Grassy => Type::Grass,
-                    pkmn_meta::types::Terrain::Misty => Type::Fairy,
-                    pkmn_meta::types::Terrain::Psychic => Type::Psychic,
+                    Terrain::Electric => Type::Electric,
+                    Terrain::Grassy => Type::Grass,
+                    Terrain::Misty => Type::Fairy,
+                    Terrain::Psychic => Type::Psychic,
                 };
+            }
+
+            if move_id == "aurawheel" && attacker.species.contains("hangry") {
+                move_type = Type::Dark;
             }
         }
 
         let mut attacker_atk = attacker.attack;
         let mut attacker_spa = attacker.sp_attack;
-        let attacker_item = attacker.item.as_ref();
+        let attacker_item = if attacker.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
+            None
+        } else {
+            attacker.item.as_ref()
+        };
 
         if attacker_item
             .as_ref()
@@ -180,19 +192,24 @@ impl<'a> DamageEvaluator<'a> {
             let spa_val = attacker_spa.apply_boost(attacker.boosts.spa).into_inner();
             is_physical = atk_val > spa_val;
         } else if let Some(meta) = pkmn_meta::move_meta::get_move_meta(move_id) {
-            is_physical = *meta.category() == pkmn_meta::types::Category::Physical;
+            is_physical = *meta.category() == Category::Physical;
         }
 
+        let effective_weight = |p: &crate::sim::pokemon::Pokemon| {
+            let mut weight = p.weight.into_inner();
+            if p.ability.as_ref().map(|a| a.as_ref()) == Some("heavymetal") {
+                weight *= 2;
+            } else if p.ability.as_ref().map(|a| a.as_ref()) == Some("lightmetal") {
+                weight /= 2;
+            }
+            if p.item.as_ref().map(|a| a.as_ref()) == Some("floatstone") {
+                weight /= 2;
+            }
+            weight
+        };
+
         if move_id == "grassknot" || move_id == "lowkick" {
-            let mut def_weight = defender.weight.into_inner();
-            if defender.ability.as_ref().map(|a| a.as_ref()) == Some("heavymetal") {
-                def_weight *= 2;
-            } else if defender.ability.as_ref().map(|a| a.as_ref()) == Some("lightmetal") {
-                def_weight /= 2;
-            }
-            if defender.item.as_ref().map(|a| a.as_ref()) == Some("floatstone") {
-                def_weight /= 2;
-            }
+            let def_weight = effective_weight(defender);
             base_power = if def_weight < 100 {
                 20
             } else if def_weight < 250 {
@@ -207,25 +224,8 @@ impl<'a> DamageEvaluator<'a> {
                 120
             };
         } else if move_id == "heavyslam" || move_id == "heatcrash" {
-            let mut atk_weight = attacker.weight.into_inner();
-            if attacker.ability.as_ref().map(|a| a.as_ref()) == Some("heavymetal") {
-                atk_weight *= 2;
-            } else if attacker.ability.as_ref().map(|a| a.as_ref()) == Some("lightmetal") {
-                atk_weight /= 2;
-            }
-            if attacker.item.as_ref().map(|a| a.as_ref()) == Some("floatstone") {
-                atk_weight /= 2;
-            }
-
-            let mut def_weight = defender.weight.into_inner();
-            if defender.ability.as_ref().map(|a| a.as_ref()) == Some("heavymetal") {
-                def_weight *= 2;
-            } else if defender.ability.as_ref().map(|a| a.as_ref()) == Some("lightmetal") {
-                def_weight /= 2;
-            }
-            if defender.item.as_ref().map(|a| a.as_ref()) == Some("floatstone") {
-                def_weight /= 2;
-            }
+            let atk_weight = effective_weight(attacker);
+            let def_weight = effective_weight(defender);
 
             base_power = if def_weight * 5 <= atk_weight {
                 120
@@ -387,7 +387,7 @@ impl<'a> DamageEvaluator<'a> {
         }
 
         if move_id == "expandingforce"
-            && self.battle.terrain == Some(pkmn_meta::types::Terrain::Psychic)
+            && self.battle.terrain == Some(Terrain::Psychic)
             && attacker.is_grounded()
         {
             base_power = 120; // 80 * 1.5
@@ -399,7 +399,7 @@ impl<'a> DamageEvaluator<'a> {
 
         if (move_id == "barbbarrage" || move_id == "venoshock")
             && let Some(s) = defender.status.as_ref()
-            && (*s == pkmn_meta::types::Status::Poison || *s == pkmn_meta::types::Status::Toxic)
+            && (*s == Status::Poison || *s == Status::Toxic)
         {
             base_power *= 2;
         }
@@ -419,13 +419,30 @@ impl<'a> DamageEvaluator<'a> {
             base_power = base_power * 3 / 2;
         }
 
+        if move_id == "lashout" && attacker.turn_state.stats_lowered {
+            base_power *= 2;
+        }
+
+        if move_id == "ficklebeam" {
+            let is_all_out = if let Some(config) = &self.battle.rng_config
+                && let Some(sec) = &config.secondary
+            {
+                sec == "always"
+            } else {
+                false
+            };
+            if is_all_out {
+                base_power = 160;
+            }
+        }
+
         let mut attack = if move_id == "bodypress" {
             attacker.defense.into_inner()
         } else if move_id == "foulplay" {
             defender.attack.into_inner()
         } else if attacker
             .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Powertrick)
+            .contains(&VolatileStatus::Powertrick)
         {
             if is_physical {
                 attacker.defense.into_inner()
@@ -438,7 +455,7 @@ impl<'a> DamageEvaluator<'a> {
             attacker.sp_attack.into_inner()
         };
 
-        if attacker.item == Some(pkmn_meta::types::ItemId::LightBall)
+        if attacker.item == Some(ItemId::LightBall)
             && attacker.species.to_lowercase().contains("pikachu")
         {
             attack *= 2;
@@ -456,7 +473,7 @@ impl<'a> DamageEvaluator<'a> {
         let defense = if is_def {
             if defender
                 .volatile_status
-                .contains(&pkmn_meta::types::VolatileStatus::Powertrick)
+                .contains(&VolatileStatus::Powertrick)
             {
                 defender.attack.into_inner()
             } else {
@@ -467,13 +484,18 @@ impl<'a> DamageEvaluator<'a> {
         };
 
         let mut ate_boost = false;
-        if let Some(ability_id) = attacker.ability.as_ref()
-            && let Some(ability) = crate::sim::abilities::get_ability(ability_id)
-            && ability.has_on_modify_type
-            && let Some(new_type) = crate::sim::abilities::on_modify_type(ability_id, move_type)
-        {
-            move_type = new_type;
-            ate_boost = true;
+        if let Some(ability_id) = attacker.ability.as_ref() {
+            if ability_id.as_str() == "liquidvoice"
+                && pkmn_meta::move_meta::get_move_meta(move_id).is_some_and(|m| *m.is_sound())
+            {
+                move_type = Type::Water;
+            } else if let Some(ability) = crate::sim::abilities::get_ability(ability_id)
+                && ability.has_on_modify_type
+                && let Some(new_type) = crate::sim::abilities::on_modify_type(ability_id, move_type)
+            {
+                move_type = new_type;
+                ate_boost = true;
+            }
         }
 
         let mut stab_modifier = 4096;
@@ -492,23 +514,23 @@ impl<'a> DamageEvaluator<'a> {
 
         let mut weather_modifier = 4096;
         let active_weather = self.battle.get_active_weather();
-        if (active_weather == Some(pkmn_meta::types::Weather::HashSunlight)
-            || active_weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight))
-            && move_type == Type::Fire
-        {
+        let is_sun = (active_weather == Some(Weather::HashSunlight)
+            || active_weather == Some(Weather::ExtremelyHarshSunlight))
+            || attacker.ability.as_ref().map(|a| a.as_str()) == Some("megasol");
+        if is_sun && move_type == Type::Fire {
             weather_modifier = damage_calc::MOD_1_5;
-        } else if (active_weather == Some(pkmn_meta::types::Weather::HashSunlight)
-            || active_weather == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight))
+        } else if (active_weather == Some(Weather::HashSunlight)
+            || active_weather == Some(Weather::ExtremelyHarshSunlight))
             && move_type == Type::Water
         {
             weather_modifier = damage_calc::MOD_0_5;
-        } else if (active_weather == Some(pkmn_meta::types::Weather::Rain)
-            || active_weather == Some(pkmn_meta::types::Weather::HeavyRain))
+        } else if (active_weather == Some(Weather::Rain)
+            || active_weather == Some(Weather::HeavyRain))
             && move_type == Type::Water
         {
             weather_modifier = damage_calc::MOD_1_5;
-        } else if (active_weather == Some(pkmn_meta::types::Weather::Rain)
-            || active_weather == Some(pkmn_meta::types::Weather::HeavyRain))
+        } else if (active_weather == Some(Weather::Rain)
+            || active_weather == Some(Weather::HeavyRain))
             && move_type == Type::Fire
         {
             weather_modifier = damage_calc::MOD_0_5;
@@ -518,13 +540,13 @@ impl<'a> DamageEvaluator<'a> {
 
         if attacker
             .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Focusenergy)
+            .contains(&VolatileStatus::Focusenergy)
         {
             crit_stage += 2;
         }
         if attacker
             .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Dragoncheer)
+            .contains(&VolatileStatus::Dragoncheer)
         {
             if attacker.get_types().contains(&Type::Dragon) {
                 crit_stage += 2;
@@ -533,11 +555,13 @@ impl<'a> DamageEvaluator<'a> {
             }
         }
 
-        if attacker.item == Some(pkmn_meta::types::ItemId::ScopeLens) {
+        if attacker.item == Some(ItemId::ScopeLens) {
             crit_stage += 1;
         }
 
-        // Super Luck, etc. can be added here later
+        if attacker.ability.as_ref().map(|a| a.as_str()) == Some("superluck") {
+            crit_stage += 1;
+        }
 
         if crit_stage > 3 {
             crit_stage = 3;
@@ -576,14 +600,29 @@ impl<'a> DamageEvaluator<'a> {
             is_crit = true;
         }
 
+        let attacker_ability = attacker.ability.as_ref().map(|a| a.as_str()).unwrap_or("");
+        let mold_breaker = attacker_ability == "moldbreaker"
+            || attacker_ability == "teravolt"
+            || attacker_ability == "turboblaze";
+        let defender_ability = defender.ability.as_ref().map(|a| a.as_str()).unwrap_or("");
+        if attacker_ability == "merciless"
+            && matches!(defender.status, Some(Status::Poison) | Some(Status::Toxic))
+        {
+            is_crit = true;
+        }
+        if (defender_ability == "battlearmor" || defender_ability == "shellarmor") && !mold_breaker
+        {
+            is_crit = false;
+        }
+
         let mut defense_modifiers = vec![];
-        if active_weather == Some(pkmn_meta::types::Weather::Sandstorm)
+        if active_weather == Some(Weather::Sandstorm)
             && defender.get_types().contains(&Type::Rock)
             && !is_physical
         {
             defense_modifiers.push(damage_calc::MOD_1_5);
         }
-        if active_weather == Some(pkmn_meta::types::Weather::Snow)
+        if active_weather == Some(Weather::Snow)
             && defender.get_types().contains(&Type::Ice)
             && is_physical
         {
@@ -596,7 +635,9 @@ impl<'a> DamageEvaluator<'a> {
             base_power: base_power as u16,
             bp_modifiers: vec![],
             attack: attack as u16,
-            attack_boost: if move_id == "bodypress" {
+            attack_boost: if defender.ability.as_ref().map(|a| a.as_ref()) == Some("unaware") {
+                0
+            } else if move_id == "bodypress" {
                 attacker.boosts.def.into_inner()
             } else if move_id == "foulplay" {
                 defender.boosts.atk.into_inner()
@@ -607,7 +648,9 @@ impl<'a> DamageEvaluator<'a> {
             },
             attack_modifiers: vec![],
             defense: defense as u16,
-            defense_boost: if ["darkestlariat", "sacredsword", "chipaway"].contains(&move_id) {
+            defense_boost: if attacker.ability.as_ref().map(|a| a.as_ref()) == Some("unaware")
+                || ["darkestlariat", "sacredsword", "chipaway"].contains(&move_id)
+            {
                 0
             } else if is_physical
                 || move_id == "psyshock"
@@ -648,6 +691,7 @@ impl<'a> DamageEvaluator<'a> {
                     &self.battle.p2
                 };
                 if !is_crit
+                    && attacker.ability.as_ref().map(|a| a.as_str()) != Some("infiltrator")
                     && move_id != "brickbreak"
                     && move_id != "psychicfangs"
                     && move_id != "ragingbull"
@@ -679,8 +723,8 @@ impl<'a> DamageEvaluator<'a> {
                     );
                     if damage_calc::is_immune(move_type, *t, None, None) {
                         if self.battle.gravity_turns_left > 0
-                            && move_type == pkmn_meta::types::Type::Ground
-                            && *t == pkmn_meta::types::Type::Flying
+                            && move_type == Type::Ground
+                            && *t == Type::Flying
                         {
                             println!("Nullified Flying immunity");
                         } else {
@@ -701,23 +745,13 @@ impl<'a> DamageEvaluator<'a> {
             let mut immune = false;
             let types = &def_types;
             for t in types {
-                if damage_calc::is_immune(pkmn_meta::types::Type::Fighting, *t, None, None)
-                    || damage_calc::is_immune(pkmn_meta::types::Type::Flying, *t, None, None)
+                if damage_calc::is_immune(Type::Fighting, *t, None, None)
+                    || damage_calc::is_immune(Type::Flying, *t, None, None)
                 {
                     immune = true;
                 } else {
-                    shift += damage_calc::type_effectiveness_shift(
-                        pkmn_meta::types::Type::Fighting,
-                        *t,
-                        None,
-                        None,
-                    );
-                    shift += damage_calc::type_effectiveness_shift(
-                        pkmn_meta::types::Type::Flying,
-                        *t,
-                        None,
-                        None,
-                    );
+                    shift += damage_calc::type_effectiveness_shift(Type::Fighting, *t, None, None);
+                    shift += damage_calc::type_effectiveness_shift(Type::Flying, *t, None, None);
                 }
             }
             if immune {
@@ -729,7 +763,7 @@ impl<'a> DamageEvaluator<'a> {
             && (defender.is_grounded() || self.battle.gravity_turns_left > 0)
         {
             let def_has_flying = def_types.contains(&Type::Flying);
-            let has_iron_ball = defender.item == Some(pkmn_meta::types::ItemId::IronBall);
+            let has_iron_ball = defender.item == Some(ItemId::IronBall);
             if has_iron_ball && def_has_flying && self.battle.gravity_turns_left == 0 {
                 // Showdown Iron Ball behavior:
                 // Iron Ball's onEffectiveness sets typeMod = 0 (neutral 1x) if target has Flying type and not under Gravity.
@@ -756,6 +790,23 @@ impl<'a> DamageEvaluator<'a> {
                     input.immune_override = Some(false);
                 }
             }
+        } else if (attacker.ability.as_ref().map(|a| a.as_str()) == Some("scrappy")
+            || attacker.ability.as_ref().map(|a| a.as_str()) == Some("mindseye"))
+            && (move_type == Type::Normal || move_type == Type::Fighting)
+            && def_types.contains(&Type::Ghost)
+        {
+            let mut shift = 0;
+            let types = &def_types;
+            for t in types {
+                if *t == Type::Ghost {
+                    // Ghost takes neutral (1x -> shift 0) from Normal / Fighting with Scrappy
+                    shift += 0;
+                } else if !damage_calc::is_immune(move_type, *t, None, None) {
+                    shift += damage_calc::type_effectiveness_shift(move_type, *t, None, None);
+                }
+            }
+            input.effectiveness_override = Some(shift);
+            input.immune_override = Some(false);
         }
 
         if attacker_item
@@ -785,7 +836,7 @@ impl<'a> DamageEvaluator<'a> {
                     attacker.ability.as_ref().map(|x| x.as_str()) == Some("flashfire");
                 let is_activated = attacker
                     .volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Flashfire);
+                    .contains(&VolatileStatus::Flashfire);
 
                 if !is_flash_fire || is_activated {
                     input.weather_modifier = (input.weather_modifier as f32 * boost_mult) as u16;
@@ -812,10 +863,11 @@ impl<'a> DamageEvaluator<'a> {
                 && (player != target_player || slot != target_slot)
             {
                 if (self.battle.gravity_turns_left > 0 || defender.is_grounded())
-                    && move_type == pkmn_meta::types::Type::Ground
-                    && defender.ability.as_ref().map(|x| x.as_str()) == Some("levitate")
+                    && move_type == Type::Ground
+                    && (defender.ability.as_ref().map(|x| x.as_str()) == Some("levitate")
+                        || defender.ability.as_ref().map(|x| x.as_str()) == Some("eelevate"))
                 {
-                    // Gravity or Iron Ball nullifies Levitate
+                    // Gravity or Iron Ball nullifies Levitate/Eelevate
                 } else {
                     input.immune_override = Some(true);
                 }
@@ -823,20 +875,17 @@ impl<'a> DamageEvaluator<'a> {
         }
 
         let terrain = self.battle.terrain;
-        if terrain == Some(pkmn_meta::types::Terrain::Electric)
+        if terrain == Some(Terrain::Electric)
             && move_type == Type::Electric
             && attacker.is_grounded()
         {
             input.bp_modifiers.push(damage_calc::MOD_1_3);
         }
 
-        if attacker
-            .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Charge)
-            && move_type == Type::Electric
+        if attacker.volatile_status.contains(&VolatileStatus::Charge) && move_type == Type::Electric
         {
             input.bp_modifiers.push(damage_calc::MOD_2_0);
-        } else if terrain == Some(pkmn_meta::types::Terrain::Grassy) {
+        } else if terrain == Some(Terrain::Grassy) {
             if move_type == Type::Grass && attacker.is_grounded() {
                 input.bp_modifiers.push(damage_calc::MOD_1_3);
             }
@@ -845,12 +894,12 @@ impl<'a> DamageEvaluator<'a> {
             {
                 input.bp_modifiers.push(damage_calc::MOD_0_5);
             }
-        } else if terrain == Some(pkmn_meta::types::Terrain::Psychic)
+        } else if terrain == Some(Terrain::Psychic)
             && move_type == Type::Psychic
             && attacker.is_grounded()
         {
             input.bp_modifiers.push(damage_calc::MOD_1_3);
-        } else if terrain == Some(pkmn_meta::types::Terrain::Misty)
+        } else if terrain == Some(Terrain::Misty)
             && move_type == Type::Dragon
             && defender.is_grounded()
         {
@@ -941,7 +990,7 @@ impl<'a> DamageEvaluator<'a> {
             }
             "sniper" => {
                 if input.is_crit {
-                    input.crit_modifier = damage_calc::MOD_2_25;
+                    input.final_modifiers.push(damage_calc::MOD_1_5);
                 }
             }
             "tintedlens" => {
@@ -992,9 +1041,8 @@ impl<'a> DamageEvaluator<'a> {
             }
             "solarpower" => {
                 if !is_physical
-                    && (active_weather == Some(pkmn_meta::types::Weather::HashSunlight)
-                        || active_weather
-                            == Some(pkmn_meta::types::Weather::ExtremelyHarshSunlight))
+                    && (active_weather == Some(Weather::HashSunlight)
+                        || active_weather == Some(Weather::ExtremelyHarshSunlight))
                 {
                     input.attack_modifiers.push(damage_calc::MOD_1_5);
                 }
@@ -1024,8 +1072,26 @@ impl<'a> DamageEvaluator<'a> {
                     input.bp_modifiers.push(damage_calc::MOD_1_3);
                 }
             }
+            "supremeoverlord" => {
+                let side = if player == 1 {
+                    &self.battle.p1
+                } else {
+                    &self.battle.p2
+                };
+                let fainted = side
+                    .active
+                    .iter()
+                    .chain(side.team.iter())
+                    .filter(|pokemon| pokemon.hp == 0)
+                    .count()
+                    .min(5);
+                if fainted > 0 {
+                    let pow_mod = [4096, 4506, 4915, 5325, 5734, 6144];
+                    input.bp_modifiers.push(pow_mod[fainted]);
+                }
+            }
             "sandforce" => {
-                if active_weather == Some(pkmn_meta::types::Weather::Sandstorm)
+                if active_weather == Some(Weather::Sandstorm)
                     && (move_type == Type::Rock
                         || move_type == Type::Ground
                         || move_type == Type::Steel)
@@ -1037,13 +1103,101 @@ impl<'a> DamageEvaluator<'a> {
                 input.neuroforce = true;
             }
             "analytic" => {
-                // TODO: Properly check if target already moved.
-                input.bp_modifiers.push(damage_calc::MOD_1_3); // 1.3x
+                let someone_will_move = self
+                    .battle
+                    .turn_actions
+                    .iter()
+                    .any(|a| a.player() != player || a.slot() != slot as usize);
+                if !someone_will_move {
+                    input.bp_modifiers.push(5325);
+                }
+            }
+            "firemane" => {
+                input.attack_modifiers.push(damage_calc::MOD_1_5);
+            }
+            "plus" | "minus" if !is_physical => {
+                let ally = if player == 1 {
+                    self.battle.p1.active.get((1 - slot) as usize)
+                } else {
+                    self.battle.p2.active.get((1 - slot) as usize)
+                };
+                if let Some(ally_p) = ally
+                    && ally_p.hp > 0
+                    && ally_p
+                        .ability
+                        .as_ref()
+                        .is_some_and(|a| a.as_str() == "plus" || a.as_str() == "minus")
+                {
+                    input.attack_modifiers.push(damage_calc::MOD_1_5);
+                }
             }
             _ => {}
         }
 
+        if move_type == Type::Steel {
+            let user_has_steely =
+                attacker.ability.as_ref().map(|a| a.as_str()) == Some("steelyspirit");
+            if user_has_steely {
+                input.bp_modifiers.push(damage_calc::MOD_1_5);
+            }
+            let ally = if player == 1 {
+                self.battle.p1.active.get((1 - slot) as usize)
+            } else {
+                self.battle.p2.active.get((1 - slot) as usize)
+            };
+            if let Some(ally_p) = ally
+                && ally_p.hp > 0
+                && ally_p.ability.as_ref().map(|a| a.as_str()) == Some("steelyspirit")
+            {
+                input.bp_modifiers.push(damage_calc::MOD_1_5);
+            }
+        }
+
+        if move_type == Type::Fairy && (player != target_player || slot != target_slot) {
+            let has_fairy_aura = self
+                .battle
+                .all_active_pokemon()
+                .into_iter()
+                .any(|(_, p)| p.ability.as_ref().map(|a| a.as_str()) == Some("fairyaura"));
+            if has_fairy_aura {
+                let has_aura_break = self
+                    .battle
+                    .all_active_pokemon()
+                    .into_iter()
+                    .any(|(_, p)| p.ability.as_ref().map(|a| a.as_str()) == Some("aurabreak"));
+                if has_aura_break {
+                    input.bp_modifiers.push(3072);
+                } else {
+                    input.bp_modifiers.push(5448);
+                }
+            }
+        }
+
+        if !mold_breaker {
+            let def_ally = if target_player == 1 {
+                self.battle.p1.active.get((1 - target_slot) as usize)
+            } else {
+                self.battle.p2.active.get((1 - target_slot) as usize)
+            };
+            if let Some(ally) = def_ally
+                && ally.hp > 0
+                && ally.ability.as_ref().map(|a| a.as_str()) == Some("friendguard")
+            {
+                input.final_modifiers.push(damage_calc::MOD_0_75);
+            }
+        }
+
         match defender.ability.as_ref().map(|a| a.as_ref()).unwrap_or("") {
+            "grasspelt" if !mold_breaker => {
+                if is_physical && self.battle.terrain == Some(Terrain::Grassy) {
+                    input.defense_modifiers.push(damage_calc::MOD_1_5);
+                }
+            }
+            "heatproof" | "waterbubble" if !mold_breaker => {
+                if move_type == Type::Fire {
+                    input.attack_modifiers.push(damage_calc::MOD_0_5);
+                }
+            }
             "furcoat" if !mold_breaker => {
                 if is_physical {
                     input.defense_modifiers.push(damage_calc::MOD_2_0);
@@ -1066,20 +1220,39 @@ impl<'a> DamageEvaluator<'a> {
             }
             "punkrock" if !mold_breaker => {
                 if pkmn_meta::move_meta::get_move_meta(move_id).is_some_and(|m| *m.is_sound()) {
-                    input.attack_modifiers.push(damage_calc::MOD_0_5);
+                    input.final_modifiers.push(damage_calc::MOD_0_5);
                 }
             }
             "dryskin" if !mold_breaker => {
                 if move_type == Type::Fire {
                     input.bp_modifiers.push(damage_calc::MOD_1_25);
                 }
+                if move_type == Type::Water && (player != target_player || slot != target_slot) {
+                    input.immune_override = Some(true);
+                }
             }
             "fluffy" if !mold_breaker => {
                 if move_type == Type::Fire {
                     input.bp_modifiers.push(damage_calc::MOD_2_0);
                 }
+                let is_contact = attacker.ability.as_ref().map(|a| a.as_str()) != Some("longreach")
+                    && pkmn_meta::move_meta::get_move_meta(move_id)
+                        .map(|m| *m.flags_contact())
+                        .unwrap_or(false);
+                if is_contact {
+                    input.final_modifiers.push(damage_calc::MOD_0_5);
+                }
             }
-            "waterabsorb" | "dryskin" | "stormdrain" if !mold_breaker => {
+            "auraguard" if !mold_breaker => {
+                let is_contact = attacker.ability.as_ref().map(|a| a.as_str()) != Some("longreach")
+                    && pkmn_meta::move_meta::get_move_meta(move_id)
+                        .map(|m| *m.flags_contact())
+                        .unwrap_or(false);
+                if is_contact {
+                    input.final_modifiers.push(damage_calc::MOD_0_5);
+                }
+            }
+            "waterabsorb" | "stormdrain" if !mold_breaker => {
                 if move_type == Type::Water && (player != target_player || slot != target_slot) {
                     input.immune_override = Some(true);
                 }
@@ -1158,24 +1331,18 @@ impl<'a> DamageEvaluator<'a> {
             _ => {}
         }
 
-        if attacker.item == Some(pkmn_meta::types::ItemId::Metronome)
-            && attacker.consecutive_move_counter > 1
-        {
+        if attacker_item == Some(&ItemId::Metronome) && attacker.consecutive_move_counter > 1 {
             let mult = 4096.0 + (4096.0 * ((attacker.consecutive_move_counter - 1) as f32 * 0.2));
             input.bp_modifiers.push(mult as u16);
         }
 
-        if let Some(item_meta) = attacker
-            .item
-            .as_ref()
-            .and_then(pkmn_meta::item_meta::get_item_meta)
-        {
+        if let Some(item_meta) = attacker_item.and_then(pkmn_meta::item_meta::get_item_meta) {
             if (*item_meta.is_muscle_band() && is_physical)
                 || (*item_meta.is_wise_glasses() && !is_physical)
             {
                 input.bp_modifiers.push(damage_calc::MOD_1_1);
             } else if *item_meta.is_life_orb() {
-                input.bp_modifiers.push(damage_calc::MOD_1_3);
+                input.final_modifiers.push(damage_calc::MOD_1_3);
             }
 
             if *item_meta.is_expert_belt()
@@ -1196,10 +1363,13 @@ impl<'a> DamageEvaluator<'a> {
             }
         }
 
-        if let Some(item_meta) = defender
-            .item
-            .as_ref()
-            .and_then(pkmn_meta::item_meta::get_item_meta)
+        let defender_item = if defender.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
+            None
+        } else {
+            defender.item.as_ref()
+        };
+
+        if let Some(item_meta) = defender_item.and_then(pkmn_meta::item_meta::get_item_meta)
             && let Some(resist_type) = item_meta.type_resist_berry()
             && move_type == *resist_type
             && (*resist_type == Type::Normal
@@ -1215,9 +1385,36 @@ impl<'a> DamageEvaluator<'a> {
 
         if attacker
             .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Helpinghand)
+            .contains(&VolatileStatus::Helpinghand)
         {
             input.bp_modifiers.push(damage_calc::MOD_1_5);
+        }
+
+        if attacker.ability.as_ref().map(|a| a.as_str()) == Some("parentalbond") && hit_index == 1 {
+            input.final_modifiers.push(1024); // 0.25x damage in Gen 7+
+        }
+
+        let attacker_ability = attacker.ability.as_ref().map(|a| a.as_str());
+        let meta_opt = pkmn_meta::move_meta::get_move_meta(move_id);
+        let makes_contact = meta_opt
+            .as_ref()
+            .map(|m| *m.flags_contact())
+            .unwrap_or(false)
+            && attacker_ability != Some("longreach");
+        let target_is_protected = defender.volatile_status.iter().any(|vs| {
+            matches!(
+                vs,
+                VolatileStatus::Protect
+                    | VolatileStatus::Kingsshield
+                    | VolatileStatus::Spikyshield
+                    | VolatileStatus::Banefulbunker
+            )
+        });
+        if matches!(attacker_ability, Some("piercingdrill") | Some("unseenfist"))
+            && makes_contact
+            && target_is_protected
+        {
+            input.final_modifiers.push(1024); // 0.25x damage when piercing through protection
         }
 
         let output = calculate_input(&input);

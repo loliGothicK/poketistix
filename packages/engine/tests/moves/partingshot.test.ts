@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { TestEnvironment, pokemon } from "@/sim-utils";
 
-describe.skip("move: partingshot", () => {
+describe("move: partingshot", () => {
   it("should match Showdown logs", () => {
     // Snorlax uses sleep talk and fails, then Pangoro uses parting shot and forces switch (halts turn)
     // To match logs without switch implemented, we make p2a (Snorlax) faster than Pangoro?
@@ -13,12 +13,14 @@ describe.skip("move: partingshot", () => {
         pokemon({ species: "charizard", moves: ["sleeptalk"] }),
       ],
       [
-        pokemon({ species: "dragapult", moves: ["sleeptalk"] }),
+        pokemon({ species: "dragapult", ability: "infiltrator", moves: ["sleeptalk"] }),
         pokemon({ species: "gengar", moves: ["sleeptalk"] }),
       ],
+      {
+        deterministicMoves: ["partingshot", "sleeptalk"],
+      },
     );
 
-    // TODO: implement specific scenario for partingshot
     env.executeAndAssert("move partingshot 1, move sleeptalk", "move sleeptalk, move sleeptalk");
   });
 });

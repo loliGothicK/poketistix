@@ -1,4 +1,4 @@
-use pkmn_meta::types::Type;
+use pkmn_meta::types::*;
 use typed_builder::TypedBuilder;
 
 pub use crate::sim::log::*;
@@ -29,9 +29,9 @@ pub struct EventContext {
     #[builder(default)]
     pub string_val: String,
     #[builder(default)]
-    pub volatile_status_val: Option<pkmn_meta::types::VolatileStatus>,
+    pub volatile_status_val: Option<VolatileStatus>,
     #[builder(default)]
-    pub status_val: Option<pkmn_meta::types::Status>,
+    pub status_val: Option<Status>,
     #[builder(default)]
     pub num_val: i32,
     #[builder(default)]
@@ -85,9 +85,9 @@ pub struct Battle {
     pub p1: Side,
     pub p2: Side,
     pub log: Vec<BattleLogEvent>,
-    pub weather: Option<pkmn_meta::types::Weather>,
+    pub weather: Option<Weather>,
     pub weather_turns_left: u8,
-    pub terrain: Option<pkmn_meta::types::Terrain>,
+    pub terrain: Option<Terrain>,
     pub terrain_turns_left: u8,
     pub trick_room: bool,
     pub magic_room_turns_left: u8,
@@ -116,12 +116,37 @@ impl Battle {
         }
     }
 
+    /// Current and max HP of the pokemon, or (0, 0) if it is not on the field.
+    pub fn hp_and_max(
+        &self,
+        ident: PokemonIdent,
+    ) -> (crate::sim::values::Hp, crate::sim::values::MaxHp) {
+        self.get_pokemon(ident)
+            .map(|p| (p.hp, p.maxhp))
+            .unwrap_or((0.into(), 0.into()))
+    }
+
     pub fn get_pokemon_mut(&mut self, ident: PokemonIdent) -> Option<&mut Pokemon> {
         if ident.player == 1 {
             self.p1.active.get_mut(ident.slot)
         } else {
             self.p2.active.get_mut(ident.slot)
         }
+    }
+
+    pub fn all_active_pokemon(&self) -> Vec<(PokemonIdent, &Pokemon)> {
+        let mut result = Vec::new();
+        for (i, p) in self.p1.active.iter().enumerate() {
+            if p.hp.into_inner() > 0 {
+                result.push((PokemonIdent { player: 1, slot: i }, p));
+            }
+        }
+        for (i, p) in self.p2.active.iter().enumerate() {
+            if p.hp.into_inner() > 0 {
+                result.push((PokemonIdent { player: 2, slot: i }, p));
+            }
+        }
+        result
     }
 
     pub fn new() -> Self {
@@ -243,45 +268,76 @@ impl Battle {
         }
     }
 
-    pub fn section_apply_volatile(
-        &mut self,
-        target: PokemonIdent,
-        volatile: pkmn_meta::types::VolatileStatus,
-    ) {
+    pub fn section_apply_volatile(&mut self, target: PokemonIdent, volatile: VolatileStatus) {
         let mut ctx = EventContext::builder()
             .target(target)
             .volatile_status_val(Some(volatile))
+            .string_val(volatile.to_string())
             .build();
 
         self.trigger_event(EventId::BeforeApplyVolatile, &mut ctx);
 
         if !ctx.canceled {
             let v_val = ctx.volatile_status_val.unwrap();
-            let mut applied = false;
-
-            if ctx.target.player == 1 {
-                if let Some(t) = self.p1.active.get_mut(ctx.target.slot)
-                    && !t.volatile_status.contains(&v_val)
-                {
-                    t.volatile_status.push(v_val);
-                    if v_val == pkmn_meta::types::VolatileStatus::Partiallytrapped {
-                        t.partially_trapped_turns = 5;
-                    }
-                    applied = true;
+            if v_val == VolatileStatus::Yawn {
+                let side_active = if ctx.target.player == 1 {
+                    &self.p1.active
+                } else {
+                    &self.p2.active
+                };
+                let has_flower_veil = side_active.iter().any(|p| {
+                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("flowerveil")
+                });
+                let is_grass = self
+                    .get_pokemon(ctx.target)
+                    .is_some_and(|p| p.get_types().contains(&Type::Grass));
+                let has_sweet_veil = side_active.iter().any(|p| {
+                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("sweetveil")
+                });
+                let target_ability = self
+                    .get_pokemon(ctx.target)
+                    .and_then(|p| p.ability.as_ref().map(|a| a.as_str()));
+                let has_sleep_immunity =
+                    matches!(target_ability, Some("insomnia") | Some("vitalspirit"));
+                if has_sleep_immunity {
+                    self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                        target: ctx.target,
+                    }));
+                    return;
                 }
-            } else {
-                if let Some(t) = self.p2.active.get_mut(ctx.target.slot)
-                    && !t.volatile_status.contains(&v_val)
-                {
-                    t.volatile_status.push(v_val);
-                    if v_val == pkmn_meta::types::VolatileStatus::Partiallytrapped {
-                        t.partially_trapped_turns = 5;
-                    }
-                    applied = true;
+                if (has_flower_veil && is_grass) || has_sweet_veil {
+                    return;
                 }
             }
+            let mut applied = false;
 
-            if applied && v_val != pkmn_meta::types::VolatileStatus::Flinch {
+            let side = if ctx.target.player == 1 {
+                &mut self.p1
+            } else {
+                &mut self.p2
+            };
+            if let Some(t) = side.active.get_mut(ctx.target.slot)
+                && !t.volatile_status.contains(&v_val)
+            {
+                t.volatile_status.push(v_val);
+                if v_val == VolatileStatus::Partiallytrapped {
+                    t.partially_trapped_turns = 5;
+                } else if v_val == VolatileStatus::Yawn {
+                    t.yawn_turns = 2;
+                } else if v_val == VolatileStatus::Perishsong {
+                    t.perish_turns = 3;
+                } else if v_val == VolatileStatus::Magnetrise {
+                    t.magnet_rise_turns = 5;
+                } else if v_val == VolatileStatus::Telekinesis {
+                    t.telekinesis_turns = 3;
+                } else if v_val == VolatileStatus::Syrupbomb {
+                    t.syrup_bomb_turns = 3;
+                    t.syrup_bomb_source = ctx.source;
+                }
+                applied = true;
+            }
+
+            if applied && v_val != VolatileStatus::Flinch {
                 self.log.push(BattleLogEvent::new(BattleLog::Start {
                     target: ctx.target,
                     effect: v_val.to_string(),
@@ -289,6 +345,18 @@ impl Battle {
             }
 
             self.trigger_event(EventId::AfterApplyVolatile, &mut ctx);
+        } else {
+            let target_ability = self
+                .get_pokemon(ctx.target)
+                .and_then(|p| p.ability.as_ref().map(|a| a.as_str()));
+            if matches!(
+                target_ability,
+                Some("owntempo") | Some("oblivious") | Some("innerfocus")
+            ) {
+                self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                    target: ctx.target,
+                }));
+            }
         }
     }
 
@@ -299,8 +367,7 @@ impl Battle {
     pub fn section_heal(&mut self, target: PokemonIdent, heal_amount: Hp) {
         if heal_amount > 0 {
             if let Some(p) = self.get_pokemon(target)
-                && p.volatile_status
-                    .contains(&pkmn_meta::types::VolatileStatus::Healblock)
+                && p.volatile_status.contains(&VolatileStatus::Healblock)
             {
                 return;
             }
@@ -339,7 +406,7 @@ impl Battle {
     pub fn section_apply_status(
         &mut self,
         target: PokemonIdent,
-        status: pkmn_meta::types::Status,
+        status: Status,
         source: Option<PokemonIdent>,
     ) {
         if let Some(src) = source
@@ -350,10 +417,50 @@ impl Battle {
             } else {
                 &self.p2
             };
-            if target_side.safeguard_turns > 0 {
+            let is_infiltrator = self
+                .get_pokemon(src)
+                .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
+                == Some("infiltrator");
+            if target_side.safeguard_turns > 0 && !is_infiltrator {
                 self.log.push(BattleLogEvent::new(BattleLog::Text {
                     message: format!("|-activate|{}|move: Safeguard", target),
                 }));
+                return;
+            }
+
+            let side_active = if target.player == 1 {
+                &self.p1.active
+            } else {
+                &self.p2.active
+            };
+            let has_flower_veil = side_active
+                .iter()
+                .any(|p| p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("flowerveil"));
+            let is_grass = self
+                .get_pokemon(target)
+                .is_some_and(|p| p.get_types().contains(&Type::Grass));
+            if has_flower_veil && is_grass {
+                return;
+            }
+        }
+
+        if let Some(target_p) = self.get_pokemon(target) {
+            let target_types = target_p.get_types();
+            let source_corrosion = source
+                .and_then(|src| self.get_pokemon(src))
+                .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
+                == Some("corrosion");
+
+            let is_type_immune = match status {
+                Status::Poison | Status::Toxic => {
+                    !source_corrosion
+                        && (target_types.contains(&Type::Poison)
+                            || target_types.contains(&Type::Steel))
+                }
+                _ => false,
+            };
+
+            if is_type_immune {
                 return;
             }
         }
@@ -374,6 +481,11 @@ impl Battle {
                     && t.status.is_none()
                 {
                     t.status = Some(s_val);
+                    if s_val == Status::Toxic {
+                        t.tox_counter = 0;
+                    } else if s_val == Status::Sleep {
+                        t.sleep_turns = 3;
+                    }
                     applied = true;
                 }
             } else {
@@ -381,17 +493,22 @@ impl Battle {
                     && t.status.is_none()
                 {
                     t.status = Some(s_val);
+                    if s_val == Status::Toxic {
+                        t.tox_counter = 0;
+                    } else if s_val == Status::Sleep {
+                        t.sleep_turns = 3;
+                    }
                     applied = true;
                 }
             }
             if applied {
                 let status_str = match s_val {
-                    pkmn_meta::types::Status::Paralysis => "par",
-                    pkmn_meta::types::Status::Burn => "brn",
-                    pkmn_meta::types::Status::Frozen => "frz",
-                    pkmn_meta::types::Status::Sleep => "slp",
-                    pkmn_meta::types::Status::Poison => "psn",
-                    pkmn_meta::types::Status::Toxic => "tox",
+                    Status::Paralysis => "par",
+                    Status::Burn => "brn",
+                    Status::Frozen => "frz",
+                    Status::Sleep => "slp",
+                    Status::Poison => "psn",
+                    Status::Toxic => "tox",
                 }
                 .to_string();
                 self.log.push(crate::sim::log::BattleLogEvent::new(
@@ -403,6 +520,10 @@ impl Battle {
             }
 
             self.trigger_event(EventId::AfterApplyStatus, &mut ctx);
+        } else {
+            self.log.push(BattleLogEvent::new(BattleLog::Immune {
+                target: ctx.target,
+            }));
         }
     }
 
@@ -447,6 +568,29 @@ impl Battle {
             }
 
             self.trigger_event(EventId::AfterConsumeItem, &mut ctx);
+
+            if was_berry {
+                let (has_cheek_pouch, has_cud_chew, maxhp) = self
+                    .get_pokemon(ctx.target)
+                    .map(|p| {
+                        (
+                            p.ability.as_ref().map(|a| a.as_str()) == Some("cheekpouch"),
+                            p.ability.as_ref().map(|a| a.as_str()) == Some("cudchew"),
+                            p.maxhp,
+                        )
+                    })
+                    .unwrap_or((false, false, 0.into()));
+                if has_cheek_pouch {
+                    self.section_heal(ctx.target, (maxhp / 3).into());
+                }
+                if let Some(p) = self.get_pokemon_mut(ctx.target) {
+                    p.last_consumed_berry = consumed_item;
+                    if has_cud_chew && p.cud_chew_berry.is_none() {
+                        p.cud_chew_berry = consumed_item;
+                        p.cud_chew_counter = 2;
+                    }
+                }
+            }
         }
     }
 
@@ -490,7 +634,7 @@ impl Battle {
             rng_config,
         )
     }
-    pub fn get_active_weather(&self) -> Option<pkmn_meta::types::Weather> {
+    pub fn get_active_weather(&self) -> Option<Weather> {
         crate::sim::sections::field::get_active_weather(self)
     }
 
@@ -544,5 +688,67 @@ impl Battle {
         speed: crate::sim::values::Speed,
     ) -> crate::sim::values::Speed {
         crate::sim::turn_order::TurnOrderResolver::new(self).check_speed_modifiers(pkmn, speed)
+    }
+
+    pub fn update_forecast(&mut self) {
+        let weather = self.weather;
+        for p in self.p1.active.iter_mut().chain(self.p2.active.iter_mut()) {
+            if p.hp.into_inner() > 0
+                && p.ability.as_ref().map(|a| a.as_str()) == Some("forecast")
+                && p.species.starts_with("castform")
+            {
+                match weather {
+                    Some(Weather::HashSunlight) | Some(Weather::ExtremelyHarshSunlight) => {
+                        p.type1 = Type::Fire;
+                        p.type2 = None;
+                    }
+                    Some(Weather::Rain) | Some(Weather::HeavyRain) => {
+                        p.type1 = Type::Water;
+                        p.type2 = None;
+                    }
+                    Some(Weather::Snow) => {
+                        p.type1 = Type::Ice;
+                        p.type2 = None;
+                    }
+                    _ => {
+                        p.type1 = Type::Normal;
+                        p.type2 = None;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn update_mimicry(&mut self) {
+        let terrain = self.terrain;
+        for p in self.p1.active.iter_mut().chain(self.p2.active.iter_mut()) {
+            if p.hp.into_inner() > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("mimicry") {
+                match terrain {
+                    Some(Terrain::Electric) => {
+                        p.type1 = Type::Electric;
+                        p.type2 = None;
+                    }
+                    Some(Terrain::Grassy) => {
+                        p.type1 = Type::Grass;
+                        p.type2 = None;
+                    }
+                    Some(Terrain::Misty) => {
+                        p.type1 = Type::Fairy;
+                        p.type2 = None;
+                    }
+                    Some(Terrain::Psychic) => {
+                        p.type1 = Type::Psychic;
+                        p.type2 = None;
+                    }
+                    None => {
+                        // Restore Galarian Stunfisk's original types: Ground/Steel
+                        if p.species.contains("stunfisk") {
+                            p.type1 = Type::Ground;
+                            p.type2 = Some(Type::Steel);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

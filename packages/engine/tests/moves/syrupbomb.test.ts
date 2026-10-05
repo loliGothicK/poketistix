@@ -1,10 +1,10 @@
 import { test } from "vitest";
 import { TestEnvironment, pokemon } from "@/sim-utils";
 
-test.skip("Move: Syrup Bomb", () => {
+test("Move: Syrup Bomb", () => {
   const env = new TestEnvironment(
     [
-      pokemon({ species: "hydrapple", moves: ["syrupbomb", "sleeptalk"] }),
+      pokemon({ species: "hydrapple", ability: "regenerator", moves: ["syrupbomb", "sleeptalk"] }),
       pokemon({ species: "charizard", moves: ["sleeptalk"] }),
     ],
     [
@@ -12,7 +12,7 @@ test.skip("Move: Syrup Bomb", () => {
       pokemon({ species: "snorlax", moves: ["sleeptalk"] }),
     ],
     {
-      deterministicMoves: [{ id: "syrupbomb", accuracy: true }, "sleeptalk"],
+      deterministicMoves: [{ id: "syrupbomb", accuracy: true, secondary: "always" }, "sleeptalk"],
       engineConfig: {
         damage_roll: "max",
         crits: "never",

@@ -21,14 +21,14 @@ test("Move: Darkest Lariat", () => {
   env.assertStateMatch(res.engineState, env.sim);
 });
 
-test.skip("Move: Sacred Sword", () => {
+test("Move: Sacred Sword", () => {
   const env = new TestEnvironment(
     [
-      pokemon({ species: "aegislash-shield", moves: ["sacredsword"] }),
+      pokemon({ species: "gallade", ability: "steadfast", moves: ["sacredsword"] }),
       pokemon({ species: "gengar", moves: ["sleeptalk"] }),
     ],
     [
-      pokemon({ species: "pikachu", moves: ["doubleteam"] }),
+      pokemon({ species: "pikachu", ability: "lightningrod", moves: ["doubleteam"] }),
       pokemon({ species: "raichu", moves: ["sleeptalk"] }),
     ],
   );

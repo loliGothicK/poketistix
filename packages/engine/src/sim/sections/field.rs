@@ -1,6 +1,7 @@
 use crate::sim::battle::Battle;
+use pkmn_meta::types::*;
 
-pub fn get_active_weather(battle: &Battle) -> Option<pkmn_meta::types::Weather> {
+pub fn get_active_weather(battle: &Battle) -> Option<Weather> {
     let has_weather_lock = battle
         .p1
         .active

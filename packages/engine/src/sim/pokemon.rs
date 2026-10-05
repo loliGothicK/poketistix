@@ -1,7 +1,7 @@
 use crate::sim::values::*;
 use crate::wasm_api::Boosts;
 use indexmap::IndexMap;
-use pkmn_meta::types::Type;
+use pkmn_meta::types::*;
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 
@@ -17,14 +17,15 @@ pub struct Pokemon {
     pub sp_attack: SpecialAttack,
     pub sp_defense: SpecialDefense,
     pub boosts: Boosts,
-    pub item: Option<pkmn_meta::types::ItemId>,
+    pub item: Option<ItemId>,
     pub ability: Option<Ability>,
-    pub status: Option<pkmn_meta::types::Status>,
-    pub volatile_status: Vec<pkmn_meta::types::VolatileStatus>,
+    pub status: Option<Status>,
+    pub volatile_status: Vec<VolatileStatus>,
     pub type1: Type,
     pub type2: Option<Type>,
     pub added_type: Option<Type>,
     pub weight: Weight,
+    pub moves: Vec<String>,
 
     // Tracking fields
     pub last_move_used: Option<String>,
@@ -32,7 +33,13 @@ pub struct Pokemon {
     pub pp_used: IndexMap<String, u8>,
     pub turn_state: PokemonTurnState,
     pub tox_counter: u8,
+    pub sleep_turns: u8,
     pub eaten_berry: bool,
+    pub cud_chew_berry: Option<ItemId>,
+    pub cud_chew_counter: u8,
+    pub last_consumed_berry: Option<ItemId>,
+    pub disguise_busted: bool,
+    pub libero_activated: bool,
     pub partially_trapped_by: Option<PokemonIdent>,
     pub leech_seeded_by: Option<PokemonIdent>,
     pub partially_trapped_turns: u8,
@@ -42,13 +49,20 @@ pub struct Pokemon {
     pub encored_move: Option<String>,
     pub encore_turns: u8,
     pub taunt_turns: u8,
+    pub yawn_turns: u8,
+    pub perish_turns: u8,
+    pub magnet_rise_turns: u8,
+    pub telekinesis_turns: u8,
+    pub syrup_bomb_turns: u8,
+    pub syrup_bomb_source: Option<PokemonIdent>,
     pub active_turns: u16,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct PokemonTurnState {
-    pub damage_taken_from: Vec<(u8, u8, i32, pkmn_meta::types::Category)>,
+    pub damage_taken_from: Vec<(u8, u8, i32, Category)>,
     pub stats_raised: bool,
+    pub stats_lowered: bool,
     pub acted_this_turn: bool,
 }
 
@@ -56,6 +70,7 @@ impl PokemonTurnState {
     pub fn clear(&mut self) {
         self.damage_taken_from.clear();
         self.stats_raised = false;
+        self.stats_lowered = false;
         self.acted_this_turn = false;
     }
 }
@@ -72,9 +87,7 @@ impl Pokemon {
 
     pub fn get_types(&self) -> Vec<Type> {
         let mut types = Vec::new();
-        let roosted = self
-            .volatile_status
-            .contains(&pkmn_meta::types::VolatileStatus::Roost);
+        let roosted = self.volatile_status.contains(&VolatileStatus::Roost);
 
         if self.type1 != Type::Flying || !roosted {
             types.push(self.type1);
@@ -104,14 +117,14 @@ impl Pokemon {
         if self.is_semi_invulnerable() {
             return false;
         }
-        if self.item == Some(pkmn_meta::types::ItemId::IronBall) {
+        if self.item == Some(ItemId::IronBall) {
             return true;
         }
         if self.get_types().contains(&Type::Flying)
             || self
                 .ability
                 .as_ref()
-                .map(|a| a.as_str() == "levitate")
+                .map(|a| a.as_str() == "levitate" || a.as_str() == "eelevate")
                 .unwrap_or(false)
         {
             return false;

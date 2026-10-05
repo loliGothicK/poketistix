@@ -1,4 +1,5 @@
 use crate::sim::battle::Battle;
+use pkmn_meta::types::*;
 use rand::RngExt;
 
 #[allow(clippy::too_many_arguments)]
@@ -95,6 +96,7 @@ pub fn execute_turn(
                 target_slot: actual_target_slot,
                 priority,
                 speed,
+                is_bounced: false,
             })
         };
         actions.push(action);
@@ -117,24 +119,7 @@ pub fn execute_turn(
         }
     }
 
-    actions.sort_by(|a, b| {
-        let p1_prio = a.priority();
-        let p2_prio = b.priority();
-        if p1_prio != p2_prio {
-            return p2_prio.cmp(&p1_prio);
-        }
-
-        let p1_spe = a.speed();
-        let p2_spe = b.speed();
-        if p1_spe != p2_spe {
-            if is_trick_room {
-                return p1_spe.cmp(&p2_spe);
-            } else {
-                return p2_spe.cmp(&p1_spe);
-            }
-        }
-        std::cmp::Ordering::Equal
-    });
+    actions.sort_by(|a, b| compare_actions(a, b, is_trick_room));
 
     let is_resuming = !battle.turn_actions.is_empty();
 
@@ -171,7 +156,7 @@ pub fn execute_turn(
             ));
         }
         for ident in beakblast_users {
-            battle.section_apply_volatile(ident, pkmn_meta::types::VolatileStatus::Beakblast);
+            battle.section_apply_volatile(ident, VolatileStatus::Beakblast);
             let pkmn_name = battle
                 .get_pokemon(ident)
                 .map(|p| p.ident.clone())
@@ -231,24 +216,33 @@ pub fn sort_turn_actions(battle: &mut Battle) {
         }
     }
 
-    battle.turn_actions.sort_by(|a, b| {
-        let p1_prio = a.priority();
-        let p2_prio = b.priority();
-        if p1_prio != p2_prio {
-            return p2_prio.cmp(&p1_prio);
-        }
+    battle
+        .turn_actions
+        .sort_by(|a, b| compare_actions(a, b, is_trick_room));
+}
 
-        let p1_spe = a.speed();
-        let p2_spe = b.speed();
-        if p1_spe != p2_spe {
-            if is_trick_room {
-                return p1_spe.cmp(&p2_spe);
-            } else {
-                return p2_spe.cmp(&p1_spe);
-            }
+/// Order actions by priority (high first), then speed (reversed under Trick Room).
+fn compare_actions(
+    a: &crate::sim::action::Action,
+    b: &crate::sim::action::Action,
+    is_trick_room: bool,
+) -> std::cmp::Ordering {
+    let p1_prio = a.priority();
+    let p2_prio = b.priority();
+    if p1_prio != p2_prio {
+        return p2_prio.cmp(&p1_prio);
+    }
+
+    let p1_spe = a.speed();
+    let p2_spe = b.speed();
+    if p1_spe != p2_spe {
+        if is_trick_room {
+            return p1_spe.cmp(&p2_spe);
+        } else {
+            return p2_spe.cmp(&p1_spe);
         }
-        std::cmp::Ordering::Equal
-    });
+    }
+    std::cmp::Ordering::Equal
 }
 
 pub fn process_turn_actions(battle: &mut Battle) -> Result<(), String> {
@@ -278,13 +272,13 @@ pub fn process_turn_actions(battle: &mut Battle) -> Result<(), String> {
         for p in battle.p1.active.iter_mut() {
             p.turn_state.clear();
             p.volatile_status
-                .retain(|s| s != &pkmn_meta::types::VolatileStatus::Beakblast);
+                .retain(|s| s != &VolatileStatus::Beakblast);
             p.active_turns += 1;
         }
         for p in battle.p2.active.iter_mut() {
             p.turn_state.clear();
             p.volatile_status
-                .retain(|s| s != &pkmn_meta::types::VolatileStatus::Beakblast);
+                .retain(|s| s != &VolatileStatus::Beakblast);
             p.active_turns += 1;
         }
     }

@@ -1,0 +1,99 @@
+import { describe, it, expect } from "vitest";
+import { Simulator } from "../../pkg-node/engine.js";
+
+describe("Ability: Stance Change", () => {
+  it("allows Pokemon with Stance Change ability to act in battle", () => {
+    const engine = new Simulator();
+
+    engine.set_state({
+      p1: {
+        active: [
+          {
+            ident: "p1a",
+            species: "aegislash-shield",
+            type1: "Steel",
+            type2: "Ghost",
+            hp: 100,
+            maxhp: 100,
+            speed: 60,
+            attack: 50,
+            defense: 140,
+            sp_attack: 50,
+            sp_defense: 140,
+            ability: "stancechange",
+          },
+          {
+            ident: "p1b",
+            species: "charizard",
+            type1: "Fire",
+            hp: 100,
+            maxhp: 100,
+            speed: 100,
+            attack: 50,
+            defense: 50,
+            sp_attack: 50,
+            sp_defense: 50,
+            ability: "blaze",
+          },
+        ],
+        team: [],
+        tailwind: false,
+        tailwind_turns: 0,
+        aurora_veil_turns: 0,
+      },
+      p2: {
+        active: [
+          {
+            ident: "p2a",
+            species: "snorlax",
+            type1: "Normal",
+            hp: 200,
+            maxhp: 200,
+            speed: 50,
+            attack: 50,
+            defense: 50,
+            sp_attack: 50,
+            sp_defense: 50,
+            ability: "thickfat",
+          },
+          {
+            ident: "p2b",
+            species: "umbreon",
+            type1: "Dark",
+            hp: 200,
+            maxhp: 200,
+            speed: 50,
+            attack: 50,
+            defense: 50,
+            sp_attack: 50,
+            sp_defense: 50,
+            ability: "synchronize",
+          },
+        ],
+        team: [],
+        tailwind: false,
+        tailwind_turns: 0,
+        aurora_veil_turns: 0,
+      },
+      weather: undefined,
+      weather_turns_left: 0,
+      terrain: undefined,
+      terrain_turns_left: 0,
+      trick_room: false,
+    });
+
+    engine.start_battle();
+    const logs = engine.run_turn({
+      p1a: "sleeptalk",
+      p1a_target: 0,
+      p1b: "sleeptalk",
+      p1b_target: 0,
+      p2a: "sleeptalk",
+      p2a_target: 0,
+      p2b: "sleeptalk",
+      p2b_target: 0,
+    });
+
+    expect(logs.events).toBeDefined();
+  });
+});

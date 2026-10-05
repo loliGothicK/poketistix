@@ -1,6 +1,6 @@
 use crate::sim::abilities::Condition;
 use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent};
-use pkmn_meta::types::Type::*;
+use pkmn_meta::types::*;
 use rand::RngExt;
 
 pub fn execute_item(
@@ -10,6 +10,14 @@ pub fn execute_item(
     event_id: &EventId,
     ctx: &mut EventContext,
 ) {
+    if battle
+        .get_pokemon(ident)
+        .and_then(|p| p.ability.as_ref())
+        .map(|a| a.as_str())
+        == Some("klutz")
+    {
+        return;
+    }
     let item_id = item_id.replace("-", "");
     match item_id.as_str() {
         "whiteherb" => {
@@ -22,11 +30,11 @@ pub fn execute_item(
                 let v = ctx.volatile_status_val;
                 let is_mental = matches!(
                     v,
-                    Some(pkmn_meta::types::VolatileStatus::Attract)
-                        | Some(pkmn_meta::types::VolatileStatus::Taunt)
-                        | Some(pkmn_meta::types::VolatileStatus::Encore)
-                        | Some(pkmn_meta::types::VolatileStatus::Torment)
-                        | Some(pkmn_meta::types::VolatileStatus::Disable)
+                    Some(VolatileStatus::Attract)
+                        | Some(VolatileStatus::Taunt)
+                        | Some(VolatileStatus::Encore)
+                        | Some(VolatileStatus::Torment)
+                        | Some(VolatileStatus::Disable)
                 );
                 if is_mental {
                     battle.section_consume_item(ident);
@@ -34,11 +42,11 @@ pub fn execute_item(
                         p.volatile_status.retain(|status| {
                             !matches!(
                                 status,
-                                pkmn_meta::types::VolatileStatus::Attract
-                                    | pkmn_meta::types::VolatileStatus::Taunt
-                                    | pkmn_meta::types::VolatileStatus::Encore
-                                    | pkmn_meta::types::VolatileStatus::Torment
-                                    | pkmn_meta::types::VolatileStatus::Disable
+                                VolatileStatus::Attract
+                                    | VolatileStatus::Taunt
+                                    | VolatileStatus::Encore
+                                    | VolatileStatus::Torment
+                                    | VolatileStatus::Disable
                             )
                         });
                         p.taunt_turns = 0;
@@ -59,14 +67,8 @@ pub fn execute_item(
                 && ctx.string_val == "confusion"
             {
                 battle.section_consume_item(ident);
-                if ident.player == 1 {
-                    if let Some(t) = battle.p1.active.get_mut(ident.slot) {
-                        t.volatile_status.retain(|v| v.as_ref() != "confusion");
-                    }
-                } else {
-                    if let Some(t) = battle.p2.active.get_mut(ident.slot) {
-                        t.volatile_status.retain(|v| v.as_ref() != "confusion");
-                    }
+                if let Some(t) = battle.get_pokemon_mut(ident) {
+                    t.volatile_status.retain(|v| v.as_ref() != "confusion");
                 }
             }
         }
@@ -121,31 +123,14 @@ pub fn execute_item(
                 && ctx.string_val == "confusion"
             {
                 battle.section_consume_item(ident);
-                if ident.player == 1 {
-                    if let Some(t) = battle.p1.active.get_mut(ident.slot) {
-                        t.volatile_status.retain(|v| v.as_ref() != "confusion");
-                    }
-                } else {
-                    if let Some(t) = battle.p2.active.get_mut(ident.slot) {
-                        t.volatile_status.retain(|v| v.as_ref() != "confusion");
-                    }
+                if let Some(t) = battle.get_pokemon_mut(ident) {
+                    t.volatile_status.retain(|v| v.as_ref() != "confusion");
                 }
             }
         }
         "sitrusberry" => {
             if *event_id == EventId::AfterTakeDamage && ctx.target == ident {
-                let (hp, maxhp) = {
-                    let pkmn = if ident.player == 1 {
-                        battle.p1.active.get(ident.slot)
-                    } else {
-                        battle.p2.active.get(ident.slot)
-                    };
-                    if let Some(p) = pkmn {
-                        (p.hp, p.maxhp)
-                    } else {
-                        (0.into(), 0.into())
-                    }
-                };
+                let (hp, maxhp) = battle.hp_and_max(ident);
                 if hp > 0 && hp <= maxhp / 2 {
                     battle.section_consume_item(ident);
                     battle.section_heal(ident, (maxhp / 4).into());
@@ -154,18 +139,7 @@ pub fn execute_item(
         }
         "oranberry" => {
             if *event_id == EventId::AfterTakeDamage && ctx.target == ident {
-                let (hp, maxhp) = {
-                    let pkmn = if ident.player == 1 {
-                        battle.p1.active.get(ident.slot)
-                    } else {
-                        battle.p2.active.get(ident.slot)
-                    };
-                    if let Some(p) = pkmn {
-                        (p.hp, p.maxhp)
-                    } else {
-                        (0.into(), 0.into())
-                    }
-                };
+                let (hp, maxhp) = battle.hp_and_max(ident);
                 if hp > 0 && hp <= maxhp / 2 {
                     battle.section_consume_item(ident);
                     battle.section_heal(ident, 10.into());
@@ -173,18 +147,7 @@ pub fn execute_item(
             }
         }
         "focussash" if *event_id == EventId::BeforeTakeDamage && ctx.target == ident => {
-            let (hp, maxhp) = {
-                let pkmn = if ident.player == 1 {
-                    battle.p1.active.get(ident.slot)
-                } else {
-                    battle.p2.active.get(ident.slot)
-                };
-                if let Some(p) = pkmn {
-                    (p.hp, p.maxhp)
-                } else {
-                    (0.into(), 0.into())
-                }
-            };
+            let (hp, maxhp) = battle.hp_and_max(ident);
             // If at full HP and damage would KO
             if hp.into_inner() > 0
                 && hp.into_inner() == maxhp.into_inner()
@@ -212,18 +175,7 @@ pub fn execute_item(
             }
         }
         "leftovers" if *event_id == EventId::EndOfTurn && ctx.target == ident => {
-            let (hp, maxhp) = {
-                let pkmn = if ident.player == 1 {
-                    battle.p1.active.get(ident.slot)
-                } else {
-                    battle.p2.active.get(ident.slot)
-                };
-                if let Some(p) = pkmn {
-                    (p.hp, p.maxhp)
-                } else {
-                    (0.into(), 0.into())
-                }
-            };
+            let (hp, maxhp) = battle.hp_and_max(ident);
             if hp.into_inner() > 0 && hp.into_inner() < maxhp.into_inner() {
                 let heal = std::cmp::max(1, maxhp.into_inner() / 16);
                 battle.section_heal(ident, heal.into());
@@ -237,9 +189,9 @@ pub fn execute_item(
                     battle.p2.active.get(ident.slot)
                 };
                 if let Some(p) = pkmn {
-                    let is_poison = p.type1 == Poison
-                        || p.type2 == Some(Poison)
-                        || p.added_type == Some(Poison);
+                    let is_poison = p.type1 == Type::Poison
+                        || p.type2 == Some(Type::Poison)
+                        || p.added_type == Some(Type::Poison);
                     (p.hp, p.maxhp, is_poison)
                 } else {
                     (0.into(), 0.into(), false)
@@ -908,7 +860,7 @@ pub fn get_item(id: &str) -> Option<Condition> {
 
 pub fn check_white_herb(battle: &mut Battle, ident: PokemonIdent) {
     let has_negative = if let Some(p) = battle.get_pokemon(ident) {
-        if p.item != Some(pkmn_meta::types::ItemId::WhiteHerb) {
+        if p.item != Some(ItemId::WhiteHerb) {
             return;
         }
         p.boosts.atk.into_inner() < 0
@@ -947,5 +899,35 @@ pub fn check_white_herb(battle: &mut Battle, ident: PokemonIdent) {
             }
         }
         battle.section_consume_item(ident);
+    }
+}
+
+pub fn apply_berry_effect(battle: &mut Battle, target: PokemonIdent, berry_id: &str) {
+    let clean_id = berry_id.replace('-', "");
+    match clean_id.as_str() {
+        "sitrusberry" => {
+            if let Some(p) = battle.get_pokemon(target) {
+                let maxhp = p.maxhp.into_inner();
+                battle.section_heal(target, (maxhp / 4).into());
+            }
+        }
+        "oranberry" => {
+            battle.section_heal(target, 10.into());
+        }
+        "lumberry" => {
+            battle.section_cure_status(target);
+            if let Some(p) = battle.get_pokemon_mut(target) {
+                p.volatile_status.retain(|v| v.as_ref() != "confusion");
+            }
+        }
+        "cheriberry" | "chestoberry" | "pechaberry" | "rawstberry" | "aspearberry" => {
+            battle.section_cure_status(target);
+        }
+        "persimberry" => {
+            if let Some(p) = battle.get_pokemon_mut(target) {
+                p.volatile_status.retain(|v| v.as_ref() != "confusion");
+            }
+        }
+        _ => {}
     }
 }

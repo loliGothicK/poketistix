@@ -4,218 +4,218 @@
 
 - [x] adaptability
 - [x] aerilate
-- [ ] aftermath
-- [ ] analytic
-- [ ] angerpoint
-- [ ] anticipation
-- [ ] armortail
-- [ ] aromaveil
-- [ ] auraguard
-- [ ] battlearmor
-- [ ] berserk
-- [ ] bigpecks
-- [ ] blaze
-- [ ] bulletproof
-- [ ] cheekpouch
-- [ ] chlorophyll
-- [ ] clearbody
-- [ ] cloudnine
-- [ ] competitive
-- [ ] contrary
-- [ ] corrosion
-- [ ] cudchew
-- [ ] curiousmedicine
-- [ ] cursedbody
-- [ ] cutecharm
-- [ ] damp
-- [ ] defiant
-- [ ] disguise
-- [ ] dragonize
-- [ ] drizzle
-- [ ] drought
-- [ ] dryskin
-- [ ] earlybird
+- [x] aftermath
+- [x] analytic
+- [x] angerpoint
+- [x] anticipation
+- [x] armortail
+- [x] aromaveil
+- [x] auraguard
+- [x] battlearmor
+- [x] berserk
+- [x] bigpecks
+- [x] blaze
+- [x] bulletproof
+- [x] cheekpouch
+- [x] chlorophyll
+- [x] clearbody
+- [x] cloudnine
+- [x] competitive
+- [x] contrary
+- [x] corrosion
+- [x] cudchew
+- [x] curiousmedicine
+- [x] cursedbody
+- [x] cutecharm
+- [x] damp
+- [x] defiant
+- [x] disguise
+- [x] dragonize
+- [x] drizzle
+- [x] drought
+- [x] dryskin
+- [x] earlybird
 - [x] eartheater
-- [ ] eelevate
-- [ ] effectspore
-- [ ] electricsurge
-- [ ] electromorphosis
-- [ ] emergencyexit
-- [ ] fairyaura
-- [ ] filter
-- [ ] firemane
-- [ ] flamebody
-- [ ] flashfire
-- [ ] flowerveil
-- [ ] fluffy
-- [ ] forecast
-- [ ] forewarn
-- [ ] friendguard
-- [ ] frisk
-- [ ] furcoat
-- [ ] galewings
-- [ ] gluttony
-- [ ] goodasgold
-- [ ] gooey
-- [ ] grasspelt
-- [ ] grassysurge
-- [ ] guarddog
-- [ ] guts
-- [ ] harvest
-- [ ] healer
-- [ ] heatproof
-- [ ] heavymetal
-- [ ] hospitality
-- [ ] hugepower
-- [ ] hungerswitch
-- [ ] hustle
-- [ ] hydration
-- [ ] hypercutter
-- [ ] icebody
-- [ ] illuminate
-- [ ] illusion
-- [ ] immunity
-- [ ] imposter
-- [ ] infiltrator
-- [ ] innardsout
-- [ ] innerfocus
-- [ ] insomnia
+- [x] eelevate
+- [x] effectspore
+- [x] electricsurge
+- [x] electromorphosis
+- [x] emergencyexit
+- [x] fairyaura
+- [x] filter
+- [x] firemane
+- [x] flamebody
+- [x] flashfire
+- [x] flowerveil
+- [x] fluffy
+- [x] forecast
+- [x] forewarn
+- [x] friendguard
+- [x] frisk
+- [x] furcoat
+- [x] galewings
+- [x] gluttony
+- [x] goodasgold
+- [x] gooey
+- [x] grasspelt
+- [x] grassysurge
+- [x] guarddog
+- [x] guts
+- [x] harvest
+- [x] healer
+- [x] heatproof
+- [x] heavymetal
+- [x] hospitality
+- [x] hugepower
+- [x] hungerswitch
+- [x] hustle
+- [x] hydration
+- [x] hypercutter
+- [x] icebody
+- [x] illuminate
+- [x] illusion
+- [x] immunity
+- [x] imposter
+- [x] infiltrator
+- [x] innardsout
+- [x] innerfocus
+- [x] insomnia
 - [x] intimidate
-- [ ] ironfist
-- [ ] justified
-- [ ] keeneye
-- [ ] klutz
-- [ ] leafguard
-- [ ] levitate
-- [ ] libero
-- [ ] lightmetal
-- [ ] lightningrod
-- [ ] limber
-- [ ] liquidooze
-- [ ] liquidvoice
-- [ ] longreach
-- [ ] magicbounce
-- [ ] magicguard
-- [ ] magician
-- [ ] magmaarmor
-- [ ] marvelscale
-- [ ] megalauncher
-- [ ] megasol
-- [ ] merciless
-- [ ] mimicry
-- [ ] minus
-- [ ] mirrorarmor
-- [ ] moldbreaker
-- [ ] moody
-- [ ] motordrive
-- [ ] moxie
-- [ ] multiscale
-- [ ] mummy
-- [ ] naturalcure
-- [ ] noguard
-- [ ] oblivious
-- [ ] opportunist
-- [ ] overcoat
-- [ ] overgrow
-- [ ] owntempo
-- [ ] parentalbond
-- [ ] pickpocket
-- [ ] pickup
-- [ ] piercingdrill
+- [x] ironfist
+- [x] justified
+- [x] keeneye
+- [x] klutz
+- [x] leafguard
+- [x] levitate
+- [x] libero
+- [x] lightmetal
+- [x] lightningrod
+- [x] limber
+- [x] liquidooze
+- [x] liquidvoice
+- [x] longreach
+- [x] magicbounce
+- [x] magicguard
+- [x] magician
+- [x] magmaarmor
+- [x] marvelscale
+- [x] megalauncher
+- [x] megasol
+- [x] merciless
+- [x] mimicry
+- [x] minus
+- [x] mirrorarmor
+- [x] moldbreaker
+- [x] moody
+- [x] motordrive
+- [x] moxie
+- [x] multiscale
+- [x] mummy
+- [x] naturalcure
+- [x] noguard
+- [x] oblivious
+- [x] opportunist
+- [x] overcoat
+- [x] overgrow
+- [x] owntempo
+- [x] parentalbond
+- [x] pickpocket
+- [x] pickup
+- [x] piercingdrill
 - [x] pixilate
-- [ ] plus
-- [ ] poisonheal
-- [ ] poisonpoint
-- [ ] poisontouch
-- [ ] prankster
-- [ ] pressure
-- [ ] protean
-- [ ] psychicsurge
-- [ ] punkrock
-- [ ] purepower
-- [ ] purifyingsalt
-- [ ] queenlymajesty
-- [ ] quickdraw
-- [ ] quickfeet
-- [ ] raindish
-- [ ] rattled
-- [ ] receiver
-- [ ] reckless
+- [x] plus
+- [x] poisonheal
+- [x] poisonpoint
+- [x] poisontouch
+- [x] prankster
+- [x] pressure
+- [x] protean
+- [x] psychicsurge
+- [x] punkrock
+- [x] purepower
+- [x] purifyingsalt
+- [x] queenlymajesty
+- [x] quickdraw
+- [x] quickfeet
+- [x] raindish
+- [x] rattled
+- [x] receiver
+- [x] reckless
 - [x] refrigerate
-- [ ] regenerator
-- [ ] ripen
-- [ ] rivalry
-- [ ] rockhead
-- [ ] roughskin
-- [ ] runaway
-- [ ] sandforce
-- [ ] sandrush
-- [ ] sandspit
-- [ ] sandstream
-- [ ] sandveil
+- [x] regenerator
+- [x] ripen
+- [x] rivalry
+- [x] rockhead
+- [x] roughskin
+- [x] runaway
+- [x] sandforce
+- [x] sandrush
+- [x] sandspit
+- [x] sandstream
+- [x] sandveil
 - [x] sapsipper
-- [ ] scrappy
-- [ ] screencleaner
-- [ ] seedsower
-- [ ] shadowtag
-- [ ] sharpness
-- [ ] shedskin
-- [ ] sheerforce
-- [ ] shellarmor
-- [ ] shielddust
-- [ ] skilllink
-- [ ] slushrush
-- [ ] sniper
-- [ ] snowcloak
-- [ ] snowwarning
-- [ ] solarpower
-- [ ] solidrock
+- [x] scrappy
+- [x] screencleaner
+- [x] seedsower
+- [x] shadowtag
+- [x] sharpness
+- [x] shedskin
+- [x] sheerforce
+- [x] shellarmor
+- [x] shielddust
+- [x] skilllink
+- [x] slushrush
+- [x] sniper
+- [x] snowcloak
+- [x] snowwarning
+- [x] solarpower
+- [x] solidrock
 - [x] soundproof
-- [ ] speedboost
-- [ ] spicyspray
-- [ ] stakeout
-- [ ] stall
-- [ ] stalwart
-- [ ] stamina
-- [ ] stancechange
-- [ ] static
-- [ ] steadfast
-- [ ] steelyspirit
-- [ ] stench
-- [ ] stickyhold
-- [ ] strongjaw
-- [ ] sturdy
-- [ ] suctioncups
-- [ ] superluck
-- [ ] supersweetsyrup
-- [ ] supremeoverlord
-- [ ] surgesurfer
-- [ ] swarm
-- [ ] sweetveil
-- [ ] swiftswim
-- [ ] symbiosis
-- [ ] synchronize
-- [ ] tangledfeet
-- [ ] technician
-- [ ] telepathy
-- [ ] thermalexchange
-- [ ] thickfat
-- [ ] torrent
-- [ ] toughclaws
-- [ ] toxicdebris
-- [ ] trace
-- [ ] unaware
-- [ ] unburden
-- [ ] unnerve
-- [ ] unseenfist
-- [ ] vitalspirit
+- [x] speedboost
+- [x] spicyspray
+- [x] stakeout
+- [x] stall
+- [x] stalwart
+- [x] stamina
+- [x] stancechange
+- [x] static
+- [x] steadfast
+- [x] steelyspirit
+- [x] stench
+- [x] stickyhold
+- [x] strongjaw
+- [x] sturdy
+- [x] suctioncups
+- [x] superluck
+- [x] supersweetsyrup
+- [x] supremeoverlord
+- [x] surgesurfer
+- [x] swarm
+- [x] sweetveil
+- [x] swiftswim
+- [x] symbiosis
+- [x] synchronize
+- [x] tangledfeet
+- [x] technician
+- [x] telepathy
+- [x] thermalexchange
+- [x] thickfat
+- [x] torrent
+- [x] toughclaws
+- [x] toxicdebris
+- [x] trace
+- [x] unaware
+- [x] unburden
+- [x] unnerve
+- [x] unseenfist
+- [x] vitalspirit
 - [x] voltabsorb
-- [ ] wanderingspirit
+- [x] wanderingspirit
 - [x] waterabsorb
-- [ ] waterbubble
-- [ ] weakarmor
-- [ ] whitesmoke
-- [ ] zerotohero
+- [x] waterbubble
+- [x] weakarmor
+- [x] whitesmoke
+- [x] zerotohero
 
 ## Items
 
@@ -685,7 +685,7 @@
 - [x] nobleroar
 - [x] noretreat
 - [x] nuzzle
-- [ ] octolock
+- [x] octolock
 - [x] outrage
 - [x] overdrive
 - [x] overheat
