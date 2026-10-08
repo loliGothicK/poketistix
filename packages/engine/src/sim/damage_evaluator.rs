@@ -1411,6 +1411,13 @@ impl<'a> DamageEvaluator<'a> {
             input.bp_modifiers.push(damage_calc::MOD_1_5);
         }
 
+        if defender
+            .volatile_status
+            .contains(&VolatileStatus::Glaiverush)
+        {
+            input.final_modifiers.push(damage_calc::MOD_2_0);
+        }
+
         if attacker.ability.as_ref().map(|a| a.as_str()) == Some("parentalbond") && hit_index == 1 {
             input.final_modifiers.push(1024); // 0.25x damage in Gen 7+
         }

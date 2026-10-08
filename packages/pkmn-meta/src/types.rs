@@ -161,6 +161,7 @@ pub enum VolatileStatus {
     Throatchop,
     Octolock,
     Perishsong,
+    Glaiverush,
 }
 
 #[wasm_bindgen]

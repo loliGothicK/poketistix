@@ -654,6 +654,50 @@ pub fn handle_move_target_effect(
         }));
     }
 
+    if move_id == "jawlock" {
+        let target_ident = PokemonIdent {
+            player: target_player,
+            slot: target_slot,
+        };
+        let target_alive = battle
+            .get_pokemon(target_ident)
+            .is_some_and(|p| p.hp.into_inner() > 0);
+        if target_alive {
+            let attacker_ident = PokemonIdent {
+                player: source_player,
+                slot: source_slot,
+            };
+
+            let source_is_ghost = battle
+                .get_pokemon(attacker_ident)
+                .map(|p| p.get_types().contains(&Type::Ghost))
+                .unwrap_or(false);
+            if !source_is_ghost {
+                if let Some(p) = battle.get_pokemon_mut(attacker_ident) {
+                    p.trapped_by = Some(target_ident);
+                }
+                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    target: attacker_ident,
+                    effect: "trapped".to_string(),
+                }));
+            }
+
+            let target_is_ghost = battle
+                .get_pokemon(target_ident)
+                .map(|p| p.get_types().contains(&Type::Ghost))
+                .unwrap_or(false);
+            if !target_is_ghost {
+                if let Some(p) = battle.get_pokemon_mut(target_ident) {
+                    p.trapped_by = Some(attacker_ident);
+                }
+                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    target: target_ident,
+                    effect: "trapped".to_string(),
+                }));
+            }
+        }
+    }
+
     if move_id == "spikes" {
         let side = if target_player == 1 {
             &mut battle.p1
@@ -2358,6 +2402,146 @@ pub fn handle_move_self_effect(
                 {
                     battle.section_apply_volatile(target_ident, VolatileStatus::Perishsong);
                 }
+            }
+        }
+        "courtchange" => {
+            let p1_has = battle.p1.tailwind
+                || battle.p1.reflect_turns > 0
+                || battle.p1.lightscreen_turns > 0
+                || battle.p1.aurora_veil_turns > 0
+                || battle.p1.safeguard_turns > 0
+                || battle.p1.spikes > 0
+                || battle.p1.toxic_spikes > 0
+                || battle.p1.stealth_rock
+                || battle.p1.sticky_web;
+
+            let p2_has = battle.p2.tailwind
+                || battle.p2.reflect_turns > 0
+                || battle.p2.lightscreen_turns > 0
+                || battle.p2.aurora_veil_turns > 0
+                || battle.p2.safeguard_turns > 0
+                || battle.p2.spikes > 0
+                || battle.p2.toxic_spikes > 0
+                || battle.p2.stealth_rock
+                || battle.p2.sticky_web;
+
+            if !p1_has && !p2_has {
+                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                    target: PokemonIdent { player, slot },
+                }));
+            } else {
+                std::mem::swap(&mut battle.p1.tailwind, &mut battle.p2.tailwind);
+                std::mem::swap(&mut battle.p1.tailwind_turns, &mut battle.p2.tailwind_turns);
+                std::mem::swap(&mut battle.p1.reflect_turns, &mut battle.p2.reflect_turns);
+                std::mem::swap(
+                    &mut battle.p1.lightscreen_turns,
+                    &mut battle.p2.lightscreen_turns,
+                );
+                std::mem::swap(
+                    &mut battle.p1.aurora_veil_turns,
+                    &mut battle.p2.aurora_veil_turns,
+                );
+                std::mem::swap(
+                    &mut battle.p1.safeguard_turns,
+                    &mut battle.p2.safeguard_turns,
+                );
+                std::mem::swap(&mut battle.p1.spikes, &mut battle.p2.spikes);
+                std::mem::swap(&mut battle.p1.toxic_spikes, &mut battle.p2.toxic_spikes);
+                std::mem::swap(&mut battle.p1.stealth_rock, &mut battle.p2.stealth_rock);
+                std::mem::swap(&mut battle.p1.sticky_web, &mut battle.p2.sticky_web);
+
+                battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                    message: "|-swapsideconditions".to_string(),
+                }));
+                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    target: PokemonIdent { player, slot },
+                    effect: "move: Court Change".to_string(),
+                }));
+            }
+        }
+        "glaiverush" => {
+            let ident = PokemonIdent { player, slot };
+            if let Some(p) = battle.get_pokemon_mut(ident)
+                && !p.volatile_status.contains(&VolatileStatus::Glaiverush)
+            {
+                p.volatile_status.push(VolatileStatus::Glaiverush);
+            }
+            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                message: format!("|-singlemove|{}|Glaive Rush|[silent]", ident),
+            }));
+        }
+        "revivalblessing" => {
+            let fainted_member = {
+                // Check bench team members first, then active members
+                let side_team = if player == 1 {
+                    &battle.p1.team
+                } else {
+                    &battle.p2.team
+                };
+                let mut found = None;
+                for (bench_idx, p) in side_team.iter().enumerate() {
+                    if p.hp.into_inner() == 0 {
+                        found = Some((true, bench_idx));
+                        break;
+                    }
+                }
+                if found.is_none() {
+                    let side_active = if player == 1 {
+                        &battle.p1.active
+                    } else {
+                        &battle.p2.active
+                    };
+                    for (slot_idx, p) in side_active.iter().enumerate() {
+                        if p.hp.into_inner() == 0 {
+                            found = Some((false, slot_idx));
+                            break;
+                        }
+                    }
+                }
+                found
+            };
+
+            if let Some((is_bench, idx)) = fainted_member {
+                let active_len = if player == 1 {
+                    battle.p1.active.len()
+                } else {
+                    battle.p2.active.len()
+                };
+                let target_ident = if is_bench {
+                    PokemonIdent {
+                        player,
+                        slot: idx + active_len,
+                    }
+                } else {
+                    PokemonIdent { player, slot: idx }
+                };
+
+                let p = if is_bench {
+                    if player == 1 {
+                        &mut battle.p1.team[idx]
+                    } else {
+                        &mut battle.p2.team[idx]
+                    }
+                } else {
+                    if player == 1 {
+                        &mut battle.p1.active[idx]
+                    } else {
+                        &mut battle.p2.active[idx]
+                    }
+                };
+
+                let heal_amount = p.maxhp.into_inner() / 2;
+                p.hp = heal_amount.into();
+                p.status = None;
+
+                battle.log.push(BattleLogEvent::new(BattleLog::Heal {
+                    target: target_ident,
+                    amount: heal_amount,
+                }));
+            } else {
+                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                    target: PokemonIdent { player, slot },
+                }));
             }
         }
         _ => {}

@@ -472,7 +472,7 @@
 - [x] cottonguard
 - [x] cottonspore
 - [x] counter
-- [ ] courtchange
+- [x] courtchange
 - [x] covet
 - [x] crabhammer
 - [x] crosschop
@@ -571,7 +571,7 @@
 - [x] gigadrain
 - [x] gigaimpact
 - [x] gigatonhammer
-- [ ] glaiverush
+- [x] glaiverush
 - [x] glare
 - [x] grassknot
 - [x] grassyglide
@@ -626,7 +626,7 @@
 - [x] irondefense
 - [x] ironhead
 - [x] irontail
-- [ ] jawlock
+- [x] jawlock
 - [x] jetpunch
 - [x] kingsshield
 - [x] knockoff
@@ -741,7 +741,7 @@
 - [x] reflecttype
 - [x] rest
 - [x] reversal
-- [ ] revivalblessing
+- [x] revivalblessing
 - [x] risingvoltage
 - [x] roar
 - [x] rockblast

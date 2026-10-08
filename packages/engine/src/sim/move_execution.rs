@@ -1046,6 +1046,11 @@ impl Battle {
             return false;
         }
 
+        if let Some(p) = self.get_pokemon_mut(attacker_ident) {
+            p.volatile_status
+                .retain(|s| s != &VolatileStatus::Glaiverush);
+        }
+
         if attacker_has_flinch {
             if let Some(p) = self.get_pokemon_mut(attacker_ident) {
                 p.volatile_status.retain(|s| s != &VolatileStatus::Flinch);
@@ -1253,6 +1258,8 @@ impl Battle {
             range = Range::AllPokemon;
         } else if action.move_id == "mountaingale" || action.move_id == "psyshieldbash" {
             range = Range::SingleTarget;
+        } else if action.move_id == "revivalblessing" {
+            range = Range::Self_;
         }
 
         let targets = match range {
@@ -1638,6 +1645,11 @@ impl Battle {
 
             // Weather bypasses
             let mut bypass = false;
+            if let Some(target) = self.get_pokemon(target_ident)
+                && target.volatile_status.contains(&VolatileStatus::Glaiverush)
+            {
+                bypass = true;
+            }
             if action.move_id == "blizzard" && self.weather == Some(Weather::Snow) {
                 bypass = true;
             }
