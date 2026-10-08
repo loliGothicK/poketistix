@@ -56,6 +56,10 @@ const indeedeeM = championsDex.species.get("indeedee");
 if (indeedeeM) {
   Reflect.set(championsDex.data.Species, "indeedeemale", indeedeeM);
 }
+const pyroar = championsDex.species.get("pyroar");
+if (pyroar) {
+  Reflect.set(championsDex.data.Species, "pyroarmale", pyroar);
+}
 Reflect.set(championsDex.data.Abilities, "firemane", {
   name: "Fire Mane",
   id: "firemane",

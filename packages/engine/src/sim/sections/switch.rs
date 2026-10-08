@@ -9,6 +9,7 @@ pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
         p.libero_activated = false;
     }
     trigger_switch_in_ability(battle, player, slot);
+    crate::sim::items::check_terrain_seeds(battle);
 }
 
 pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
@@ -37,11 +38,10 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
             && battle.weather != Some(*w)
         {
             battle.weather = Some(*w);
-            let item_str = item.as_ref().map(|i| i.as_ref());
-            if (*w == Weather::Rain && item_str == Some("damprock"))
-                || (*w == Weather::HashSunlight && item_str == Some("heatrock"))
-                || (*w == Weather::Sandstorm && item_str == Some("smoothrock"))
-                || (*w == Weather::Snow && item_str == Some("icyrock"))
+            if (*w == Weather::Rain && item == Some(ItemId::DampRock))
+                || (*w == Weather::HashSunlight && item == Some(ItemId::HeatRock))
+                || (*w == Weather::Sandstorm && item == Some(ItemId::SmoothRock))
+                || (*w == Weather::Snow && item == Some(ItemId::IcyRock))
             {
                 battle.weather_turns_left = 8;
             } else {
@@ -65,7 +65,7 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
             && battle.terrain != Some(*t)
         {
             battle.terrain = Some(*t);
-            if item.as_ref().map(|i| i.as_ref()) == Some("terrainextender") {
+            if item == Some(ItemId::TerrainExtender) {
                 battle.terrain_turns_left = 8;
             } else {
                 battle.terrain_turns_left = 5;
@@ -77,6 +77,7 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
                     is_start: true,
                 }));
             battle.update_mimicry();
+            crate::sim::items::check_terrain_seeds(battle);
         }
         if let Some(drop) = meta.on_start_stat_drop_foe().as_ref() {
             let targets = if player == 1 {

@@ -598,14 +598,18 @@ impl Battle {
     pub fn section_cure_status(&mut self, target: PokemonIdent) {
         let ctx = EventContext::builder().target(target).build();
 
-        if ctx.target.player == 1 {
-            if let Some(t) = self.p1.active.get_mut(ctx.target.slot) {
-                t.status = None;
-            }
+        let had_status = if let Some(t) = self.get_pokemon_mut(ctx.target) {
+            let s = t.status.take();
+            t.tox_counter = 0;
+            s.is_some()
         } else {
-            if let Some(t) = self.p2.active.get_mut(ctx.target.slot) {
-                t.status = None;
-            }
+            false
+        };
+
+        if had_status {
+            self.log.push(BattleLogEvent::new(BattleLog::CureStatus {
+                target: ctx.target,
+            }));
         }
     }
 

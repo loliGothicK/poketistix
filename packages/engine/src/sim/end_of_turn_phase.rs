@@ -548,6 +548,7 @@ impl EndOfTurnPhase {
                         if p.partially_trapped_turns == 0 {
                             p.volatile_status
                                 .retain(|v| v != &VolatileStatus::Partiallytrapped);
+                            p.partially_trapped_by = None;
                             battle.log.push(crate::sim::log::BattleLogEvent::new(
                                 crate::sim::log::BattleLog::VolatileStatusEnd {
                                     target: ident,
@@ -555,9 +556,7 @@ impl EndOfTurnPhase {
                                 },
                             ));
                         } else if !is_magic_guard {
-                            let divisor = if source_item.as_ref().map(|i| i.as_ref())
-                                == Some("bindingband")
-                            {
+                            let divisor = if source_item == Some(ItemId::BindingBand) {
                                 6
                             } else {
                                 8

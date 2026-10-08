@@ -123,6 +123,9 @@ impl Pokemon {
         if self.item == Some(ItemId::IronBall) {
             return true;
         }
+        if self.item == Some(ItemId::AirBalloon) {
+            return false;
+        }
         if self.get_types().contains(&Type::Flying)
             || self
                 .ability
@@ -140,7 +143,7 @@ impl Pokemon {
             self.species = mega_species.to_string();
             self.ability = Some(mega_ability.to_string().into());
             self.type1 = *meta.type1();
-            self.type2 = meta.type2().clone();
+            self.type2 = *meta.type2();
             self.added_type = None;
             self.weight = (*meta.weight()).into();
             self.is_mega = true;

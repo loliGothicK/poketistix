@@ -219,171 +219,171 @@
 
 ## Items
 
-- [ ] abomasite
-- [ ] absolite
-- [ ] absolitez
-- [ ] aerodactylite
-- [ ] aggronite
-- [ ] airballoon
-- [ ] alakazite
-- [ ] altarianite
-- [ ] ampharosite
-- [ ] aspearberry
-- [ ] audinite
-- [ ] babiriberry
-- [ ] banettite
-- [ ] barbaracite
-- [ ] baxcalibrite
-- [ ] beedrillite
+- [x] abomasite
+- [x] absolite
+- [x] absolitez
+- [x] aerodactylite
+- [x] aggronite
+- [x] airballoon
+- [x] alakazite
+- [x] altarianite
+- [x] ampharosite
+- [x] aspearberry
+- [x] audinite
+- [x] babiriberry
+- [x] banettite
+- [x] barbaracite
+- [x] baxcalibrite
+- [x] beedrillite
 - [x] bigroot
-- [ ] bindingband
-- [ ] blackbelt
-- [ ] blackglasses
-- [ ] blastoisinite
-- [ ] blazikenite
+- [x] bindingband
+- [x] blackbelt
+- [x] blackglasses
+- [x] blastoisinite
+- [x] blazikenite
 - [x] brightpowder
-- [ ] cameruptite
-- [ ] chandelurite
-- [ ] charcoal
-- [ ] charizarditex
-- [ ] charizarditey
-- [ ] chartiberry
-- [ ] cheriberry
-- [ ] chesnaughtite
-- [ ] chestoberry
-- [ ] chilanberry
-- [ ] chimechite
+- [x] cameruptite
+- [x] chandelurite
+- [x] charcoal
+- [x] charizarditex
+- [x] charizarditey
+- [x] chartiberry
+- [x] cheriberry
+- [x] chesnaughtite
+- [x] chestoberry
+- [x] chilanberry
+- [x] chimechite
 - [x] choicescarf
-- [ ] chopleberry
-- [ ] clefablite
-- [ ] cobaberry
-- [ ] colburberry
-- [ ] crabominite
-- [ ] damprock
-- [ ] delphoxite
-- [ ] dragalgite
-- [ ] dragonfang
-- [ ] dragoninite
-- [ ] drampanite
-- [ ] eelektrossite
-- [ ] ejectbutton
-- [ ] electricseed
-- [ ] emboarite
-- [ ] excadrite
+- [x] chopleberry
+- [x] clefablite
+- [x] cobaberry
+- [x] colburberry
+- [x] crabominite
+- [x] damprock
+- [x] delphoxite
+- [x] dragalgite
+- [x] dragonfang
+- [x] dragoninite
+- [x] drampanite
+- [x] eelektrossite
+- [x] ejectbutton
+- [x] electricseed
+- [x] emboarite
+- [x] excadrite
 - [x] expertbelt
-- [ ] fairyfeather
-- [ ] falinksite
-- [ ] feraligite
-- [ ] floettite
+- [x] fairyfeather
+- [x] falinksite
+- [x] feraligite
+- [x] floettite
 - [x] focusband
 - [x] focussash
-- [ ] froslassite
-- [ ] galladite
-- [ ] garchompite
-- [ ] garchompitez
-- [ ] gardevoirite
-- [ ] gengarite
-- [ ] glalitite
-- [ ] glimmoranite
-- [ ] golisopite
-- [ ] golurkite
-- [ ] grassyseed
-- [ ] greninjite
-- [ ] gyaradosite
-- [ ] habanberry
-- [ ] hardstone
-- [ ] hawluchanite
-- [ ] heatrock
-- [ ] heracronite
-- [ ] houndoominite
-- [ ] icyrock
+- [x] froslassite
+- [x] galladite
+- [x] garchompite
+- [x] garchompitez
+- [x] gardevoirite
+- [x] gengarite
+- [x] glalitite
+- [x] glimmoranite
+- [x] golisopite
+- [x] golurkite
+- [x] grassyseed
+- [x] greninjite
+- [x] gyaradosite
+- [x] habanberry
+- [x] hardstone
+- [x] hawluchanite
+- [x] heatrock
+- [x] heracronite
+- [x] houndoominite
+- [x] icyrock
 - [x] ironball
-- [ ] kangaskhanite
-- [ ] kasibberry
-- [ ] kebiaberry
+- [x] kangaskhanite
+- [x] kasibberry
+- [x] kebiaberry
 - [x] kingsrock
-- [ ] leek
+- [x] leek
 - [x] leftovers
-- [ ] leppaberry
+- [x] leppaberry
 - [x] lifeorb
 - [x] lightball
 - [x] lightclay
-- [ ] lopunnite
-- [ ] lucarionite
-- [ ] lucarionitez
-- [ ] lumberry
-- [ ] magnet
-- [ ] malamarite
-- [ ] manectite
-- [ ] mawilite
-- [ ] medichamite
-- [ ] meganiumite
+- [x] lopunnite
+- [x] lucarionite
+- [x] lucarionitez
+- [x] lumberry
+- [x] magnet
+- [x] malamarite
+- [x] manectite
+- [x] mawilite
+- [x] medichamite
+- [x] meganiumite
 - [x] mentalherb
-- [ ] meowsticite
-- [ ] metagrossite
-- [ ] metalcoat
+- [x] meowsticite
+- [x] metagrossite
+- [x] metalcoat
 - [x] metronome
-- [ ] miracleseed
-- [ ] mistyseed
+- [x] miracleseed
+- [x] mistyseed
 - [x] muscleband
-- [ ] mysticwater
-- [ ] nevermeltice
-- [ ] normalgem
-- [ ] occaberry
-- [ ] oranberry
-- [ ] passhoberry
-- [ ] payapaberry
-- [ ] pechaberry
-- [ ] persimberry
-- [ ] pidgeotite
-- [ ] pinsirite
-- [ ] poisonbarb
-- [ ] psychicseed
-- [ ] pyroarite
-- [ ] quickclaw
-- [ ] raichunitex
-- [ ] raichunitey
-- [ ] rawstberry
-- [ ] redcard
-- [ ] rindoberry
-- [ ] rockyhelmet
-- [ ] roseliberry
-- [ ] sablenite
-- [ ] salamencite
-- [ ] sceptilite
-- [ ] scizorite
-- [ ] scolipite
+- [x] mysticwater
+- [x] nevermeltice
+- [x] normalgem
+- [x] occaberry
+- [x] oranberry
+- [x] passhoberry
+- [x] payapaberry
+- [x] pechaberry
+- [x] persimberry
+- [x] pidgeotite
+- [x] pinsirite
+- [x] poisonbarb
+- [x] psychicseed
+- [x] pyroarite
+- [x] quickclaw
+- [x] raichunitex
+- [x] raichunitey
+- [x] rawstberry
+- [x] redcard
+- [x] rindoberry
+- [x] rockyhelmet
+- [x] roseliberry
+- [x] sablenite
+- [x] salamencite
+- [x] sceptilite
+- [x] scizorite
+- [x] scolipite
 - [x] scopelens
-- [ ] scovillainite
-- [ ] scraftinite
-- [ ] sharpbeak
-- [ ] sharpedonite
+- [x] scovillainite
+- [x] scraftinite
+- [x] sharpbeak
+- [x] sharpedonite
 - [x] shedshell
 - [x] shellbell
-- [ ] shucaberry
-- [ ] silkscarf
-- [ ] silverpowder
-- [ ] sitrusberry
-- [ ] skarmorite
-- [ ] slowbronite
-- [ ] smoothrock
-- [ ] softsand
-- [ ] spelltag
-- [ ] staraptite
-- [ ] starminite
-- [ ] steelixite
-- [ ] swampertite
-- [ ] tangaberry
-- [ ] terrainextender
-- [ ] twistedspoon
-- [ ] tyranitarite
-- [ ] venusaurite
-- [ ] victreebelite
-- [ ] wacanberry
+- [x] shucaberry
+- [x] silkscarf
+- [x] silverpowder
+- [x] sitrusberry
+- [x] skarmorite
+- [x] slowbronite
+- [x] smoothrock
+- [x] softsand
+- [x] spelltag
+- [x] staraptite
+- [x] starminite
+- [x] steelixite
+- [x] swampertite
+- [x] tangaberry
+- [x] terrainextender
+- [x] twistedspoon
+- [x] tyranitarite
+- [x] venusaurite
+- [x] victreebelite
+- [x] wacanberry
 - [x] whiteherb
 - [x] widelens
 - [x] wiseglasses
-- [ ] yacheberry
+- [x] yacheberry
 - [x] zoomlens
 
 ## Moves

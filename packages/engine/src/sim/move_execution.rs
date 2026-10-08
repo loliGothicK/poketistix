@@ -2320,6 +2320,11 @@ impl Battle {
                     }));
                 } else {
                     self.section_apply_volatile(target_ident, *volatile);
+                    if *volatile == VolatileStatus::Partiallytrapped
+                        && let Some(t) = self.get_pokemon_mut(target_ident)
+                    {
+                        t.partially_trapped_by = Some(attacker_ident);
+                    }
                 }
             }
         }
@@ -2415,6 +2420,9 @@ impl Battle {
 
         if actual_damage > 0 {
             let attacker_item = self.get_pokemon(attacker_ident).and_then(|p| p.item);
+            if attacker_item == Some(ItemId::NormalGem) && move_type == Type::Normal {
+                self.section_consume_item(attacker_ident);
+            }
             if attacker_item == Some(ItemId::KingsRock) {
                 let trigger = if let Some(config) = &self.rng_config
                     && let Some(sec_config) = &config.secondary
@@ -2440,6 +2448,35 @@ impl Battle {
             let (attacker_ability_val, is_contact) =
                 self.check_is_contact(attacker_ident, meta_opt.as_ref());
             let attacker_ability = attacker_ability_val.as_ref().map(|a| a.as_str());
+
+            let defender_item = self.get_pokemon(target_ident).and_then(|p| p.item);
+            if defender_item == Some(ItemId::AirBalloon) {
+                self.section_consume_item(target_ident);
+            }
+
+            if defender_item == Some(ItemId::RockyHelmet) && is_contact {
+                let attacker_has_mg = attacker_ability == Some("magicguard");
+                if !attacker_has_mg {
+                    let maxhp = self
+                        .get_pokemon(attacker_ident)
+                        .map(|p| p.maxhp.into_inner())
+                        .unwrap_or(0);
+                    self.deal_ability_damage(attacker_ident, std::cmp::max(1, maxhp / 6));
+                }
+            }
+
+            if self
+                .get_pokemon(target_ident)
+                .is_some_and(|p| p.hp.into_inner() > 0)
+            {
+                if defender_item == Some(ItemId::EjectButton) {
+                    self.section_consume_item(target_ident);
+                    self.force_switch_random(target_ident);
+                } else if defender_item == Some(ItemId::RedCard) {
+                    self.section_consume_item(target_ident);
+                    self.force_switch_random(attacker_ident);
+                }
+            }
 
             if is_contact
                 && let Some(defender) = self.get_pokemon(target_ident)
@@ -2710,6 +2747,7 @@ impl Battle {
                                 is_start: true,
                             }));
                             self.update_mimicry();
+                            crate::sim::items::check_terrain_seeds(self);
                         }
                     }
                     "spicyspray" => {
@@ -2884,6 +2922,11 @@ impl Battle {
                     }
                     if let Some(volatile) = sec.volatile_status().as_ref() {
                         self.section_apply_volatile(target_ident, *volatile);
+                        if *volatile == VolatileStatus::Partiallytrapped
+                            && let Some(t) = self.get_pokemon_mut(target_ident)
+                        {
+                            t.partially_trapped_by = Some(attacker_ident);
+                        }
                     }
 
                     if meta.secondary().is_some() {

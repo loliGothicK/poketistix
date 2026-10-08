@@ -2289,6 +2289,7 @@ pub fn handle_move_self_effect(
                     5
                 };
                 battle.update_mimicry();
+                crate::sim::items::check_terrain_seeds(battle);
             }
         }
         "fairylock" => {

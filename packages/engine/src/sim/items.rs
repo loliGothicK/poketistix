@@ -1,5 +1,5 @@
 use crate::sim::abilities::Condition;
-use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent};
+use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent, Stat};
 use pkmn_meta::types::*;
 use rand::RngExt;
 
@@ -236,6 +236,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
             name: "Aggronite".to_string(),
             ..Default::default()
         }),
+        "airballoon" => Some(Condition {
+            name: "Air Balloon".to_string(),
+            ..Default::default()
+        }),
         "alakazite" => Some(Condition {
             name: "Alakazite".to_string(),
             ..Default::default()
@@ -274,6 +278,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
         }),
         "beedrillite" => Some(Condition {
             name: "Beedrillite".to_string(),
+            ..Default::default()
+        }),
+        "bindingband" => Some(Condition {
+            name: "Binding Band".to_string(),
             ..Default::default()
         }),
         "bigroot" => Some(Condition {
@@ -400,6 +408,14 @@ pub fn get_item(id: &str) -> Option<Condition> {
             name: "Eelektrossite".to_string(),
             ..Default::default()
         }),
+        "ejectbutton" => Some(Condition {
+            name: "Eject Button".to_string(),
+            ..Default::default()
+        }),
+        "electricseed" => Some(Condition {
+            name: "Electric Seed".to_string(),
+            ..Default::default()
+        }),
         "emboarite" => Some(Condition {
             name: "Emboarite".to_string(),
             ..Default::default()
@@ -477,6 +493,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
             name: "Golisopite".to_string(),
             ..Default::default()
         }),
+        "grassyseed" => Some(Condition {
+            name: "Grassy Seed".to_string(),
+            ..Default::default()
+        }),
         "greninjite" => Some(Condition {
             name: "Greninjite".to_string(),
             ..Default::default()
@@ -532,6 +552,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
         }),
         "kingsrock" => Some(Condition {
             name: "King's Rock".to_string(),
+            ..Default::default()
+        }),
+        "leek" => Some(Condition {
+            name: "Leek".to_string(),
             ..Default::default()
         }),
         "leftovers" => Some(Condition {
@@ -623,6 +647,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
             has_on_base_power: true,
             ..Default::default()
         }),
+        "mistyseed" => Some(Condition {
+            name: "Misty Seed".to_string(),
+            ..Default::default()
+        }),
         "muscleband" => Some(Condition {
             name: "Muscle Band".to_string(),
             has_on_base_power: true,
@@ -636,6 +664,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
         "nevermeltice" => Some(Condition {
             name: "Never-Melt Ice".to_string(),
             has_on_base_power: true,
+            ..Default::default()
+        }),
+        "normalgem" => Some(Condition {
+            name: "Normal Gem".to_string(),
             ..Default::default()
         }),
         "occaberry" => Some(Condition {
@@ -675,6 +707,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
             has_on_base_power: true,
             ..Default::default()
         }),
+        "psychicseed" => Some(Condition {
+            name: "Psychic Seed".to_string(),
+            ..Default::default()
+        }),
         "pyroarite" => Some(Condition {
             name: "Pyroarite".to_string(),
             ..Default::default()
@@ -695,8 +731,16 @@ pub fn get_item(id: &str) -> Option<Condition> {
             name: "Rawst Berry".to_string(),
             ..Default::default()
         }),
+        "redcard" => Some(Condition {
+            name: "Red Card".to_string(),
+            ..Default::default()
+        }),
         "rindoberry" => Some(Condition {
             name: "Rindo Berry".to_string(),
+            ..Default::default()
+        }),
+        "rockyhelmet" => Some(Condition {
+            name: "Rocky Helmet".to_string(),
             ..Default::default()
         }),
         "roseliberry" => Some(Condition {
@@ -810,6 +854,10 @@ pub fn get_item(id: &str) -> Option<Condition> {
         }),
         "tangaberry" => Some(Condition {
             name: "Tanga Berry".to_string(),
+            ..Default::default()
+        }),
+        "terrainextender" => Some(Condition {
+            name: "Terrain Extender".to_string(),
             ..Default::default()
         }),
         "twistedspoon" => Some(Condition {
@@ -929,5 +977,36 @@ pub fn apply_berry_effect(battle: &mut Battle, target: PokemonIdent, berry_id: &
             }
         }
         _ => {}
+    }
+}
+
+pub fn check_terrain_seeds(battle: &mut Battle) {
+    let terrain = match battle.terrain {
+        Some(t) => t,
+        None => return,
+    };
+    for player in 1..=2 {
+        for slot in 0..2 {
+            let ident = PokemonIdent { player, slot };
+            let (item, has_hp) = if let Some(p) = battle.get_pokemon(ident) {
+                (p.item, p.hp.into_inner() > 0)
+            } else {
+                continue;
+            };
+            if !has_hp {
+                continue;
+            }
+            let (stat_boost, matching) = match item {
+                Some(ItemId::ElectricSeed) if terrain == Terrain::Electric => (Stat::Def, true),
+                Some(ItemId::GrassySeed) if terrain == Terrain::Grassy => (Stat::Def, true),
+                Some(ItemId::MistySeed) if terrain == Terrain::Misty => (Stat::Spd, true),
+                Some(ItemId::PsychicSeed) if terrain == Terrain::Psychic => (Stat::Spd, true),
+                _ => (Stat::Def, false),
+            };
+            if matching {
+                battle.section_consume_item(ident);
+                battle.apply_stat_change(player, slot, vec![(stat_boost, 1)], player, None);
+            }
+        }
     }
 }

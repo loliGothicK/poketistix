@@ -562,6 +562,12 @@ impl<'a> DamageEvaluator<'a> {
             crit_stage += 1;
         }
 
+        if attacker.item == Some(ItemId::Leek)
+            && (attacker.species == "farfetchd" || attacker.species == "sirfetchd")
+        {
+            crit_stage += 2;
+        }
+
         if attacker.ability.as_ref().map(|a| a.as_str()) == Some("superluck") {
             crit_stage += 1;
         }
@@ -875,6 +881,14 @@ impl<'a> DamageEvaluator<'a> {
                     input.immune_override = Some(true);
                 }
             }
+        }
+
+        if defender.item == Some(ItemId::AirBalloon)
+            && move_type == Type::Ground
+            && self.battle.gravity_turns_left == 0
+            && defender.item != Some(ItemId::IronBall)
+        {
+            input.immune_override = Some(true);
         }
 
         let terrain = self.battle.terrain;
@@ -1364,6 +1378,10 @@ impl<'a> DamageEvaluator<'a> {
             {
                 input.bp_modifiers.push((*boost_mult * 4096.0) as u16);
             }
+        }
+
+        if attacker_item == Some(&ItemId::NormalGem) && move_type == Type::Normal {
+            input.bp_modifiers.push(5325); // Showdown uses [5325, 4096] for Gem boost
         }
 
         let defender_item = if defender.ability.as_ref().map(|a| a.as_str()) == Some("klutz") {
