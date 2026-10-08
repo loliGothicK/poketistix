@@ -26,6 +26,9 @@ pub struct Pokemon {
     pub added_type: Option<Type>,
     pub weight: Weight,
     pub moves: Vec<String>,
+    pub evs: PokemonEvs,
+    pub nature: Option<Nature>,
+    pub is_mega: bool,
 
     // Tracking fields
     pub last_move_used: Option<String>,
@@ -130,6 +133,49 @@ impl Pokemon {
             return false;
         }
         true
+    }
+
+    pub fn mega_evolve(&mut self, mega_species: &str, mega_ability: &str) {
+        if let Some(meta) = pkmn_meta::pokemon_meta::get_pokemon_meta(mega_species) {
+            self.species = mega_species.to_string();
+            self.ability = Some(mega_ability.to_string().into());
+            self.type1 = *meta.type1();
+            self.type2 = meta.type2().clone();
+            self.added_type = None;
+            self.weight = (*meta.weight()).into();
+            self.is_mega = true;
+
+            // Recalculate stats with new base stats: Base + 20 + EV, then nature
+            let base_atk = meta.base_stats()[1] + 20;
+            let base_def = meta.base_stats()[2] + 20;
+            let base_spa = meta.base_stats()[3] + 20;
+            let base_spd = meta.base_stats()[4] + 20;
+            let base_spe = meta.base_stats()[5] + 20;
+
+            let pre_nature_atk = base_atk + self.evs.atk.unwrap_or(0) as u32;
+            let pre_nature_def = base_def + self.evs.def.unwrap_or(0) as u32;
+            let pre_nature_spa = base_spa + self.evs.spa.unwrap_or(0) as u32;
+            let pre_nature_spd = base_spd + self.evs.spd.unwrap_or(0) as u32;
+            let pre_nature_spe = base_spe + self.evs.spe.unwrap_or(0) as u32;
+
+            let apply_nature = |val: u32, is_buff: bool, is_nerf: bool| -> i32 {
+                let mut stat = val as i32;
+                if is_buff {
+                    stat = (stat * 11) / 10;
+                } else if is_nerf {
+                    stat = (stat * 9) / 10;
+                }
+                stat
+            };
+
+            let (buff, nerf) = self.nature.map(|n| n.modifiers()).unwrap_or((0, 0));
+
+            self.attack = apply_nature(pre_nature_atk, buff == 1, nerf == 1).into();
+            self.defense = apply_nature(pre_nature_def, buff == 2, nerf == 2).into();
+            self.sp_attack = apply_nature(pre_nature_spa, buff == 3, nerf == 3).into();
+            self.sp_defense = apply_nature(pre_nature_spd, buff == 4, nerf == 4).into();
+            self.speed = apply_nature(pre_nature_spe, buff == 5, nerf == 5).into();
+        }
     }
 }
 

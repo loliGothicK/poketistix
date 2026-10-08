@@ -135,6 +135,11 @@ pub enum BattleLog {
         target: PokemonIdent,
         volatile_status: String,
     },
+    Mega {
+        target: PokemonIdent,
+        species: String,
+        item: String,
+    },
     Text {
         message: String,
     },
@@ -363,6 +368,11 @@ impl BattleLog {
                 target,
                 volatile_status,
             } => format!("|-end|{}|{}", target, volatile_status),
+            BattleLog::Mega {
+                target,
+                species,
+                item,
+            } => format!("|-mega|{}|{}|{}", target, species, item),
         }
     }
 }

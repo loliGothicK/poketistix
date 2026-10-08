@@ -415,7 +415,10 @@ impl<'a> DamageEvaluator<'a> {
             base_power *= 2;
         }
 
-        if move_id == "knockoff" && defender.item.is_some() {
+        if move_id == "knockoff"
+            && let Some(item) = defender.item
+            && pkmn_meta::mega_meta::can_remove_item(&defender.species, item.as_ref())
+        {
             base_power = base_power * 3 / 2;
         }
 

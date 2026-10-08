@@ -563,10 +563,21 @@ export class TestEnvironment {
           b = "pass";
         let a_target = 0,
           b_target = 0;
+        let a_mega = false,
+          b_mega = false;
 
         if (parts[0]) {
           if (parts[0].startsWith("move ")) {
-            const moveParts = parts[0].replace("move ", "").split(" ");
+            let movePartStr = parts[0].replace("move ", "").trim();
+            if (
+              movePartStr.endsWith(" mega") ||
+              movePartStr.endsWith(" megax") ||
+              movePartStr.endsWith(" megay")
+            ) {
+              a_mega = true;
+              movePartStr = movePartStr.replace(/\s+mega[xy]?$/, "");
+            }
+            const moveParts = movePartStr.split(" ");
             a = moveParts[0];
             const rawTarget = moveParts[1] ? parseInt(moveParts[1], 10) : 1;
             a_target = rawTarget > 0 ? rawTarget - 1 : rawTarget;
@@ -577,7 +588,16 @@ export class TestEnvironment {
         }
         if (parts[1]) {
           if (parts[1].startsWith("move ")) {
-            const moveParts = parts[1].replace("move ", "").split(" ");
+            let movePartStr = parts[1].replace("move ", "").trim();
+            if (
+              movePartStr.endsWith(" mega") ||
+              movePartStr.endsWith(" megax") ||
+              movePartStr.endsWith(" megay")
+            ) {
+              b_mega = true;
+              movePartStr = movePartStr.replace(/\s+mega[xy]?$/, "");
+            }
+            const moveParts = movePartStr.split(" ");
             b = moveParts[0];
             const rawTarget = moveParts[1] ? parseInt(moveParts[1], 10) : 1;
             b_target = rawTarget > 0 ? rawTarget - 1 : rawTarget;
@@ -586,7 +606,7 @@ export class TestEnvironment {
             b_target = 2;
           }
         }
-        return { a, a_target, b, b_target };
+        return { a, a_target, a_mega, b, b_target, b_mega };
       };
 
       const p1 = parseChoices(p1Choices);
@@ -595,12 +615,16 @@ export class TestEnvironment {
       const actions: TurnActions = {
         p1a: p1.a,
         p1a_target: p1.a_target,
+        p1a_mega: p1.a_mega,
         p1b: p1.b,
         p1b_target: p1.b_target,
+        p1b_mega: p1.b_mega,
         p2a: p2.a,
         p2a_target: p2.a_target,
+        p2a_mega: p2.a_mega,
         p2b: p2.b,
         p2b_target: p2.b_target,
+        p2b_mega: p2.b_mega,
       };
       engineLogs = this.engine.run_turn(actions, config);
       this.sim.makeChoices(p1Choices, p2Choices);
@@ -1095,6 +1119,11 @@ export class TestEnvironment {
           target: cleanIdent(parts[2]),
           source: cleanIdent(parts[3]),
         });
+      } else if (type === "-mega") {
+        normalizedSim.push({
+          type: "mega",
+          target: cleanIdent(parts[2]),
+        });
       }
     }
 
@@ -1167,6 +1196,11 @@ export class TestEnvironment {
           type: "miss",
           target: identStr(e.attacker)!,
           source: identStr(e.target)!,
+        });
+      } else if (e.type === "Mega") {
+        normalizedEngine.push({
+          type: "mega",
+          target: identStr(e.target)!,
         });
       }
     }

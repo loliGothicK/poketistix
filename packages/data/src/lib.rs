@@ -904,3 +904,171 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+#[proc_macro]
+pub fn generate_mega_meta(_item: TokenStream) -> TokenStream {
+    let pokemon_str = include_str!("../champions/pokemon.json");
+    let pokemon_json: Value =
+        serde_json::from_str(pokemon_str).expect("Failed to parse pokemon.json");
+
+    let items_str = include_str!("../champions/items.json");
+    let items_json: Value = serde_json::from_str(items_str).expect("Failed to parse items.json");
+
+    let abilities_str = include_str!("../master/abilities.json");
+    let abilities_json: Value =
+        serde_json::from_str(abilities_str).expect("Failed to parse master/abilities.json");
+
+    let mut item_map = std::collections::HashMap::new();
+    if let Some(arr) = items_json["data"].as_array() {
+        for it in arr {
+            if let (Some(id), Some(ident)) = (it["id"].as_u64(), it["identifier"].as_str()) {
+                item_map.insert(id, ident.to_string());
+            }
+        }
+    }
+
+    let mut ability_map = std::collections::HashMap::new();
+    let ability_list = abilities_json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .or_else(|| abilities_json.as_array());
+    if let Some(arr) = ability_list {
+        for ab in arr {
+            if let (Some(id), Some(ident)) = (ab["id"].as_u64(), ab["identifier"].as_str()) {
+                ability_map.insert(id, ident.replace("-", "").to_lowercase());
+            }
+        }
+    }
+
+    let mut poke_by_id = std::collections::HashMap::new();
+    if let Some(arr) = pokemon_json["data"].as_array() {
+        for p in arr {
+            if let Some(id) = p["id"].as_u64() {
+                poke_by_id.insert(id, p);
+            }
+        }
+    }
+
+    let mut mega_details_arms = Vec::new();
+    let mut matching_stone_arms = Vec::new();
+    let mut mega_stone_set = std::collections::HashSet::new();
+    let mut mega_species_set = std::collections::HashSet::new();
+
+    if let Some(arr) = pokemon_json["data"].as_array() {
+        for p in arr {
+            if let Some(megas) = p.get("mega").and_then(|m| m.as_array()) {
+                let base_ident = p["identifier"].as_str().unwrap();
+                let base_norm = base_ident.replace("-", "").to_lowercase();
+
+                for m in megas {
+                    let mega_id = m["mega_id"].as_u64().unwrap();
+                    let stone_id = m["stone_id"].as_u64().unwrap();
+
+                    let stone_ident = match item_map.get(&stone_id) {
+                        Some(s) => s.as_str(),
+                        None => continue,
+                    };
+                    let stone_norm = stone_ident.replace("-", "").to_lowercase();
+                    mega_stone_set.insert(stone_norm.clone());
+
+                    let mega_poke = match poke_by_id.get(&mega_id) {
+                        Some(p) => *p,
+                        None => continue,
+                    };
+                    let mega_ident = mega_poke["identifier"].as_str().unwrap();
+                    let mega_norm = mega_ident.replace("-", "").to_lowercase();
+                    mega_species_set.insert(mega_norm.clone());
+
+                    let ability_norm = if mega_poke["abilities"].as_str() == Some("inherit") {
+                        let parent_id = mega_poke
+                            .get("species_id")
+                            .and_then(|sid| sid.as_u64())
+                            .unwrap_or(0);
+                        let parent = poke_by_id.get(&parent_id).unwrap();
+                        let ab_id = parent["abilities"][0].as_u64().unwrap();
+                        ability_map.get(&ab_id).cloned().unwrap_or_default()
+                    } else if let Some(ab_arr) = mega_poke["abilities"].as_array() {
+                        let ab_id = ab_arr[0].as_u64().unwrap();
+                        ability_map.get(&ab_id).cloned().unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+
+                    mega_details_arms.push(quote! {
+                        (#base_norm, #stone_norm) => Some(MegaDetails {
+                            mega_species: #mega_ident,
+                            ability: #ability_norm,
+                        }),
+                    });
+
+                    matching_stone_arms.push(quote! {
+                        (#base_norm, #stone_norm) => true,
+                        (#mega_norm, #stone_norm) => true,
+                    });
+                }
+            }
+        }
+    }
+
+    let mega_stone_arms: Vec<_> = mega_stone_set
+        .into_iter()
+        .map(|s| {
+            quote! { #s => true, }
+        })
+        .collect();
+
+    let mega_species_arms: Vec<_> = mega_species_set
+        .into_iter()
+        .map(|s| {
+            quote! { #s => true, }
+        })
+        .collect();
+
+    let expanded = quote! {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct MegaDetails {
+            pub mega_species: &'static str,
+            pub ability: &'static str,
+        }
+
+        pub fn get_mega_details(species: &str, item: &str) -> Option<MegaDetails> {
+            let species = species.replace("-", "").to_lowercase();
+            let item = item.replace("-", "").to_lowercase();
+            match (species.as_str(), item.as_str()) {
+                #(#mega_details_arms)*
+                _ => None,
+            }
+        }
+
+        pub fn is_matching_mega_stone(species: &str, item: &str) -> bool {
+            let species = species.replace("-", "").to_lowercase();
+            let item = item.replace("-", "").to_lowercase();
+            match (species.as_str(), item.as_str()) {
+                #(#matching_stone_arms)*
+                _ => false,
+            }
+        }
+
+        pub fn is_mega_stone(item: &str) -> bool {
+            let item = item.replace("-", "").to_lowercase();
+            match item.as_str() {
+                #(#mega_stone_arms)*
+                _ => false,
+            }
+        }
+
+        pub fn is_mega_species(species: &str) -> bool {
+            let species = species.replace("-", "").to_lowercase();
+            match species.as_str() {
+                #(#mega_species_arms)*
+                _ => false,
+            }
+        }
+
+        pub fn can_remove_item(species: &str, item: &str) -> bool {
+            !is_matching_mega_stone(species, item)
+        }
+    };
+
+    TokenStream::from(expanded)
+}

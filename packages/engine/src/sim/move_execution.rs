@@ -492,6 +492,15 @@ impl Battle {
                                 }
                             }
                         }
+                        crate::sim::action::Action::Mega(m) => {
+                            if m.player == action.player {
+                                if m.slot == 0 {
+                                    m.slot = 1;
+                                } else if m.slot == 1 {
+                                    m.slot = 0;
+                                }
+                            }
+                        }
                     }
                 }
             } else {
@@ -1543,11 +1552,19 @@ impl Battle {
         if action.move_id == "fling"
             && let Some(attacker) = self.get_pokemon_mut(attacker_ident)
         {
-            if let Some(item) = attacker.item.take() {
-                flung_item = Some(item);
-                self.log.push(BattleLogEvent::new(BattleLog::Text {
-                    message: format!("|-enditem|{}|{}|[from] move: Fling", attacker_ident, item),
-                }));
+            if let Some(item) = attacker.item {
+                if pkmn_meta::mega_meta::can_remove_item(&attacker.species, item.as_ref()) {
+                    attacker.item = None;
+                    flung_item = Some(item);
+                    self.log.push(BattleLogEvent::new(BattleLog::Text {
+                        message: format!(
+                            "|-enditem|{}|{}|[from] move: Fling",
+                            attacker_ident, item
+                        ),
+                    }));
+                } else {
+                    hit = false;
+                }
             } else {
                 hit = false;
             }
@@ -2943,8 +2960,15 @@ impl Battle {
                 .and_then(|p| p.ability.as_ref())
                 .map(|a| a.as_str())
                 == Some("stickyhold");
+            let can_remove = self.get_pokemon(target_ident).is_some_and(|p| {
+                p.item.is_some_and(|item| {
+                    pkmn_meta::mega_meta::can_remove_item(&p.species, item.as_ref())
+                })
+            });
+
             let mut stolen = None;
             if !defender_has_sticky_hold
+                && can_remove
                 && let Some(target) = self.get_pokemon_mut(target_ident)
                 && target.item.is_some()
             {

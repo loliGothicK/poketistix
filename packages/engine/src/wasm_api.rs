@@ -46,6 +46,7 @@ fn side_data(side: &crate::sim::battle::Side) -> SideData {
         toxic_spikes: side.toxic_spikes,
         stealth_rock: side.stealth_rock,
         sticky_web: side.sticky_web,
+        mega_used: side.mega_used,
         active: side.active.iter().map(convert_pokemon).collect(),
         team: side.team.iter().map(convert_pokemon).collect(),
     }
@@ -139,6 +140,11 @@ pub struct PokemonData {
     pub consecutive_move_counter: u8,
     pub pp_used: std::collections::HashMap<String, u8>,
     pub taunt_turns: u8,
+    pub is_mega: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evs: Option<PokemonEvs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nature: Option<Nature>,
 }
 
 #[derive(Deserialize, Tsify, Clone, Default)]
@@ -166,6 +172,9 @@ pub struct InputPokemonData {
     pub pp_used: std::collections::HashMap<String, u8>,
     pub taunt_turns: u8,
     pub moves: Vec<String>,
+    pub is_mega: bool,
+    pub evs: Option<PokemonEvs>,
+    pub nature: Option<Nature>,
 }
 
 impl Default for PokemonData {
@@ -192,6 +201,9 @@ impl Default for PokemonData {
             consecutive_move_counter: 0,
             pp_used: std::collections::HashMap::new(),
             taunt_turns: 0,
+            is_mega: false,
+            evs: None,
+            nature: None,
         }
     }
 }
@@ -210,6 +222,7 @@ pub struct SideData {
     pub toxic_spikes: u8,
     pub stealth_rock: bool,
     pub sticky_web: bool,
+    pub mega_used: bool,
 }
 
 #[derive(Serialize, Tsify, Default)]
@@ -243,6 +256,7 @@ pub struct InputSideData {
     pub toxic_spikes: u8,
     pub stealth_rock: bool,
     pub sticky_web: bool,
+    pub mega_used: bool,
 }
 
 #[derive(Deserialize, Tsify, Default)]
@@ -290,6 +304,9 @@ impl From<InputPokemonData> for PokemonData {
             consecutive_move_counter: input.consecutive_move_counter,
             pp_used: input.pp_used,
             taunt_turns: input.taunt_turns,
+            is_mega: input.is_mega,
+            evs: input.evs,
+            nature: input.nature,
         }
     }
 }
@@ -309,6 +326,7 @@ impl From<InputSideData> for SideData {
             toxic_spikes: input.toxic_spikes,
             stealth_rock: input.stealth_rock,
             sticky_web: input.sticky_web,
+            mega_used: input.mega_used,
         }
     }
 }
@@ -334,12 +352,20 @@ impl From<InputFullBattleState> for FullBattleState {
 pub struct TurnActions {
     pub p1a: String,
     pub p1a_target: i8,
+    #[serde(default)]
+    pub p1a_mega: bool,
     pub p1b: String,
     pub p1b_target: i8,
+    #[serde(default)]
+    pub p1b_mega: bool,
     pub p2a: String,
     pub p2a_target: i8,
+    #[serde(default)]
+    pub p2a_mega: bool,
     pub p2b: String,
     pub p2b_target: i8,
+    #[serde(default)]
+    pub p2b_mega: bool,
 }
 
 #[derive(Deserialize, Tsify, Clone)]
@@ -409,12 +435,22 @@ impl Simulator {
         self.battle.p1.reflect_turns = state.p1.reflect_turns;
         self.battle.p1.lightscreen_turns = state.p1.lightscreen_turns;
         self.battle.p1.safeguard_turns = state.p1.safeguard_turns;
+        self.battle.p1.spikes = state.p1.spikes;
+        self.battle.p1.toxic_spikes = state.p1.toxic_spikes;
+        self.battle.p1.stealth_rock = state.p1.stealth_rock;
+        self.battle.p1.sticky_web = state.p1.sticky_web;
+        self.battle.p1.mega_used = state.p1.mega_used;
         self.battle.p2.tailwind = state.p2.tailwind;
         self.battle.p2.tailwind_turns = state.p2.tailwind_turns;
         self.battle.p2.aurora_veil_turns = state.p2.aurora_veil_turns;
         self.battle.p2.reflect_turns = state.p2.reflect_turns;
         self.battle.p2.lightscreen_turns = state.p2.lightscreen_turns;
         self.battle.p2.safeguard_turns = state.p2.safeguard_turns;
+        self.battle.p2.spikes = state.p2.spikes;
+        self.battle.p2.toxic_spikes = state.p2.toxic_spikes;
+        self.battle.p2.stealth_rock = state.p2.stealth_rock;
+        self.battle.p2.sticky_web = state.p2.sticky_web;
+        self.battle.p2.mega_used = state.p2.mega_used;
 
         for p in &state.p1.team {
             self.battle.p1.team.push(build_pokemon(p));
@@ -532,6 +568,24 @@ impl Simulator {
 
         self.battle.log.clear();
 
+        let parse_move_choice = |raw: &str, explicit_mega: bool| -> (String, bool) {
+            let s = raw.trim();
+            if let Some(rest) = s.strip_suffix(" mega") {
+                (rest.trim().to_string(), true)
+            } else if let Some(rest) = s.strip_suffix(" megax") {
+                (rest.trim().to_string(), true)
+            } else if let Some(rest) = s.strip_suffix(" megay") {
+                (rest.trim().to_string(), true)
+            } else {
+                (s.to_string(), explicit_mega)
+            }
+        };
+
+        let (p1a_move, p1a_mega) = parse_move_choice(&actions.p1a, actions.p1a_mega);
+        let (p1b_move, p1b_mega) = parse_move_choice(&actions.p1b, actions.p1b_mega);
+        let (p2a_move, p2a_mega) = parse_move_choice(&actions.p2a, actions.p2a_mega);
+        let (p2b_move, p2b_mega) = parse_move_choice(&actions.p2b, actions.p2b_mega);
+
         let mut check_move = |m: &str| {
             if !m.is_empty()
                 && m != "pass"
@@ -542,10 +596,10 @@ impl Simulator {
                 errors.push(format!("UNKNOWN_MOVE_ERROR: [{}]", m));
             }
         };
-        check_move(&actions.p1a);
-        check_move(&actions.p1b);
-        check_move(&actions.p2a);
-        check_move(&actions.p2b);
+        check_move(&p1a_move);
+        check_move(&p1b_move);
+        check_move(&p2a_move);
+        check_move(&p2b_move);
 
         for p in self
             .battle
@@ -578,14 +632,18 @@ impl Simulator {
 
         self.battle
             .execute_turn(
-                &actions.p1a,
+                &p1a_move,
                 actions.p1a_target,
-                &actions.p1b,
+                p1a_mega,
+                &p1b_move,
                 actions.p1b_target,
-                &actions.p2a,
+                p1b_mega,
+                &p2a_move,
                 actions.p2a_target,
-                &actions.p2b,
+                p2a_mega,
+                &p2b_move,
                 actions.p2b_target,
+                p2b_mega,
                 rng_config,
             )
             .map_err(|e| wasm_bindgen::JsError::new(&e))?;
@@ -594,50 +652,7 @@ impl Simulator {
     }
 }
 
-#[derive(Serialize, Deserialize, Tsify, Default)]
-pub struct PokemonEvs {
-    #[serde(default)]
-    pub hp: Option<u8>,
-    #[serde(default)]
-    pub atk: Option<u8>,
-    #[serde(default)]
-    pub def: Option<u8>,
-    #[serde(default)]
-    pub spa: Option<u8>,
-    #[serde(default)]
-    pub spd: Option<u8>,
-    #[serde(default)]
-    pub spe: Option<u8>,
-}
-
-#[derive(Serialize, Deserialize, Tsify, Clone, Copy, Debug)]
-pub enum Nature {
-    Hardy,
-    Lonely,
-    Brave,
-    Adamant,
-    Naughty,
-    Bold,
-    Docile,
-    Relaxed,
-    Impish,
-    Lax,
-    Timid,
-    Hasty,
-    Serious,
-    Jolly,
-    Naive,
-    Modest,
-    Mild,
-    Quiet,
-    Bashful,
-    Rash,
-    Calm,
-    Gentle,
-    Sassy,
-    Careful,
-    Quirky,
-}
+pub use pkmn_meta::types::{Nature, PokemonEvs};
 
 #[wasm_bindgen]
 pub fn create_pokemon(
@@ -689,31 +704,7 @@ pub fn create_pokemon(
     };
 
     let nature_enum = nature_opt.unwrap_or(Nature::Hardy);
-    let (buff, nerf) = match nature_enum {
-        Nature::Lonely => (1, 2),
-        Nature::Brave => (1, 5),
-        Nature::Adamant => (1, 3),
-        Nature::Naughty => (1, 4),
-        Nature::Bold => (2, 1),
-        Nature::Relaxed => (2, 5),
-        Nature::Impish => (2, 3),
-        Nature::Lax => (2, 4),
-        Nature::Timid => (5, 1),
-        Nature::Hasty => (5, 2),
-        Nature::Jolly => (5, 3),
-        Nature::Naive => (5, 4),
-        Nature::Modest => (3, 1),
-        Nature::Mild => (3, 2),
-        Nature::Quiet => (3, 5),
-        Nature::Rash => (3, 4),
-        Nature::Calm => (4, 1),
-        Nature::Gentle => (4, 2),
-        Nature::Sassy => (4, 5),
-        Nature::Careful => (4, 3),
-        Nature::Hardy | Nature::Docile | Nature::Serious | Nature::Bashful | Nature::Quirky => {
-            (0, 0)
-        }
-    };
+    let (buff, nerf) = nature_enum.modifiers();
 
     let atk = apply_nature(pre_nature_atk, buff == 1, nerf == 1);
     let def = apply_nature(pre_nature_def, buff == 2, nerf == 2);
@@ -743,6 +734,9 @@ pub fn create_pokemon(
         consecutive_move_counter: 0,
         pp_used: std::collections::HashMap::new(),
         taunt_turns: 0,
+        is_mega: false,
+        evs: Some(evs),
+        nature: nature_opt,
     };
 
     Ok(tsify::Ts::from_rust(&data).unwrap())
@@ -855,6 +849,9 @@ fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         syrup_bomb_turns: 0,
         syrup_bomb_source: None,
         moves: p.moves.clone(),
+        is_mega: p.is_mega,
+        evs: p.evs.unwrap_or_default(),
+        nature: p.nature,
     }
 }
 
@@ -881,5 +878,8 @@ fn convert_pokemon(p: &crate::sim::pokemon::Pokemon) -> PokemonData {
         consecutive_move_counter: p.consecutive_move_counter,
         pp_used: p.pp_used.clone().into_iter().collect(),
         taunt_turns: p.taunt_turns,
+        is_mega: p.is_mega,
+        evs: Some(p.evs),
+        nature: p.nature,
     }
 }

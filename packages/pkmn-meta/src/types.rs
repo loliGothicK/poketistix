@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 /// Pokémon type enumeration.
@@ -434,4 +435,81 @@ pub enum ItemId {
     WiseGlasses,
     YacheBerry,
     ZoomLens,
+}
+
+#[wasm_bindgen]
+#[derive(Serialize, Deserialize, Tsify, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Nature {
+    #[default]
+    Hardy,
+    Lonely,
+    Brave,
+    Adamant,
+    Naughty,
+    Bold,
+    Docile,
+    Relaxed,
+    Impish,
+    Lax,
+    Timid,
+    Hasty,
+    Serious,
+    Jolly,
+    Naive,
+    Modest,
+    Mild,
+    Quiet,
+    Bashful,
+    Rash,
+    Calm,
+    Gentle,
+    Sassy,
+    Careful,
+    Quirky,
+}
+
+impl Nature {
+    pub fn modifiers(&self) -> (u8, u8) {
+        match self {
+            Nature::Lonely => (1, 2),
+            Nature::Brave => (1, 5),
+            Nature::Adamant => (1, 3),
+            Nature::Naughty => (1, 4),
+            Nature::Bold => (2, 1),
+            Nature::Relaxed => (2, 5),
+            Nature::Impish => (2, 3),
+            Nature::Lax => (2, 4),
+            Nature::Timid => (5, 1),
+            Nature::Hasty => (5, 2),
+            Nature::Jolly => (5, 3),
+            Nature::Naive => (5, 4),
+            Nature::Modest => (3, 1),
+            Nature::Mild => (3, 2),
+            Nature::Quiet => (3, 5),
+            Nature::Rash => (3, 4),
+            Nature::Calm => (4, 1),
+            Nature::Gentle => (4, 2),
+            Nature::Sassy => (4, 5),
+            Nature::Careful => (4, 3),
+            Nature::Hardy | Nature::Docile | Nature::Serious | Nature::Bashful | Nature::Quirky => {
+                (0, 0)
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Tsify, Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PokemonEvs {
+    #[serde(default)]
+    pub hp: Option<u8>,
+    #[serde(default)]
+    pub atk: Option<u8>,
+    #[serde(default)]
+    pub def: Option<u8>,
+    #[serde(default)]
+    pub spa: Option<u8>,
+    #[serde(default)]
+    pub spd: Option<u8>,
+    #[serde(default)]
+    pub spe: Option<u8>,
 }

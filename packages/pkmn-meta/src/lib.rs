@@ -129,6 +129,7 @@ pub struct Boosts {
 
 pub mod ability_meta;
 pub mod item_meta;
+pub mod mega_meta;
 pub mod move_meta;
 pub mod pokemon_meta;
 pub mod regulation;

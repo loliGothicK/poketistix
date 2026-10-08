@@ -24,8 +24,17 @@ pub struct MoveAction {
 }
 
 #[derive(Debug, Clone)]
+pub struct MegaAction {
+    pub player: u8,
+    pub slot: usize,
+    pub priority: i32,
+    pub speed: i32,
+}
+
+#[derive(Debug, Clone)]
 pub enum Action {
     Switch(SwitchAction),
+    Mega(MegaAction),
     Move(MoveAction),
 }
 
@@ -33,6 +42,7 @@ impl Action {
     pub fn player(&self) -> u8 {
         match self {
             Action::Switch(a) => a.player,
+            Action::Mega(a) => a.player,
             Action::Move(a) => a.player,
         }
     }
@@ -40,6 +50,7 @@ impl Action {
     pub fn slot(&self) -> usize {
         match self {
             Action::Switch(a) => a.slot,
+            Action::Mega(a) => a.slot,
             Action::Move(a) => a.slot,
         }
     }
@@ -47,6 +58,7 @@ impl Action {
     pub fn priority(&self) -> i32 {
         match self {
             Action::Switch(a) => a.priority,
+            Action::Mega(a) => a.priority,
             Action::Move(a) => a.priority,
         }
     }
@@ -54,14 +66,23 @@ impl Action {
     pub fn speed(&self) -> i32 {
         match self {
             Action::Switch(a) => a.speed,
+            Action::Mega(a) => a.speed,
             Action::Move(a) => a.speed,
+        }
+    }
+
+    pub fn order(&self) -> u32 {
+        match self {
+            Action::Switch(_) => 103,
+            Action::Mega(_) => 104,
+            Action::Move(_) => 200,
         }
     }
 
     pub fn is_switch(&self) -> bool {
         match self {
             Action::Switch(_) => true,
-            Action::Move(_) => false,
+            Action::Mega(_) | Action::Move(_) => false,
         }
     }
 
@@ -131,6 +152,10 @@ impl Action {
 
                 // You must call run_switch_in AFTER mutable borrow is dropped, so we do it outside.
                 battle.run_switch_in(s.player, s.slot);
+                Ok(())
+            }
+            Action::Mega(m) => {
+                battle.run_mega_evolution(m.player, m.slot);
                 Ok(())
             }
             Action::Move(m) => battle.execute_move(m),

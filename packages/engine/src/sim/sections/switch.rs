@@ -8,7 +8,10 @@ pub fn run_switch_in(battle: &mut Battle, player: u8, slot: usize) {
     if let Some(p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
         p.libero_activated = false;
     }
+    trigger_switch_in_ability(battle, player, slot);
+}
 
+pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
     let ability = if player == 1 {
         battle.p1.active.get(slot).and_then(|p| p.ability.clone())
     } else {

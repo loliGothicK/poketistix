@@ -65,6 +65,7 @@ pub struct Side {
     pub toxic_spikes: u8,
     pub stealth_rock: bool,
     pub sticky_web: bool,
+    pub mega_used: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -613,24 +614,32 @@ impl Battle {
         &mut self,
         p1_a: &str,
         p1_a_target: i8,
+        p1_a_mega: bool,
         p1_b: &str,
         p1_b_target: i8,
+        p1_b_mega: bool,
         p2_a: &str,
         p2_a_target: i8,
+        p2_a_mega: bool,
         p2_b: &str,
         p2_b_target: i8,
+        p2_b_mega: bool,
         rng_config: Option<crate::wasm_api::Config>,
     ) -> Result<(), String> {
         crate::sim::turn::execute_turn(
             self,
             p1_a,
             p1_a_target,
+            p1_a_mega,
             p1_b,
             p1_b_target,
+            p1_b_mega,
             p2_a,
             p2_a_target,
+            p2_a_mega,
             p2_b,
             p2_b_target,
+            p2_b_mega,
             rng_config,
         )
     }
@@ -750,5 +759,79 @@ impl Battle {
                 }
             }
         }
+    }
+
+    pub fn run_mega_evolution(&mut self, player: u8, slot: usize) -> bool {
+        let side = if player == 1 {
+            &mut self.p1
+        } else {
+            &mut self.p2
+        };
+
+        if side.mega_used {
+            return false;
+        }
+
+        let Some(p) = side.active.get_mut(slot) else {
+            return false;
+        };
+
+        if p.hp <= 0 || p.is_mega {
+            return false;
+        }
+
+        let Some(item) = p.item else {
+            return false;
+        };
+
+        let Some(details) = pkmn_meta::mega_meta::get_mega_details(&p.species, item.as_ref())
+        else {
+            return false;
+        };
+
+        let mega_species = details.mega_species.to_string();
+        let mega_ability = details.ability.to_string();
+        let item_name = item.to_string();
+        p.mega_evolve(&mega_species, &mega_ability);
+
+        side.mega_used = true;
+
+        let ident = PokemonIdent { player, slot };
+        // Format species name properly for Showdown: capitalize words
+        let species_display = if pkmn_meta::pokemon_meta::get_pokemon_meta(&mega_species).is_some()
+        {
+            // Capitalize parts separated by hyphen
+            mega_species
+                .split('-')
+                .map(|part| {
+                    let mut s = part.to_string();
+                    if !s.is_empty() {
+                        s[..1].make_ascii_uppercase();
+                    }
+                    s
+                })
+                .collect::<Vec<_>>()
+                .join("-")
+        } else {
+            mega_species.clone()
+        };
+
+        // Format item name properly: capitalize
+        let item_display = {
+            let mut s = item_name.clone();
+            if !s.is_empty() {
+                s[..1].make_ascii_uppercase();
+            }
+            s
+        };
+
+        self.log.push(BattleLogEvent::new(BattleLog::Mega {
+            target: ident,
+            species: species_display,
+            item: item_display,
+        }));
+
+        crate::sim::sections::switch::trigger_switch_in_ability(self, player, slot);
+        true
     }
 }
