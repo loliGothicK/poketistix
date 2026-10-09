@@ -164,6 +164,7 @@ pub enum VolatileStatus {
     Glaiverush,
     Uproar,
     Lockedmove,
+    Transform,
 }
 
 #[wasm_bindgen]

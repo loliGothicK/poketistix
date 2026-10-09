@@ -140,6 +140,11 @@ pub enum BattleLog {
         species: String,
         item: String,
     },
+    FormeChange {
+        target: PokemonIdent,
+        species: String,
+        from_effect: String,
+    },
     Text {
         message: String,
     },
@@ -373,6 +378,14 @@ impl BattleLog {
                 species,
                 item,
             } => format!("|-mega|{}|{}|{}", target, species, item),
+            BattleLog::FormeChange {
+                target,
+                species,
+                from_effect,
+            } => format!(
+                "|-formechange|{}|{}|[from] {}",
+                target, species, from_effect
+            ),
         }
     }
 }

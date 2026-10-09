@@ -1,5 +1,5 @@
 use crate::sim::battle::Battle;
-use pkmn_meta::types::{Category, Range, Type};
+use pkmn_meta::types::{Category, Range};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SlotAction {
@@ -174,18 +174,8 @@ pub fn get_slot_actions(battle: &Battle, player: u8, slot: usize) -> Vec<SlotAct
     }
 
     // 2. Switch actions
-    // Check if the Pokémon is trapped
-    let is_trapped = pkmn.trapped_by.is_some()
-        || (pkmn.partially_trapped_by.is_some() && pkmn.partially_trapped_turns > 0);
-
-    // Shadow Tag check
-    let opp_has_shadow_tag = opp_side.active.iter().any(|p| {
-        p.hp.into_inner() > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("shadowtag")
-    });
-    let is_ghost = pkmn.get_types().contains(&Type::Ghost);
-    let cannot_switch = is_trapped || (opp_has_shadow_tag && !is_ghost);
-
-    if !cannot_switch {
+    let ident = crate::sim::pokemon::PokemonIdent { player, slot };
+    if battle.can_switch(ident) {
         let active_len = side.active.len();
         for (bench_idx, bench_pkmn) in side.team.iter().enumerate() {
             if bench_pkmn.hp.into_inner() > 0 {

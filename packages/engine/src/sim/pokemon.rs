@@ -183,6 +183,17 @@ impl Pokemon {
             self.speed = apply_nature(pre_nature_spe, buff == 5, nerf == 5).into();
         }
     }
+
+    pub fn swap_offensive_defensive_stats(&mut self) {
+        let atk = self.attack.into_inner();
+        let def = self.defense.into_inner();
+        let spa = self.sp_attack.into_inner();
+        let spd = self.sp_defense.into_inner();
+        self.attack = def.into();
+        self.defense = atk.into();
+        self.sp_attack = spd.into();
+        self.sp_defense = spa.into();
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Tsify)]

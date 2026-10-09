@@ -1045,13 +1045,21 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "transform" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
-            target: PokemonIdent {
-                player: source_player,
-                slot: source_slot,
-            },
-            effect: "transform".to_string(),
-        }));
+        let user_ident = PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        };
+        let target_ident = PokemonIdent {
+            player: target_player,
+            slot: target_slot,
+        };
+        let success =
+            crate::sim::sections::transform::section_transform(battle, user_ident, target_ident);
+        if !success {
+            battle
+                .log
+                .push(BattleLogEvent::new(BattleLog::Fail { target: user_ident }));
+        }
     }
 
     if move_id == "uproar" {

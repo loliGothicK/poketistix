@@ -635,6 +635,48 @@ impl Battle {
         }
     }
 
+    pub fn can_switch(&self, ident: PokemonIdent) -> bool {
+        let pkmn = match self.get_pokemon(ident) {
+            Some(p) if p.hp.into_inner() > 0 => p,
+            _ => return true,
+        };
+
+        // Ghost-type Pokemon can always switch
+        if pkmn.get_types().contains(&Type::Ghost) {
+            return true;
+        }
+
+        // Holding Shed Shell allows switching
+        if pkmn.item == Some(ItemId::ShedShell) {
+            return true;
+        }
+
+        // Trapped by move effect or partially trapped
+        if pkmn.trapped_by.is_some()
+            || (pkmn.partially_trapped_by.is_some() && pkmn.partially_trapped_turns > 0)
+        {
+            return false;
+        }
+
+        // Shadow Tag check
+        let opp_side = if ident.player == 1 {
+            &self.p2
+        } else {
+            &self.p1
+        };
+
+        let pkmn_has_shadow_tag = pkmn.ability.as_ref().map(|a| a.as_str()) == Some("shadowtag");
+        let opp_has_shadow_tag = opp_side.active.iter().any(|p| {
+            p.hp.into_inner() > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("shadowtag")
+        });
+
+        if opp_has_shadow_tag && !pkmn_has_shadow_tag {
+            return false;
+        }
+
+        true
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn execute_turn(
         &mut self,

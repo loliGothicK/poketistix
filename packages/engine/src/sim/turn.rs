@@ -96,6 +96,7 @@ pub fn execute_turn(
                 priority,
                 speed,
                 is_bounced: false,
+                quick_draw: false,
             })
         };
         actions.push(action);
@@ -103,18 +104,54 @@ pub fn execute_turn(
 
     let is_trick_room = battle.trick_room;
 
-    // Resolve order
-    let mut action_quick_claw = vec![false; actions.len()];
+    // Resolve Quick Draw (30% chance on attacking moves) and Quick Claw
     let mut rng = rand::rng();
-    for (i, a) in actions.iter().enumerate() {
-        let item = if a.player() == 1 {
-            battle.p1.active.get(a.slot()).and_then(|p| p.item)
-        } else {
-            battle.p2.active.get(a.slot()).and_then(|p| p.item)
-        };
-        if item.as_ref().map(|i| i.as_ref()) == Some("quickclaw") && rng.random_range(1..=100) <= 20
-        {
-            action_quick_claw[i] = true;
+    let force_secondary_always = battle
+        .rng_config
+        .as_ref()
+        .and_then(|c| c.secondary.as_deref())
+        == Some("always");
+    let force_secondary_never = battle
+        .rng_config
+        .as_ref()
+        .and_then(|c| c.secondary.as_deref())
+        == Some("never");
+
+    for a in actions.iter_mut() {
+        if let crate::sim::action::Action::Move(m) = a {
+            let pkmn = if m.player == 1 {
+                battle.p1.active.get(m.slot)
+            } else {
+                battle.p2.active.get(m.slot)
+            };
+            if let Some(pkmn) = pkmn {
+                let is_attacking = pkmn_meta::move_meta::get_move_meta(&m.move_id)
+                    .map(|meta| matches!(meta.category(), Category::Physical | Category::Special))
+                    .unwrap_or(false);
+
+                if is_attacking && pkmn.ability.as_ref().map(|a| a.as_str()) == Some("quickdraw") {
+                    let activated = if force_secondary_always {
+                        true
+                    } else if force_secondary_never {
+                        false
+                    } else {
+                        rng.random_range(1..=100) <= 30
+                    };
+
+                    if activated {
+                        m.quick_draw = true;
+                        battle.log.push(crate::sim::log::BattleLogEvent::new(
+                            crate::sim::log::BattleLog::Activate {
+                                target: crate::sim::pokemon::PokemonIdent {
+                                    player: m.player,
+                                    slot: m.slot,
+                                },
+                                effect: "Quick Draw".to_string(),
+                            },
+                        ));
+                    }
+                }
+            }
         }
     }
 
@@ -241,6 +278,13 @@ fn compare_actions(
     let p2_prio = b.priority();
     if p1_prio != p2_prio {
         return p2_prio.cmp(&p1_prio);
+    }
+
+    // Within the same priority bracket, Quick Draw actions act before non-Quick Draw actions
+    let a_qd = a.quick_draw();
+    let b_qd = b.quick_draw();
+    if a_qd != b_qd {
+        return b_qd.cmp(&a_qd); // true > false
     }
 
     let p1_spe = a.speed();

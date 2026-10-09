@@ -21,6 +21,7 @@ pub struct MoveAction {
     pub priority: i32,
     pub speed: i32,
     pub is_bounced: bool,
+    pub quick_draw: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +72,13 @@ impl Action {
         }
     }
 
+    pub fn quick_draw(&self) -> bool {
+        match self {
+            Action::Move(a) => a.quick_draw,
+            _ => false,
+        }
+    }
+
     pub fn order(&self) -> u32 {
         match self {
             Action::Switch(_) => 103,
@@ -89,15 +97,27 @@ impl Action {
     pub fn execute(&self, battle: &mut Battle) -> Result<(), String> {
         match self {
             Action::Switch(s) => {
+                let switch_ident = crate::sim::pokemon::PokemonIdent {
+                    player: s.player,
+                    slot: s.slot,
+                };
+                if !battle.can_switch(switch_ident) {
+                    battle.log.push(crate::sim::log::BattleLogEvent::new(
+                        crate::sim::log::BattleLog::Cant {
+                            target: switch_ident,
+                            reason: "trapped".to_string(),
+                            move_id: None,
+                        },
+                    ));
+                    return Ok(());
+                }
+
                 {
                     let (active, team) = if s.player == 1 {
                         (&mut battle.p1.active, &mut battle.p1.team)
                     } else {
                         (&mut battle.p2.active, &mut battle.p2.team)
                     };
-                    // removed debug
-
-                    // removed debug
 
                     if s.target_slot >= active.len() {
                         let bench_idx = s.target_slot - active.len();
@@ -108,6 +128,12 @@ impl Action {
                             active[s.slot].leech_seeded_by = None;
                             active[s.slot].last_move_used = None;
                             active[s.slot].consecutive_move_counter = 0;
+
+                            // Aegislash returns to Shield forme when withdrawn
+                            if active[s.slot].species == "aegislash-blade" {
+                                active[s.slot].species = "aegislash-shield".to_string();
+                                active[s.slot].swap_offensive_defensive_stats();
+                            }
 
                             if active[s.slot].ability.as_ref().map(|a| a.as_str())
                                 == Some("naturalcure")

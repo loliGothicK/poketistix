@@ -26,6 +26,16 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
     };
 
     if let Some(ability_id) = ability.as_ref() {
+        if ability_id.as_str() == "imposter" {
+            let user_ident = PokemonIdent { player, slot };
+            let opp_player = if player == 1 { 2 } else { 1 };
+            let target_ident = PokemonIdent {
+                player: opp_player,
+                slot,
+            };
+            crate::sim::sections::transform::section_transform(battle, user_ident, target_ident);
+            return;
+        }
         on_start(ability_id.as_ref(), battle, PokemonIdent { player, slot });
     }
 

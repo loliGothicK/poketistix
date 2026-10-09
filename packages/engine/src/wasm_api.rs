@@ -579,6 +579,11 @@ impl Simulator {
         old.volatile_status.clear();
         old.active_turns = 0;
 
+        if old.species == "aegislash-blade" {
+            old.species = "aegislash-shield".to_string();
+            old.swap_offensive_defensive_stats();
+        }
+
         side.active.insert(active_slot, new);
         side.team.insert(team_slot, old);
 
