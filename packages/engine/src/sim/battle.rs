@@ -21,7 +21,7 @@ pub enum EventId {
     EndOfTurn,
 }
 
-#[derive(TypedBuilder, Clone)]
+#[derive(TypedBuilder, Clone, Debug)]
 pub struct EventContext {
     pub target: PokemonIdent,
     #[builder(default)]
@@ -81,6 +81,7 @@ pub struct FutureSightAttack {
     pub turns_left: u8,
 }
 
+#[derive(Clone, Debug)]
 pub struct Battle {
     pub turn_state: TurnState,
     pub p1: Side,

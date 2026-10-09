@@ -59,6 +59,7 @@ pub struct Pokemon {
     pub syrup_bomb_turns: u8,
     pub syrup_bomb_source: Option<PokemonIdent>,
     pub active_turns: u16,
+    pub substitute_hp: i32,
 }
 
 #[derive(Clone, Debug, Default)]

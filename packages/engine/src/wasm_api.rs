@@ -141,10 +141,14 @@ pub struct PokemonData {
     pub pp_used: std::collections::HashMap<String, u8>,
     pub taunt_turns: u8,
     pub is_mega: bool,
+    #[serde(default)]
+    pub moves: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evs: Option<PokemonEvs>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nature: Option<Nature>,
+    #[serde(default)]
+    pub substitute_hp: i32,
 }
 
 #[derive(Deserialize, Tsify, Clone, Default)]
@@ -175,6 +179,7 @@ pub struct InputPokemonData {
     pub is_mega: bool,
     pub evs: Option<PokemonEvs>,
     pub nature: Option<Nature>,
+    pub substitute_hp: i32,
 }
 
 impl Default for PokemonData {
@@ -202,8 +207,10 @@ impl Default for PokemonData {
             pp_used: std::collections::HashMap::new(),
             taunt_turns: 0,
             is_mega: false,
+            moves: vec![],
             evs: None,
             nature: None,
+            substitute_hp: 0,
         }
     }
 }
@@ -305,8 +312,10 @@ impl From<InputPokemonData> for PokemonData {
             pp_used: input.pp_used,
             taunt_turns: input.taunt_turns,
             is_mega: input.is_mega,
+            moves: input.moves,
             evs: input.evs,
             nature: input.nature,
+            substitute_hp: input.substitute_hp,
         }
     }
 }
@@ -367,8 +376,57 @@ pub struct TurnActions {
     #[serde(default)]
     pub p2b_mega: bool,
 }
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct SlotActionJs {
+    pub choice: String,
+    pub target: i8,
+    pub mega: bool,
+}
 
-#[derive(Deserialize, Tsify, Clone)]
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct PlayerActionJs {
+    pub slot_a: SlotActionJs,
+    pub slot_b: SlotActionJs,
+}
+
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct AiSearchResultJs {
+    pub best_action: PlayerActionJs,
+    pub win_rate: f64,
+    pub total_simulations: usize,
+}
+
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct LegalActionsJs {
+    pub actions: Vec<PlayerActionJs>,
+}
+
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct PvStepJs {
+    pub turn: usize,
+    pub p1_action: PlayerActionJs,
+    pub p2_action: PlayerActionJs,
+}
+
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct CandidateAnalysisJs {
+    pub rank: usize,
+    pub action: PlayerActionJs,
+    pub win_rate: f64,
+    pub visits: usize,
+    pub pv: Vec<PvStepJs>,
+    pub is_mate: bool,
+}
+
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+pub struct PositionAnalysisJs {
+    pub current_eval: f64,
+    pub total_simulations: usize,
+    pub candidates: Vec<CandidateAnalysisJs>,
+    pub best_action: PlayerActionJs,
+}
+
+#[derive(Deserialize, Tsify, Clone, Debug)]
 pub struct Config {
     #[serde(default)]
     #[tsify(optional, type = "'min' | 'max'")]
@@ -650,6 +708,128 @@ impl Simulator {
 
         battle_logs_to_ts(&self.battle)
     }
+
+    #[wasm_bindgen]
+    pub fn get_legal_actions(
+        &self,
+        player: u8,
+    ) -> Result<tsify::Ts<LegalActionsJs>, wasm_bindgen::JsError> {
+        let actions = crate::ai::get_player_actions(&self.battle, player);
+        let js_actions: Vec<PlayerActionJs> = actions
+            .into_iter()
+            .map(|act| PlayerActionJs {
+                slot_a: SlotActionJs {
+                    choice: act.a.choice,
+                    target: act.a.target,
+                    mega: act.a.mega,
+                },
+                slot_b: SlotActionJs {
+                    choice: act.b.choice,
+                    target: act.b.target,
+                    mega: act.b.mega,
+                },
+            })
+            .collect();
+        let out = LegalActionsJs {
+            actions: js_actions,
+        };
+        Ok(tsify::Ts::from_rust(&out)?)
+    }
+
+    #[wasm_bindgen]
+    pub fn evaluate_state(&self, player: u8) -> f64 {
+        crate::ai::evaluate_for_player(&self.battle, player)
+    }
+
+    #[wasm_bindgen]
+    pub fn search_best_action(
+        &self,
+        player: u8,
+        iterations: Option<usize>,
+    ) -> Result<tsify::Ts<AiSearchResultJs>, wasm_bindgen::JsError> {
+        let mut config = crate::ai::IsmctsConfig::default();
+        if let Some(iters) = iterations {
+            config.iterations = iters;
+        }
+        let ismcts = crate::ai::Ismcts::new(config);
+        let result = ismcts.search(&self.battle, player);
+
+        let out = AiSearchResultJs {
+            best_action: PlayerActionJs {
+                slot_a: SlotActionJs {
+                    choice: result.best_action.a.choice,
+                    target: result.best_action.a.target,
+                    mega: result.best_action.a.mega,
+                },
+                slot_b: SlotActionJs {
+                    choice: result.best_action.b.choice,
+                    target: result.best_action.b.target,
+                    mega: result.best_action.b.mega,
+                },
+            },
+            win_rate: result.win_rate,
+            total_simulations: result.total_simulations,
+        };
+
+        Ok(tsify::Ts::from_rust(&out)?)
+    }
+
+    #[wasm_bindgen]
+    pub fn analyze_position(
+        &self,
+        player: u8,
+        iterations: Option<usize>,
+    ) -> Result<tsify::Ts<PositionAnalysisJs>, wasm_bindgen::JsError> {
+        let mut config = crate::ai::IsmctsConfig::default();
+        if let Some(iters) = iterations {
+            config.iterations = iters;
+        }
+        let ismcts = crate::ai::Ismcts::new(config);
+        let analysis = ismcts.analyze(&self.battle, player);
+
+        let convert_action = |act: &crate::ai::PlayerAction| PlayerActionJs {
+            slot_a: SlotActionJs {
+                choice: act.a.choice.clone(),
+                target: act.a.target,
+                mega: act.a.mega,
+            },
+            slot_b: SlotActionJs {
+                choice: act.b.choice.clone(),
+                target: act.b.target,
+                mega: act.b.mega,
+            },
+        };
+
+        let candidates = analysis
+            .candidates
+            .into_iter()
+            .map(|cand| CandidateAnalysisJs {
+                rank: cand.rank,
+                action: convert_action(&cand.action),
+                win_rate: cand.win_rate,
+                visits: cand.visits,
+                pv: cand
+                    .pv
+                    .into_iter()
+                    .map(|step| PvStepJs {
+                        turn: step.turn,
+                        p1_action: convert_action(&step.p1_action),
+                        p2_action: convert_action(&step.p2_action),
+                    })
+                    .collect(),
+                is_mate: cand.is_mate,
+            })
+            .collect();
+
+        let out = PositionAnalysisJs {
+            current_eval: analysis.current_eval,
+            total_simulations: analysis.total_simulations,
+            candidates,
+            best_action: convert_action(&analysis.best_action),
+        };
+
+        Ok(tsify::Ts::from_rust(&out)?)
+    }
 }
 
 pub use pkmn_meta::types::{Nature, PokemonEvs};
@@ -735,14 +915,16 @@ pub fn create_pokemon(
         pp_used: std::collections::HashMap::new(),
         taunt_turns: 0,
         is_mega: false,
+        moves: vec![],
         evs: Some(evs),
         nature: nature_opt,
+        substitute_hp: 0,
     };
 
     Ok(tsify::Ts::from_rust(&data).unwrap())
 }
 
-fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
+pub fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
     let parse_type = |t: &str| -> damage_calc::types::Type {
         match t.to_lowercase().as_str() {
             "normal" => damage_calc::types::Type::Normal,
@@ -852,6 +1034,7 @@ fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         is_mega: p.is_mega,
         evs: p.evs.unwrap_or_default(),
         nature: p.nature,
+        substitute_hp: p.substitute_hp,
     }
 }
 
@@ -879,7 +1062,9 @@ fn convert_pokemon(p: &crate::sim::pokemon::Pokemon) -> PokemonData {
         pp_used: p.pp_used.clone().into_iter().collect(),
         taunt_turns: p.taunt_turns,
         is_mega: p.is_mega,
+        moves: p.moves.clone(),
         evs: Some(p.evs),
         nature: p.nature,
+        substitute_hp: p.substitute_hp,
     }
 }

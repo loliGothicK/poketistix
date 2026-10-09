@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod sim;
 pub mod wasm_api;
 

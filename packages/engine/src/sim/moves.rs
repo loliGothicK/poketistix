@@ -934,13 +934,29 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "substitute" {
-        battle.section_apply_volatile(
-            PokemonIdent {
-                player: source_player,
-                slot: source_slot,
-            },
-            VolatileStatus::Substitute,
-        );
+        let ident = PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        };
+        if let Some(user) = battle.get_pokemon_mut(ident) {
+            let max_hp = user.maxhp.into_inner();
+            let cost = max_hp / 4;
+            if user.volatile_status.contains(&VolatileStatus::Substitute)
+                || user.hp.into_inner() <= cost
+            {
+                battle
+                    .log
+                    .push(BattleLogEvent::new(BattleLog::Fail { target: ident }));
+            } else {
+                user.hp = (user.hp.into_inner() - cost).into();
+                user.substitute_hp = cost;
+                user.volatile_status.push(VolatileStatus::Substitute);
+                battle.log.push(BattleLogEvent::new(BattleLog::Start {
+                    target: ident,
+                    effect: "Substitute".to_string(),
+                }));
+            }
+        }
     }
 
     if move_id == "recycle" {
@@ -1787,6 +1803,9 @@ pub fn handle_move_self_effect(
     slot: usize,
     volatile_status: Option<VolatileStatus>,
 ) {
+    if move_id == "substitute" {
+        return;
+    }
     let target = PokemonIdent { player, slot };
     if let Some(volatile_status) = volatile_status {
         if volatile_status == VolatileStatus::Powertrick

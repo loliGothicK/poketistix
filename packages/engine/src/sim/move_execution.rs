@@ -2219,7 +2219,55 @@ impl Battle {
             damage = 0;
         }
 
+        let mut substitute_hit = false;
+        let mut substitute_broken = false;
+        let attacker_infiltrator = self
+            .get_pokemon(attacker_ident)
+            .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
+            == Some("infiltrator");
+        let is_sound_move = meta_opt.as_ref().is_some_and(|m| *m.is_sound());
+        let bypass_substitute = attacker_infiltrator || is_sound_move;
+
+        if !is_status_move
+            && damage > 0
+            && !bypass_substitute
+            && let Some(target_p) = self.get_pokemon_mut(target_ident)
+            && target_p
+                .volatile_status
+                .contains(&VolatileStatus::Substitute)
+        {
+            substitute_hit = true;
+            if damage >= target_p.substitute_hp {
+                target_p.substitute_hp = 0;
+                target_p
+                    .volatile_status
+                    .retain(|v| v != &VolatileStatus::Substitute);
+                substitute_broken = true;
+            } else {
+                target_p.substitute_hp -= damage;
+            }
+            damage = 0;
+        }
+
         self.section_take_damage(target_ident, damage);
+
+        if substitute_hit {
+            self.log.push(BattleLogEvent::new(BattleLog::Damage {
+                target: target_ident,
+                from_effect: Some("Substitute".to_string()),
+                damage: 0,
+                is_crit: false,
+                effectiveness: 0,
+                absorbed: true,
+            }));
+            if substitute_broken {
+                self.log
+                    .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
+                        target: target_ident,
+                        volatile_status: "Substitute".to_string(),
+                    }));
+            }
+        }
 
         let hp_after = self
             .get_pokemon(target_ident)
