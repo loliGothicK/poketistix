@@ -996,6 +996,15 @@ pub fn handle_move_target_effect(
         || move_id == "ragingfury"
     {
         // Multiturn moves
+        if let Some(user) = battle.get_pokemon_mut(PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        }) {
+            if !user.volatile_status.contains(&VolatileStatus::Lockedmove) {
+                user.volatile_status.push(VolatileStatus::Lockedmove);
+                user.locked_move_turns = 3;
+            }
+        }
         battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
@@ -1046,6 +1055,15 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "uproar" {
+        if let Some(user) = battle.get_pokemon_mut(PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        }) {
+            if !user.volatile_status.contains(&VolatileStatus::Uproar) {
+                user.volatile_status.push(VolatileStatus::Uproar);
+                user.uproar_turns = 3;
+            }
+        }
         battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
@@ -1056,13 +1074,38 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "wish" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
-            target: PokemonIdent {
-                player: source_player,
-                slot: source_slot,
-            },
-            effect: "wish".to_string(),
-        }));
+        let user_ident = PokemonIdent {
+            player: source_player,
+            slot: source_slot,
+        };
+        let is_heal_blocked = battle
+            .get_pokemon(user_ident)
+            .map(|p| p.volatile_status.contains(&VolatileStatus::Healblock))
+            .unwrap_or(false);
+        let already_wished = battle.wish_effects.iter().any(|w| w.target == user_ident);
+
+        if is_heal_blocked {
+            battle.log.push(BattleLogEvent::new(BattleLog::Cant {
+                target: user_ident,
+                reason: "Heal Block".to_string(),
+                move_id: Some("wish".to_string()),
+            }));
+        } else if already_wished {
+            battle
+                .log
+                .push(BattleLogEvent::new(BattleLog::Fail { target: user_ident }));
+        } else if let Some(user) = battle.get_pokemon(user_ident) {
+            let heal_amount = (user.maxhp.into_inner() / 2).max(1);
+            battle.wish_effects.push(crate::sim::battle::WishEffect {
+                target: user_ident,
+                heal_amount,
+                turns_left: 2,
+            });
+            battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+                target: user_ident,
+                effect: "wish".to_string(),
+            }));
+        }
     }
 
     if move_id == "curse" {

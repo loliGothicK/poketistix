@@ -162,6 +162,8 @@ pub enum VolatileStatus {
     Octolock,
     Perishsong,
     Glaiverush,
+    Uproar,
+    Lockedmove,
 }
 
 #[wasm_bindgen]

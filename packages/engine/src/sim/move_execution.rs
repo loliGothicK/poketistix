@@ -2188,18 +2188,34 @@ impl Battle {
             .map(|p| p.hp.into_inner())
             .unwrap_or(0);
 
-        if action.move_id == "futuresight" && damage > 0 {
-            self.future_sight_attacks
-                .push(crate::sim::battle::FutureSightAttack {
+        if action.move_id == "futuresight" || action.move_id == "doomdesire" {
+            if self
+                .future_sight_attacks
+                .iter()
+                .any(|a| a.target == target_ident)
+            {
+                self.log.push(BattleLogEvent::new(BattleLog::Fail {
                     target: target_ident,
-                    damage,
-                    turns_left: 2,
-                });
-            return HitResult {
-                damage_dealt: 0,
-                hit_anyone: true,
-                immune_stop: false,
-            };
+                }));
+                return HitResult {
+                    damage_dealt: 0,
+                    hit_anyone: false,
+                    immune_stop: false,
+                };
+            }
+            if damage > 0 {
+                self.future_sight_attacks
+                    .push(crate::sim::battle::FutureSightAttack {
+                        target: target_ident,
+                        damage,
+                        turns_left: 3,
+                    });
+                return HitResult {
+                    damage_dealt: 0,
+                    hit_anyone: true,
+                    immune_stop: false,
+                };
+            }
         }
 
         let mut disguise_broken = false;

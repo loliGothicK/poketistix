@@ -101,7 +101,7 @@ pub fn step_turn(
         &p2_act.b.choice,
         p2_act.b.target,
         p2_act.b.mega,
-        None,
+        battle.rng_config.clone(),
     )
 }
 

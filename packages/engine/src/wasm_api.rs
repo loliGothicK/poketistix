@@ -1030,6 +1030,8 @@ pub fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         telekinesis_turns: 0,
         syrup_bomb_turns: 0,
         syrup_bomb_source: None,
+        uproar_turns: 0,
+        locked_move_turns: 0,
         moves: p.moves.clone(),
         is_mega: p.is_mega,
         evs: p.evs.unwrap_or_default(),

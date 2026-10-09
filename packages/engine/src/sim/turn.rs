@@ -20,31 +20,6 @@ pub fn execute_turn(
     rng_config: Option<crate::wasm_api::Config>,
 ) -> Result<(), String> {
     battle.rng_config = rng_config;
-    let mut pending = std::mem::take(&mut battle.future_sight_attacks);
-    for attack in &mut pending {
-        if attack.turns_left > 0 {
-            attack.turns_left -= 1;
-        }
-    }
-    for attack in pending.drain(..) {
-        if attack.turns_left == 0 {
-            if battle.get_pokemon(attack.target).is_some_and(|p| p.hp > 0) {
-                battle.section_take_damage(attack.target, attack.damage);
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Damage {
-                        target: attack.target,
-                        damage: attack.damage,
-                        is_crit: false,
-                        effectiveness: 0,
-                        absorbed: false,
-                        from_effect: Some("Future Sight".to_string()),
-                    },
-                ));
-            }
-        } else {
-            battle.future_sight_attacks.push(attack);
-        }
-    }
     let mut actions = vec![];
 
     let inputs = [

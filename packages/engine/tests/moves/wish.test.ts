@@ -108,13 +108,43 @@ test("Move: wish", () => {
     p2b_target: 0,
   });
 
-  const events = logs.events.map((e) => e.event);
-  expect(events).toEqual(
+  const events1 = logs.events.map((e) => e.event);
+  expect(events1).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         type: "MoveUsed",
         move_id: "wish",
         attacker: { player: 1, slot: 0 },
+      }),
+    ]),
+  );
+
+  // Turn 1 end: Wish has not triggered yet
+  expect(events1.some((e: any) => e.type === "Activate" && e.effect === "Wish")).toBe(false);
+
+  // Turn 2: Wish should activate at the end of Turn 2 (next turn)
+  const logs2 = engine.run_turn({
+    p1a: "sleeptalk",
+    p1a_target: 0,
+    p2a: "sleeptalk",
+    p2a_target: 0,
+    p1b: "sleeptalk",
+    p1b_target: 0,
+    p2b: "sleeptalk",
+    p2b_target: 0,
+  });
+
+  const events2 = logs2.events.map((e) => e.event);
+  expect(events2).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "Activate",
+        effect: "Wish",
+        target: { player: 1, slot: 0 },
+      }),
+      expect.objectContaining({
+        type: "Heal",
+        target: { player: 1, slot: 0 },
       }),
     ]),
   );

@@ -119,3 +119,114 @@ test("Move: uproar", () => {
     ]),
   );
 });
+
+test("Move: uproar ends after 3 turns", () => {
+  const engine = new Simulator({
+    damage_roll: "max",
+    crits: "never",
+    accuracy: "always",
+    secondary: "never",
+  });
+
+  engine.set_state({
+    p1: {
+      active: [
+        {
+          ident: "p1a",
+          species: "pidgeot",
+          type1: "Normal",
+          type2: "Flying",
+          hp: 100,
+          maxhp: 100,
+          speed: 300,
+          attack: 10,
+          defense: 10,
+          sp_attack: 10,
+          sp_defense: 10,
+          ability: "keeneye",
+          volatile_status: ["uproar"],
+        },
+        {
+          ident: "p1b",
+          species: "pidgeot",
+          type1: "Normal",
+          type2: "Flying",
+          hp: 100,
+          maxhp: 100,
+          speed: 200,
+          attack: 10,
+          defense: 10,
+          sp_attack: 10,
+          sp_defense: 10,
+          ability: "keeneye",
+        },
+      ],
+      team: [],
+      tailwind: false,
+      tailwind_turns: 0,
+      aurora_veil_turns: 0,
+    },
+    p2: {
+      active: [
+        {
+          ident: "p2a",
+          species: "raichu",
+          type1: "Electric",
+          hp: 100,
+          maxhp: 100,
+          speed: 250,
+          attack: 10,
+          defense: 10,
+          sp_attack: 10,
+          sp_defense: 10,
+          ability: "static",
+        },
+        {
+          ident: "p2b",
+          species: "pidgeot",
+          type1: "Normal",
+          type2: "Flying",
+          hp: 100,
+          maxhp: 100,
+          speed: 200,
+          attack: 10,
+          defense: 10,
+          sp_attack: 10,
+          sp_defense: 10,
+          ability: "keeneye",
+        },
+      ],
+      team: [],
+      tailwind: false,
+      tailwind_turns: 0,
+      aurora_veil_turns: 0,
+    },
+  });
+
+  engine.start_battle();
+  // With initial uproar_turns: 0 in set_state, at end of turn it ends
+  const logs = engine.run_turn({
+    p1a: "sleeptalk",
+    p1a_target: 0,
+    p2a: "sleeptalk",
+    p2a_target: 0,
+    p1b: "sleeptalk",
+    p1b_target: 0,
+    p2b: "sleeptalk",
+    p2b_target: 0,
+  });
+
+  const state = engine.get_state();
+  expect(state.p1.active[0].volatile_status).not.toContain("uproar");
+
+  const events = logs.events.map((e) => e.event);
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "VolatileStatusEnd",
+        target: { player: 1, slot: 0 },
+        volatile_status: "Uproar",
+      }),
+    ]),
+  );
+});

@@ -82,6 +82,13 @@ pub struct FutureSightAttack {
 }
 
 #[derive(Clone, Debug)]
+pub struct WishEffect {
+    pub target: PokemonIdent,
+    pub heal_amount: i32,
+    pub turns_left: u8,
+}
+
+#[derive(Clone, Debug)]
 pub struct Battle {
     pub turn_state: TurnState,
     pub p1: Side,
@@ -101,6 +108,7 @@ pub struct Battle {
     pub event_queue: std::collections::VecDeque<(EventId, EventContext)>,
     pub turn_actions: Vec<crate::sim::action::Action>,
     pub future_sight_attacks: Vec<FutureSightAttack>,
+    pub wish_effects: Vec<WishEffect>,
 }
 
 impl Default for Battle {
@@ -171,6 +179,7 @@ impl Battle {
             event_queue: std::collections::VecDeque::new(),
             turn_actions: vec![],
             future_sight_attacks: vec![],
+            wish_effects: vec![],
         }
     }
 
@@ -464,6 +473,18 @@ impl Battle {
 
             if is_type_immune {
                 return;
+            }
+
+            if status == Status::Sleep {
+                let has_uproar = self
+                    .p1
+                    .active
+                    .iter()
+                    .chain(self.p2.active.iter())
+                    .any(|p| p.hp > 0 && p.volatile_status.contains(&VolatileStatus::Uproar));
+                if has_uproar {
+                    return;
+                }
             }
         }
 

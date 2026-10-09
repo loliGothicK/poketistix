@@ -267,8 +267,63 @@ impl EndOfTurnPhase {
 
         // =========================================================================
         // Step 4: みらいよち / はめつのねがい (Future Sight / Doom Desire)
-        // Handled at start of turn / pending queue in turn.rs
         // =========================================================================
+        {
+            let mut pending = std::mem::take(&mut battle.future_sight_attacks);
+            for attack in &mut pending {
+                if attack.turns_left > 0 {
+                    attack.turns_left -= 1;
+                }
+            }
+            for attack in pending.drain(..) {
+                if attack.turns_left == 0 {
+                    if battle.get_pokemon(attack.target).is_some_and(|p| p.hp > 0) {
+                        battle.section_take_damage(attack.target, attack.damage);
+                        battle.log.push(crate::sim::log::BattleLogEvent::new(
+                            crate::sim::log::BattleLog::Damage {
+                                target: attack.target,
+                                damage: attack.damage,
+                                is_crit: false,
+                                effectiveness: 0,
+                                absorbed: false,
+                                from_effect: Some("Future Sight".to_string()),
+                            },
+                        ));
+                    }
+                } else {
+                    battle.future_sight_attacks.push(attack);
+                }
+            }
+        }
+
+        // =========================================================================
+        // Step 5: ねがいごと (Wish)
+        // =========================================================================
+        {
+            let mut pending = std::mem::take(&mut battle.wish_effects);
+            for wish in &mut pending {
+                if wish.turns_left > 0 {
+                    wish.turns_left -= 1;
+                }
+            }
+            for wish in pending.drain(..) {
+                if wish.turns_left == 0 {
+                    if let Some(target) = battle.get_pokemon(wish.target) {
+                        if target.hp.into_inner() > 0 && target.hp < target.maxhp {
+                            battle.log.push(crate::sim::log::BattleLogEvent::new(
+                                crate::sim::log::BattleLog::Activate {
+                                    target: wish.target,
+                                    effect: "Wish".to_string(),
+                                },
+                            ));
+                            battle.section_heal(wish.target, wish.heal_amount.into());
+                        }
+                    }
+                } else {
+                    battle.wish_effects.push(wish);
+                }
+            }
+        }
 
         // =========================================================================
         // Step 6: イベントブロック (その1) (Event Block 1)
@@ -304,7 +359,11 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 6.c: うるおいボディ (Hydration)
+        // Step 6.c イベントブロック (#1)
+        // =========================================================================
+
+        // =========================================================================
+        // Step 6.c.1: うるおいボディ (Hydration)
         // =========================================================================
         {
             let is_rain =
@@ -364,6 +423,52 @@ impl EndOfTurnPhase {
                         effect: "ability: Shed Skin".to_string(),
                     }));
                     battle.section_cure_status(ident);
+                }
+            }
+        }
+
+        // =========================================================================
+        // Step 6.c.3: いやしのこころ (Healer)
+        // =========================================================================
+        {
+            let sec_config = battle.rng_config.as_ref().and_then(|c| c.secondary.clone());
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                let mut cure_ally = None;
+                if let Some(p) = battle.get_pokemon(ident)
+                    && p.hp.into_inner() > 0
+                    && p.ability.as_ref().map(|a| a.as_str()) == Some("healer")
+                {
+                    let ally_ident = PokemonIdent {
+                        player: ident.player,
+                        slot: 1 - ident.slot,
+                    };
+                    if let Some(ally) = battle.get_pokemon(ally_ident)
+                        && ally.hp.into_inner() > 0
+                        && ally.status.is_some()
+                    {
+                        let trigger = if let Some(sec) = &sec_config {
+                            match sec.as_str() {
+                                "always" => true,
+                                "never" => false,
+                                _ => true,
+                            }
+                        } else {
+                            rand::rng().random_range(1..=100) <= 30
+                        };
+
+                        if trigger {
+                            cure_ally = Some(ally_ident);
+                        }
+                    }
+                }
+
+                if let Some(ally_ident) = cure_ally {
+                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                        target: ident,
+                        effect: "ability: Healer".to_string(),
+                    }));
+                    battle.section_cure_status(ally_ident);
                 }
             }
         }
@@ -572,7 +677,34 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 16: たこがため (Octolock)
+        // Step 16: しおづけ (Salt Cure)
+        // 1/8 damage, or 1/4 if Water or Steel type
+        // ※実機検証順: しおづけ -> たこがため -> あめまみれ -> 状態解除 -> ねむけ -> ほろびのうた
+        // =========================================================================
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                let damage = battle.get_pokemon(ident).and_then(|p| {
+                    if p.hp.into_inner() == 0
+                        || Self::is_magic_guard(p)
+                        || !p.volatile_status.contains(&VolatileStatus::Saltcure)
+                    {
+                        return None;
+                    }
+                    let is_water_or_steel = [Some(p.type1), p.type2, p.added_type]
+                        .iter()
+                        .any(|t| matches!(t, Some(Type::Water | Type::Steel)));
+                    let divisor = if is_water_or_steel { 4 } else { 8 };
+                    Some(std::cmp::max(1, p.maxhp.into_inner() / divisor))
+                });
+                if let Some(damage) = damage {
+                    Self::apply_residual_damage(battle, ident, damage, Some("Salt Cure"));
+                }
+            }
+        }
+
+        // =========================================================================
+        // Step 17: たこがため (Octolock)
         // Def and SpD drop by 1 stage
         // =========================================================================
         {
@@ -594,7 +726,7 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 16.5: みずあめボム (Syrup Bomb)
+        // Step 18: あめまみれ / みずあめボム (Syrup Bomb)
         // Drops Speed by 1 stage; lasts 3 turns
         // =========================================================================
         {
@@ -632,33 +764,10 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 17: しおづけ (Salt Cure)
-        // 1/8 damage, or 1/4 if Water or Steel type
+        // Step 19〜23: 状態変化の終了 (Volatile status ends)
+        // ちょうはつ(19) -> アンコール(20) -> かなしばり(21) -> でんじふゆう(22) -> テレキネシス(23)
         // =========================================================================
-        {
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                let damage = battle.get_pokemon(ident).and_then(|p| {
-                    if p.hp.into_inner() == 0
-                        || Self::is_magic_guard(p)
-                        || !p.volatile_status.contains(&VolatileStatus::Saltcure)
-                    {
-                        return None;
-                    }
-                    let is_water_or_steel = [Some(p.type1), p.type2, p.added_type]
-                        .iter()
-                        .any(|t| matches!(t, Some(Type::Water | Type::Steel)));
-                    let divisor = if is_water_or_steel { 4 } else { 8 };
-                    Some(std::cmp::max(1, p.maxhp.into_inner() / divisor))
-                });
-                if let Some(damage) = damage {
-                    Self::apply_residual_damage(battle, ident, damage, Some("Salt Cure"));
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 18: ちょうはつの終了 (Taunt end)
+        // Step 19: ちょうはつの終了 (Taunt end)
         // =========================================================================
         {
             let ordered = Self::get_speed_ordered_active_pokemon(battle);
@@ -860,7 +969,7 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 28: はねやすめ終了 (Roost Flying type restore) & ひるみ解除
+        // Step 28: はねやすめ状態の終了 (Roost Flying type restore) & ひるみ解除
         // =========================================================================
         for p in battle
             .p1
@@ -873,195 +982,8 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 28.5: はんすう (Cud Chew)
-        // =========================================================================
-        {
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                let mut should_activate = false;
-                let mut eaten_berry = None;
-                if let Some(p) = battle.get_pokemon_mut(ident)
-                    && p.hp.into_inner() > 0
-                    && p.cud_chew_berry.is_some()
-                {
-                    p.cud_chew_counter = p.cud_chew_counter.saturating_sub(1);
-                    if p.cud_chew_counter == 0 {
-                        eaten_berry = p.cud_chew_berry.take();
-                        should_activate = true;
-                    }
-                }
-                if should_activate && let Some(berry) = eaten_berry {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
-                        target: ident,
-                        effect: "ability: Cud Chew".to_string(),
-                    }));
-                    battle.log.push(BattleLogEvent::new(BattleLog::EndItem {
-                        target: ident,
-                        item: berry.to_string(),
-                    }));
-                    crate::sim::items::apply_berry_effect(battle, ident, berry.as_ref());
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 28.6: しゅうかく (Harvest)
-        // =========================================================================
-        {
-            let is_sun = battle.weather == Some(Weather::HashSunlight)
-                || battle.weather == Some(Weather::ExtremelyHarshSunlight);
-            let sec_config = battle.rng_config.as_ref().and_then(|c| c.secondary.clone());
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                let mut restored_berry = None;
-                if let Some(p) = battle.get_pokemon_mut(ident)
-                    && p.hp.into_inner() > 0
-                    && p.ability.as_ref().map(|a| a.as_str()) == Some("harvest")
-                    && p.item.is_none()
-                    && p.last_consumed_berry.is_some()
-                {
-                    let trigger = if is_sun {
-                        true
-                    } else if let Some(sec) = &sec_config {
-                        match sec.as_str() {
-                            "always" => true,
-                            "never" => false,
-                            _ => true,
-                        }
-                    } else {
-                        rand::rng().random_range(1..=100) <= 50
-                    };
-
-                    if trigger {
-                        restored_berry = p.last_consumed_berry;
-                        p.item = restored_berry;
-                    }
-                }
-
-                if let Some(berry) = restored_berry {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Text {
-                        message: format!("|-item|{}|{}|[from] ability: Harvest", ident, berry),
-                    }));
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 28.7: いやしのこころ (Healer)
-        // =========================================================================
-        {
-            let sec_config = battle.rng_config.as_ref().and_then(|c| c.secondary.clone());
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                let mut cure_ally = None;
-                if let Some(p) = battle.get_pokemon(ident)
-                    && p.hp.into_inner() > 0
-                    && p.ability.as_ref().map(|a| a.as_str()) == Some("healer")
-                {
-                    let ally_ident = PokemonIdent {
-                        player: ident.player,
-                        slot: 1 - ident.slot,
-                    };
-                    if let Some(ally) = battle.get_pokemon(ally_ident)
-                        && ally.hp.into_inner() > 0
-                        && ally.status.is_some()
-                    {
-                        let trigger = if let Some(sec) = &sec_config {
-                            match sec.as_str() {
-                                "always" => true,
-                                "never" => false,
-                                _ => true,
-                            }
-                        } else {
-                            rand::rng().random_range(1..=100) <= 30
-                        };
-
-                        if trigger {
-                            cure_ally = Some(ally_ident);
-                        }
-                    }
-                }
-
-                if let Some(ally_ident) = cure_ally {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
-                        target: ident,
-                        effect: "ability: Healer".to_string(),
-                    }));
-                    battle.section_cure_status(ally_ident);
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 28.8: はらぺこスイッチ (Hunger Switch)
-        // =========================================================================
-        {
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                if let Some(p) = battle.get_pokemon_mut(ident)
-                    && p.hp.into_inner() > 0
-                    && p.ability.as_ref().map(|a| a.as_str()) == Some("hungerswitch")
-                {
-                    if p.species.contains("hangry") {
-                        p.species = "morpeko-full-belly".to_string();
-                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
-                            message: format!("|-formechange|{}|Morpeko", ident),
-                        }));
-                    } else {
-                        p.species = "morpeko-hangry".to_string();
-                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
-                            message: format!("|-formechange|{}|Morpeko-Hangry", ident),
-                        }));
-                    }
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 28.9: ムラっけ (Moody) & Speed Boost
-        // =========================================================================
-        {
-            let ordered = Self::get_speed_ordered_active_pokemon(battle);
-            for ident in ordered {
-                let has_moody = battle.get_pokemon(ident).is_some_and(|p| {
-                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("moody")
-                });
-                if has_moody {
-                    let boost_stat = Stat::Atk;
-                    let drop_stat = Stat::Spe;
-                    battle.apply_stat_change(
-                        ident.player,
-                        ident.slot,
-                        vec![(boost_stat, 2)],
-                        ident.player,
-                        Some("moody"),
-                    );
-                    battle.apply_stat_change(
-                        ident.player,
-                        ident.slot,
-                        vec![(drop_stat, -1)],
-                        ident.player,
-                        Some("moody"),
-                    );
-                }
-                let has_speedboost = battle.get_pokemon(ident).is_some_and(|p| {
-                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("speedboost")
-                });
-                if has_speedboost {
-                    battle.apply_stat_change(
-                        ident.player,
-                        ident.slot,
-                        vec![(Stat::Spe, 1)],
-                        ident.player,
-                        Some("speedboost"),
-                    );
-                }
-            }
-        }
-
-        // =========================================================================
-        // Step 30: 片側の場の状態の継続/終了 (Side conditions)
-        // Tailwind, Reflect, Light Screen, Aurora Veil, Safeguard
+        // Step 29: 片側の場の状態の継続/終了 (Side conditions)
+        // おいかぜ (Tailwind) 等
         // =========================================================================
         let sides = [(1, &mut battle.p1), (2, &mut battle.p2)];
         for (player, side) in sides {
@@ -1080,8 +1002,9 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 31: 全体の場の状態の継続/終了 (Whole-field conditions)
-        // Trick Room, Gravity, Wonder Room, Magic Room, Terrains, Fairy Lock
+        // Step 30: 全体の場の状態の継続/終了 (Whole-field conditions)
+        // じゅうりょく(Gravity)、マジックルーム(Magic Room)、ワンダールーム(Wonder Room)、
+        // フィールド(Terrain)、フェアリーロック(Fairy Lock)
         // =========================================================================
         if battle.gravity_turns_left > 0 {
             battle.gravity_turns_left -= 1;
@@ -1140,6 +1063,214 @@ impl EndOfTurnPhase {
                         message: "-fieldend|move: Fairy Lock".to_string(),
                     },
                 ));
+            }
+        }
+
+        // =========================================================================
+        // Step 31: イベントブロック（#2）
+        // a. さわぐ
+        // b. ねむりによるあばれるの中断
+        // c. かそく/ムラっけ/はんすう
+        // d. くっつきバリ/どくどくだま/かえんだま（※Pokémon Champions Regulation M-C 時点未実装）
+        // e. ものひろい/しゅうかく
+        // =========================================================================
+
+        // --- a. さわぐ (Uproar) ---
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                let mut ended = false;
+                let mut upkeep = false;
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.hp.into_inner() > 0
+                    && p.volatile_status.contains(&VolatileStatus::Uproar)
+                {
+                    if p.uproar_turns > 0 {
+                        p.uproar_turns -= 1;
+                    }
+                    if p.uproar_turns == 0 {
+                        p.volatile_status.retain(|v| v != &VolatileStatus::Uproar);
+                        ended = true;
+                    } else {
+                        upkeep = true;
+                    }
+                }
+
+                if ended {
+                    battle
+                        .log
+                        .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
+                            target: ident,
+                            volatile_status: "Uproar".to_string(),
+                        }));
+                } else if upkeep {
+                    battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+                        target: ident,
+                        effect: "uproar".to_string(),
+                    }));
+                }
+            }
+        }
+
+        // --- b. ねむりによるあばれるの中断 (Interruption of thrash/outrage due to sleep) ---
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                let mut interrupted = false;
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.hp.into_inner() > 0
+                    && p.volatile_status.contains(&VolatileStatus::Lockedmove)
+                    && p.status == Some(Status::Sleep)
+                {
+                    p.volatile_status
+                        .retain(|v| v != &VolatileStatus::Lockedmove);
+                    p.locked_move_turns = 0;
+                    interrupted = true;
+                }
+
+                if interrupted {
+                    battle
+                        .log
+                        .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
+                            target: ident,
+                            volatile_status: "lockedmove".to_string(),
+                        }));
+                }
+            }
+        }
+
+        // --- c. かそく / ムラっけ / はんすう (Speed Boost / Moody / Cud Chew) ---
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                // はんすう (Cud Chew)
+                let mut should_activate = false;
+                let mut eaten_berry = None;
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.hp.into_inner() > 0
+                    && p.cud_chew_berry.is_some()
+                {
+                    p.cud_chew_counter = p.cud_chew_counter.saturating_sub(1);
+                    if p.cud_chew_counter == 0 {
+                        eaten_berry = p.cud_chew_berry.take();
+                        should_activate = true;
+                    }
+                }
+                if should_activate && let Some(berry) = eaten_berry {
+                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                        target: ident,
+                        effect: "ability: Cud Chew".to_string(),
+                    }));
+                    battle.log.push(BattleLogEvent::new(BattleLog::EndItem {
+                        target: ident,
+                        item: berry.to_string(),
+                    }));
+                    crate::sim::items::apply_berry_effect(battle, ident, berry.as_ref());
+                }
+
+                // ムラっけ (Moody)
+                let has_moody = battle.get_pokemon(ident).is_some_and(|p| {
+                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("moody")
+                });
+                if has_moody {
+                    let boost_stat = Stat::Atk;
+                    let drop_stat = Stat::Spe;
+                    battle.apply_stat_change(
+                        ident.player,
+                        ident.slot,
+                        vec![(boost_stat, 2)],
+                        ident.player,
+                        Some("moody"),
+                    );
+                    battle.apply_stat_change(
+                        ident.player,
+                        ident.slot,
+                        vec![(drop_stat, -1)],
+                        ident.player,
+                        Some("moody"),
+                    );
+                }
+
+                // かそく (Speed Boost)
+                let has_speedboost = battle.get_pokemon(ident).is_some_and(|p| {
+                    p.hp > 0 && p.ability.as_ref().map(|a| a.as_str()) == Some("speedboost")
+                });
+                if has_speedboost {
+                    battle.apply_stat_change(
+                        ident.player,
+                        ident.slot,
+                        vec![(Stat::Spe, 1)],
+                        ident.player,
+                        Some("speedboost"),
+                    );
+                }
+            }
+        }
+
+        // d. くっつきバリ / どくどくだま / かえんだま（※Pokémon Champions環境に非存在のため実装不要）
+
+        // e. ものひろい / しゅうかく (Pickup / Harvest)
+        {
+            let is_sun = battle.weather == Some(Weather::HashSunlight)
+                || battle.weather == Some(Weather::ExtremelyHarshSunlight);
+            let sec_config = battle.rng_config.as_ref().and_then(|c| c.secondary.clone());
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                let mut restored_berry = None;
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.hp.into_inner() > 0
+                    && p.ability.as_ref().map(|a| a.as_str()) == Some("harvest")
+                    && p.item.is_none()
+                    && p.last_consumed_berry.is_some()
+                {
+                    let trigger = if is_sun {
+                        true
+                    } else if let Some(sec) = &sec_config {
+                        match sec.as_str() {
+                            "always" => true,
+                            "never" => false,
+                            _ => true,
+                        }
+                    } else {
+                        rand::rng().random_range(1..=100) <= 50
+                    };
+
+                    if trigger {
+                        restored_berry = p.last_consumed_berry;
+                        p.item = restored_berry;
+                    }
+                }
+
+                if let Some(berry) = restored_berry {
+                    battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                        message: format!("|-item|{}|{}|[from] ability: Harvest", ident, berry),
+                    }));
+                }
+            }
+        }
+
+        // =========================================================================
+        // Step 32: はらぺこスイッチ (Hunger Switch)
+        // =========================================================================
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.hp.into_inner() > 0
+                    && p.ability.as_ref().map(|a| a.as_str()) == Some("hungerswitch")
+                {
+                    if p.species.contains("hangry") {
+                        p.species = "morpeko-full-belly".to_string();
+                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                            message: format!("|-formechange|{}|Morpeko", ident),
+                        }));
+                    } else {
+                        p.species = "morpeko-hangry".to_string();
+                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                            message: format!("|-formechange|{}|Morpeko-Hangry", ident),
+                        }));
+                    }
+                }
             }
         }
     }
