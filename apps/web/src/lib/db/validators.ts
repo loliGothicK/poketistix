@@ -2,7 +2,11 @@ import * as v from "valibot";
 import { ValidateResult, anyhow } from "@/errors/anyhow/error";
 import { either } from "fp-ts";
 
-const dateString = v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"));
+const dateString = v.pipe(
+  v.string(),
+  v.trim(),
+  v.regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD"),
+);
 
 const handleValibotError = <T>(
   result: v.SafeParseResult<v.BaseSchema<unknown, T, v.BaseIssue<unknown>>>,

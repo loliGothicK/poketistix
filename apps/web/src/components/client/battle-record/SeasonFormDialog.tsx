@@ -80,16 +80,40 @@ function SeasonFormContent({
         }
       : emptyState,
   );
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const normalizeDate = (val: string): string => {
+    const trimmed = val.trim();
+    if (!trimmed) return "";
+    const match = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/.exec(trimmed);
+    if (match) {
+      const [, y, m, d] = match;
+      return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
+    return trimmed;
+  };
+
+  const normalizedStartedAt = normalizeDate(state.startedAt);
+  const normalizedEndedAt = normalizeDate(state.endedAt);
+  const isDateOrderInvalid =
+    normalizedStartedAt !== "" &&
+    normalizedEndedAt !== "" &&
+    normalizedEndedAt < normalizedStartedAt;
 
   const handleSubmit = async () => {
-    if (state.name.trim().length === 0) return;
-    await onSubmit({
-      name: state.name.trim(),
-      format: state.format,
-      ruleMark: state.ruleMark.trim() || null,
-      startedAt: state.startedAt || null,
-      endedAt: state.endedAt || null,
-    });
+    if (state.name.trim().length === 0 || isDateOrderInvalid || submitting) return;
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        name: state.name.trim(),
+        format: state.format,
+        ruleMark: state.ruleMark.trim() || null,
+        startedAt: normalizedStartedAt || null,
+        endedAt: normalizedEndedAt || null,
+      });
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -99,6 +123,11 @@ function SeasonFormContent({
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ mt: 1 }}>
+          {submitError && (
+            <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+              {submitError}
+            </Typography>
+          )}
           <TextField
             autoFocus
             size="small"
@@ -106,7 +135,10 @@ function SeasonFormContent({
             required
             label={t("battleRecord.season.name")}
             value={state.name}
-            onChange={(e) => setState((prev) => ({ ...prev, name: e.target.value }))}
+            onChange={(e) => {
+              setSubmitError(null);
+              setState((prev) => ({ ...prev, name: e.target.value }));
+            }}
             slotProps={{ htmlInput: { maxLength: 100 } }}
           />
           <div>
@@ -140,7 +172,10 @@ function SeasonFormContent({
               type="date"
               label={t("battleRecord.season.startedAt")}
               value={state.startedAt}
-              onChange={(e) => setState((prev) => ({ ...prev, startedAt: e.target.value }))}
+              onChange={(e) => {
+                setSubmitError(null);
+                setState((prev) => ({ ...prev, startedAt: e.target.value }));
+              }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
             <TextField
@@ -149,7 +184,14 @@ function SeasonFormContent({
               type="date"
               label={t("battleRecord.season.endedAt")}
               value={state.endedAt}
-              onChange={(e) => setState((prev) => ({ ...prev, endedAt: e.target.value }))}
+              error={isDateOrderInvalid}
+              helperText={
+                isDateOrderInvalid ? t("battleRecord.season.dateRangeInvalid") : undefined
+              }
+              onChange={(e) => {
+                setSubmitError(null);
+                setState((prev) => ({ ...prev, endedAt: e.target.value }));
+              }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Stack>
@@ -162,7 +204,7 @@ function SeasonFormContent({
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={submitting || state.name.trim().length === 0}
+          disabled={submitting || state.name.trim().length === 0 || isDateOrderInvalid}
         >
           {t("common.save")}
         </Button>

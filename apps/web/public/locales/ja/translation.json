@@ -305,6 +305,7 @@
       "startedAt": "開始日",
       "endedAt": "終了日",
       "emptyPrompt": "シーズンを作成して対戦の記録を始めましょう。",
+      "dateRangeInvalid": "終了日は開始日以降の日付を指定してください",
       "deleteTitle": "シーズンを削除",
       "deleteConfirm": "「{{name}}」とそのすべての対戦記録を削除しますか？この操作は取り消せません。"
     },

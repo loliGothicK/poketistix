@@ -122,7 +122,14 @@ export async function PATCH(
                   .where(and(eq(teams.id, effectiveTeamId), eq(teams.userId, userId)))
                   .limit(1);
                 if (!existingTeam) {
-                  effectiveTeamId = null;
+                  await tx
+                    .insert(teams)
+                    .values({
+                      id: effectiveTeamId,
+                      userId,
+                      name: "Local Team",
+                    })
+                    .onConflictDoNothing();
                 }
               }
 
@@ -142,6 +149,7 @@ export async function PATCH(
                   ...(input.notes !== undefined && { notes: input.notes ?? null }),
                   ...(input.playedAt !== undefined &&
                     input.playedAt !== null && { playedAt: new Date(input.playedAt) }),
+                  updatedAt: new Date(),
                 })
                 .where(and(eq(battleRecords.id, id), eq(battleRecords.userId, userId)))
                 .returning();

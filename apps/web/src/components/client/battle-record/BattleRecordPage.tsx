@@ -499,6 +499,7 @@ export default function BattleRecordPage() {
         message: msg,
         severity: "error",
       });
+      throw err;
     }
   };
 

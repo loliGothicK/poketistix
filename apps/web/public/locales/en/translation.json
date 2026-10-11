@@ -233,6 +233,7 @@
       "startedAt": "Start date",
       "endedAt": "End date",
       "emptyPrompt": "Create a season to start recording battles.",
+      "dateRangeInvalid": "End date must be on or after start date",
       "deleteTitle": "Delete season",
       "deleteConfirm": "Delete \"{{name}}\" and all of its battle records? This cannot be undone."
     },

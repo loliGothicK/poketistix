@@ -18,6 +18,29 @@ export const fetchSeasonsFromServer = async (): Promise<readonly Season[]> => {
   });
 };
 
+const formatErrorMessage = (errorText: string, defaultMessage: string): string => {
+  try {
+    const parsed = JSON.parse(errorText);
+    if (parsed.error) {
+      if (Array.isArray(parsed.error)) {
+        return parsed.error
+          .map((issue: { path?: readonly (string | number)[]; message?: string }) => {
+            const pathStr = issue.path && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+            return `${pathStr}${issue.message ?? "Validation error"}`;
+          })
+          .join(", ");
+      }
+      if (typeof parsed.error === "string") {
+        return parsed.error;
+      }
+      return JSON.stringify(parsed.error);
+    }
+  } catch {
+    // ignore
+  }
+  return errorText.trim().length > 0 ? errorText : defaultMessage;
+};
+
 export const createSeasonOnServer = async (input: SeasonInput): Promise<Season> => {
   return withSpan("ui.seasons.create", async (span) => {
     const res = await fetch("/api/seasons", {
@@ -28,19 +51,11 @@ export const createSeasonOnServer = async (input: SeasonInput): Promise<Season> 
     if (!res.ok) {
       const errorText = await res.text();
       span.setAttribute("error", true);
-      let errorMsg = errorText;
-      try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error) {
-          errorMsg = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
-        }
-      } catch {
-        // ignore
-      }
+      const errorMsg = formatErrorMessage(errorText, "Failed to create season");
       Sentry.captureException(new Error("Failed to create season"), {
         extra: { status: res.status, errorText, input },
       });
-      throw new Error(`Failed to create season: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     return res.json() as Promise<Season>;
   });
@@ -56,19 +71,11 @@ export const updateSeasonOnServer = async (id: string, input: SeasonUpdate): Pro
     if (!res.ok) {
       const errorText = await res.text();
       span.setAttribute("error", true);
-      let errorMsg = errorText;
-      try {
-        const parsed = JSON.parse(errorText);
-        if (parsed.error) {
-          errorMsg = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
-        }
-      } catch {
-        // ignore
-      }
+      const errorMsg = formatErrorMessage(errorText, "Failed to update season");
       Sentry.captureException(new Error("Failed to update season"), {
         extra: { status: res.status, errorText, id, input },
       });
-      throw new Error(`Failed to update season: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     return res.json() as Promise<Season>;
   });
