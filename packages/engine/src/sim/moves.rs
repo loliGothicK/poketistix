@@ -999,11 +999,10 @@ pub fn handle_move_target_effect(
         if let Some(user) = battle.get_pokemon_mut(PokemonIdent {
             player: source_player,
             slot: source_slot,
-        }) {
-            if !user.volatile_status.contains(&VolatileStatus::Lockedmove) {
-                user.volatile_status.push(VolatileStatus::Lockedmove);
-                user.locked_move_turns = 3;
-            }
+        }) && !user.volatile_status.contains(&VolatileStatus::Lockedmove)
+        {
+            user.volatile_status.push(VolatileStatus::Lockedmove);
+            user.locked_move_turns = 3;
         }
         battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
             target: PokemonIdent {
@@ -1066,11 +1065,10 @@ pub fn handle_move_target_effect(
         if let Some(user) = battle.get_pokemon_mut(PokemonIdent {
             player: source_player,
             slot: source_slot,
-        }) {
-            if !user.volatile_status.contains(&VolatileStatus::Uproar) {
-                user.volatile_status.push(VolatileStatus::Uproar);
-                user.uproar_turns = 3;
-            }
+        }) && !user.volatile_status.contains(&VolatileStatus::Uproar)
+        {
+            user.volatile_status.push(VolatileStatus::Uproar);
+            user.uproar_turns = 3;
         }
         battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
             target: PokemonIdent {

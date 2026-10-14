@@ -308,16 +308,17 @@ impl EndOfTurnPhase {
             }
             for wish in pending.drain(..) {
                 if wish.turns_left == 0 {
-                    if let Some(target) = battle.get_pokemon(wish.target) {
-                        if target.hp.into_inner() > 0 && target.hp < target.maxhp {
-                            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                                crate::sim::log::BattleLog::Activate {
-                                    target: wish.target,
-                                    effect: "Wish".to_string(),
-                                },
-                            ));
-                            battle.section_heal(wish.target, wish.heal_amount.into());
-                        }
+                    if let Some(target) = battle.get_pokemon(wish.target)
+                        && target.hp.into_inner() > 0
+                        && target.hp < target.maxhp
+                    {
+                        battle.log.push(crate::sim::log::BattleLogEvent::new(
+                            crate::sim::log::BattleLog::Activate {
+                                target: wish.target,
+                                effect: "Wish".to_string(),
+                            },
+                        ));
+                        battle.section_heal(wish.target, wish.heal_amount.into());
                     }
                 } else {
                     battle.wish_effects.push(wish);

@@ -170,26 +170,25 @@ impl Battle {
             .as_ref()
             .map(|m| matches!(m.category(), Category::Physical | Category::Special))
             .unwrap_or(false);
-        if let Some(attacker_p) = self.get_pokemon_mut(attacker_ident) {
-            if attacker_p.ability.as_ref().map(|a| a.as_str()) == Some("stancechange") {
-                if is_attacking_move && attacker_p.species == "aegislash-shield" {
-                    attacker_p.species = "aegislash-blade".to_string();
-                    attacker_p.swap_offensive_defensive_stats();
-                    self.log.push(BattleLogEvent::new(BattleLog::FormeChange {
-                        target: attacker_ident,
-                        species: "aegislash-blade".to_string(),
-                        from_effect: "ability: Stance Change".to_string(),
-                    }));
-                } else if action.move_id == "kingsshield" && attacker_p.species == "aegislash-blade"
-                {
-                    attacker_p.species = "aegislash-shield".to_string();
-                    attacker_p.swap_offensive_defensive_stats();
-                    self.log.push(BattleLogEvent::new(BattleLog::FormeChange {
-                        target: attacker_ident,
-                        species: "aegislash-shield".to_string(),
-                        from_effect: "ability: Stance Change".to_string(),
-                    }));
-                }
+        if let Some(attacker_p) = self.get_pokemon_mut(attacker_ident)
+            && attacker_p.ability.as_ref().map(|a| a.as_str()) == Some("stancechange")
+        {
+            if is_attacking_move && attacker_p.species == "aegislash-shield" {
+                attacker_p.species = "aegislash-blade".to_string();
+                attacker_p.swap_offensive_defensive_stats();
+                self.log.push(BattleLogEvent::new(BattleLog::FormeChange {
+                    target: attacker_ident,
+                    species: "aegislash-blade".to_string(),
+                    from_effect: "ability: Stance Change".to_string(),
+                }));
+            } else if action.move_id == "kingsshield" && attacker_p.species == "aegislash-blade" {
+                attacker_p.species = "aegislash-shield".to_string();
+                attacker_p.swap_offensive_defensive_stats();
+                self.log.push(BattleLogEvent::new(BattleLog::FormeChange {
+                    target: attacker_ident,
+                    species: "aegislash-shield".to_string(),
+                    from_effect: "ability: Stance Change".to_string(),
+                }));
             }
         }
 

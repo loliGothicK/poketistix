@@ -1,6 +1,6 @@
-use crate::ai::evaluator::{BattleResult, check_battle_result, evaluate_for_player};
-use crate::ai::legal_actions::{PlayerAction, get_player_actions};
 use crate::sim::battle::{Battle, TurnState};
+use crate::solver::evaluator::{BattleResult, check_battle_result, evaluate_for_player};
+use crate::solver::legal_actions::{PlayerAction, get_player_actions};
 use rand::RngExt;
 use std::collections::HashMap;
 

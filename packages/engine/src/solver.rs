@@ -1,10 +1,21 @@
+pub mod damage_distribution;
 pub mod evaluator;
+pub mod expecti_engine;
+pub mod gto_solver;
 pub mod ismcts;
 pub mod legal_actions;
+pub mod quasi_random;
 
+pub use damage_distribution::*;
 pub use evaluator::*;
+pub use expecti_engine::*;
+pub use gto_solver::*;
 pub use ismcts::*;
 pub use legal_actions::*;
+pub use quasi_random::*;
+
+#[cfg(test)]
+mod tests_competitive;
 
 #[cfg(test)]
 mod tests {

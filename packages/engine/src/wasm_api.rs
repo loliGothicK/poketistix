@@ -719,7 +719,7 @@ impl Simulator {
         &self,
         player: u8,
     ) -> Result<tsify::Ts<LegalActionsJs>, wasm_bindgen::JsError> {
-        let actions = crate::ai::get_player_actions(&self.battle, player);
+        let actions = crate::solver::get_player_actions(&self.battle, player);
         let js_actions: Vec<PlayerActionJs> = actions
             .into_iter()
             .map(|act| PlayerActionJs {
@@ -743,7 +743,7 @@ impl Simulator {
 
     #[wasm_bindgen]
     pub fn evaluate_state(&self, player: u8) -> f64 {
-        crate::ai::evaluate_for_player(&self.battle, player)
+        crate::solver::evaluate_for_player(&self.battle, player)
     }
 
     #[wasm_bindgen]
@@ -752,11 +752,11 @@ impl Simulator {
         player: u8,
         iterations: Option<usize>,
     ) -> Result<tsify::Ts<AiSearchResultJs>, wasm_bindgen::JsError> {
-        let mut config = crate::ai::IsmctsConfig::default();
+        let mut config = crate::solver::IsmctsConfig::default();
         if let Some(iters) = iterations {
             config.iterations = iters;
         }
-        let ismcts = crate::ai::Ismcts::new(config);
+        let ismcts = crate::solver::Ismcts::new(config);
         let result = ismcts.search(&self.battle, player);
 
         let out = AiSearchResultJs {
@@ -785,14 +785,14 @@ impl Simulator {
         player: u8,
         iterations: Option<usize>,
     ) -> Result<tsify::Ts<PositionAnalysisJs>, wasm_bindgen::JsError> {
-        let mut config = crate::ai::IsmctsConfig::default();
+        let mut config = crate::solver::IsmctsConfig::default();
         if let Some(iters) = iterations {
             config.iterations = iters;
         }
-        let ismcts = crate::ai::Ismcts::new(config);
+        let ismcts = crate::solver::Ismcts::new(config);
         let analysis = ismcts.analyze(&self.battle, player);
 
-        let convert_action = |act: &crate::ai::PlayerAction| PlayerActionJs {
+        let convert_action = |act: &crate::solver::PlayerAction| PlayerActionJs {
             slot_a: SlotActionJs {
                 choice: act.a.choice.clone(),
                 target: act.a.target,
