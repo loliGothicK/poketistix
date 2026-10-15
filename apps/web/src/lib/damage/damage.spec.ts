@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculate } from "./engine";
+import { calculate, preloadDamageEngine, _resetModuleForTesting } from "./engine";
 import { analyze } from "./analysis";
 import { weatherModifier, stabModifier, screenModifier, spreadModifier } from "./modifiers";
 import { M } from "./types";
@@ -66,6 +66,11 @@ describe("damage engine (wasm)", () => {
       immuneOverride: false,
     });
     expect(out.max).toBeGreaterThan(0);
+  });
+
+  it("safely preloads damage engine without throwing", () => {
+    _resetModuleForTesting();
+    expect(() => preloadDamageEngine()).not.toThrow();
   });
 });
 

@@ -8,6 +8,20 @@ type DamageCalcModule = {
 
 let modulePromise: Promise<DamageCalcModule> | null = null;
 
+async function loadWithRetry(retries = 2, delayMs = 300): Promise<DamageCalcModule> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return (await import("@poketistix/damage-calc")) as unknown as DamageCalcModule;
+    } catch (err) {
+      if (attempt === retries) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs * Math.pow(2, attempt)));
+    }
+  }
+  throw new Error("Failed to load damage-calc module");
+}
+
 /**
  * Lazily load and initialise the WASM engine, caching the module across calls.
  *
@@ -16,7 +30,10 @@ let modulePromise: Promise<DamageCalcModule> | null = null;
  */
 async function load(): Promise<DamageCalcModule> {
   if (!modulePromise) {
-    modulePromise = import("@poketistix/damage-calc") as unknown as Promise<DamageCalcModule>;
+    modulePromise = loadWithRetry().catch((err) => {
+      modulePromise = null;
+      throw err;
+    });
   }
   return modulePromise;
 }
@@ -48,5 +65,17 @@ export async function calculate(input: DamageInput): Promise<DamageOutput> {
  * calculation does not pay the wasm-instantiation cost.
  */
 export function preloadDamageEngine(): void {
-  void load();
+  void load().catch((err) => {
+    // Speculative preload: ignore network aborts, offline state, or transient failures
+    // so they do not bubble up as unhandled promise rejections (e.g. Sentry error in Mobile Safari).
+    // The engine will be retried on-demand during subsequent calculations.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[damage-calc] Speculative preload failed (will retry on calculate):", err);
+    }
+  });
+}
+
+/** Reset cached module promise (useful for tests). */
+export function _resetModuleForTesting(): void {
+  modulePromise = null;
 }
