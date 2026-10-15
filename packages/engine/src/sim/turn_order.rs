@@ -47,7 +47,7 @@ impl<'a> TurnOrderResolver<'a> {
         }
 
         let is_p1 = self.battle.p1.active.iter().any(|p| p.ident == pkmn.ident);
-        if (is_p1 && self.battle.p1.tailwind) || (!is_p1 && self.battle.p2.tailwind) {
+        if (is_p1 && self.battle.p1.is_tailwind()) || (!is_p1 && self.battle.p2.is_tailwind()) {
             speed = speed * 2.0;
         }
 

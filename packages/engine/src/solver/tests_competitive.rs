@@ -8,6 +8,7 @@ use crate::solver::quasi_random::BattleChanceEvent;
 use crate::wasm_api::{InputPokemonData, build_pokemon};
 use damage_calc::calculate_input;
 use damage_calc::types::{DamageInput, Type};
+use std::num::NonZeroU8;
 
 fn make_pokemon(
     ident: &str,
@@ -354,8 +355,7 @@ fn make_full_pokemon(
 #[test]
 fn test_eval_eruption_trick_room_checkmate() {
     let mut battle = Battle::new();
-    battle.trick_room = true;
-    battle.trick_room_turns_left = 3;
+    battle.trick_room = NonZeroU8::new(3);
 
     // P1: エース + 指サポーター + 控え (全員ふんかで確定1発、トリル下でコータスより遅い)
     battle.p1.active.push(make_full_pokemon(
@@ -640,8 +640,7 @@ fn test_eval_rage_powder_grass_immunity() {
 #[test]
 fn test_eval_protect_and_partner_counter() {
     let mut battle = Battle::new();
-    battle.trick_room = true;
-    battle.trick_room_turns_left = 3;
+    battle.trick_room = NonZeroU8::new(3);
 
     // P1: まもる持ちエース + 高耐久水アタッカー (ふんかを耐えて水技で返り討ち)
     battle.p1.active.push(make_full_pokemon(
@@ -724,8 +723,7 @@ fn test_eval_protect_and_partner_counter() {
 #[test]
 fn test_eval_trick_room_last_turn_stall() {
     let mut battle = Battle::new();
-    battle.trick_room = true;
-    battle.trick_room_turns_left = 1;
+    battle.trick_room = NonZeroU8::new(1);
 
     // P1: 素早さで勝る2体がまもる所持
     battle.p1.active.push(make_full_pokemon(

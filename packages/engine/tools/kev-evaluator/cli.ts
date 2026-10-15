@@ -91,6 +91,7 @@ async function main() {
       allTestCases.push(...tcs);
     } catch (err) {
       console.error(`\x1b[31m[ERROR]\x1b[0m Failed parsing ${filePath}:`, err);
+      throw err;
     }
   }
 
@@ -148,6 +149,7 @@ async function main() {
         console.error(
           `\x1b[31m[ERROR]\x1b[0m [${completedCount}/${totalTests}] Failed evaluating ${tc.filePath}:${tc.startLine}: ${message}`,
         );
+        throw err;
       }
     }
   });

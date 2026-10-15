@@ -1,5 +1,5 @@
 use crate::sim::battle::Battle;
-use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::sim::log::BattleLog;
 use crate::sim::pokemon::PokemonIdent;
 use pkmn_meta::types::*;
 
@@ -107,10 +107,10 @@ pub fn section_transform(
     }
 
     // Log transform activation
-    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+    battle.log.push(BattleLog::Activate {
         target: user_ident,
         effect: "Transform".to_string(),
-    }));
+    });
 
     // Trigger on-entry ability of copied ability
     if target_ability.is_some() {

@@ -1,5 +1,5 @@
 use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent, Stat};
-use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::sim::log::BattleLog;
 use crate::sim::turn_order::TurnOrderResolver;
 use pkmn_meta::types::*;
 use rand::RngExt;
@@ -25,16 +25,14 @@ impl EndOfTurnPhase {
         if let Some(p) = battle.get_pokemon_mut(ident) {
             p.hp = (p.hp.into_inner() - damage).max(0).into();
         }
-        battle.log.push(crate::sim::log::BattleLogEvent::new(
-            crate::sim::log::BattleLog::Damage {
-                target: ident,
-                damage,
-                is_crit: false,
-                effectiveness: 0,
-                absorbed: false,
-                from_effect: from_effect.map(str::to_string),
-            },
-        ));
+        battle.log.push(crate::sim::log::BattleLog::Damage {
+            target: ident,
+            damage,
+            is_crit: false,
+            effectiveness: 0,
+            absorbed: false,
+            from_effect: from_effect.map(str::to_string),
+        });
     }
 
     /// 1/16 max HP heal (Big Root boosted) for pokemon holding the given volatile status.
@@ -80,7 +78,7 @@ impl EndOfTurnPhase {
             }
         }
 
-        let is_trick_room = battle.trick_room;
+        let is_trick_room = battle.is_trick_room();
         active.sort_by(|a, b| {
             if a.0 != b.0 {
                 if is_trick_room {
@@ -123,24 +121,20 @@ impl EndOfTurnPhase {
             if battle.weather_turns_left == 0 {
                 battle.weather = None;
                 battle.update_forecast();
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::WeatherChange {
-                        weather: "none".to_string(),
-                        is_start: false,
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::WeatherChange {
+                    weather: "none".to_string(),
+                    is_start: false,
+                });
             } else if let Some(w) = &battle.weather {
                 let log_w = if *w == Weather::Snow {
                     "Snowscape".to_string()
                 } else {
                     w.to_string()
                 };
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::WeatherChange {
-                        weather: log_w,
-                        is_start: false,
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::WeatherChange {
+                    weather: log_w,
+                    is_start: false,
+                });
             }
         }
 
@@ -179,16 +173,14 @@ impl EndOfTurnPhase {
                     if !is_immune {
                         let damage = std::cmp::max(1, p.maxhp.into_inner() / 16);
                         battle.section_take_damage(ident, damage);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Damage {
-                                target: ident,
-                                damage,
-                                is_crit: false,
-                                effectiveness: 0,
-                                absorbed: false,
-                                from_effect: Some("Sandstorm".to_string()),
-                            },
-                        ));
+                        battle.log.push(crate::sim::log::BattleLog::Damage {
+                            target: ident,
+                            damage,
+                            is_crit: false,
+                            effectiveness: 0,
+                            absorbed: false,
+                            from_effect: Some("Sandstorm".to_string()),
+                        });
                     }
                 }
             }
@@ -234,16 +226,14 @@ impl EndOfTurnPhase {
                 });
                 if let Some((damage, effect_name)) = dmg_info {
                     battle.section_take_damage(ident, damage);
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::Damage {
-                            target: ident,
-                            damage,
-                            is_crit: false,
-                            effectiveness: 0,
-                            absorbed: false,
-                            from_effect: Some(effect_name.to_string()),
-                        },
-                    ));
+                    battle.log.push(crate::sim::log::BattleLog::Damage {
+                        target: ident,
+                        damage,
+                        is_crit: false,
+                        effectiveness: 0,
+                        absorbed: false,
+                        from_effect: Some(effect_name.to_string()),
+                    });
                 }
             }
         } else if active_weather == Some(Weather::Snow) {
@@ -279,16 +269,14 @@ impl EndOfTurnPhase {
                 if attack.turns_left == 0 {
                     if battle.get_pokemon(attack.target).is_some_and(|p| p.hp > 0) {
                         battle.section_take_damage(attack.target, attack.damage);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Damage {
-                                target: attack.target,
-                                damage: attack.damage,
-                                is_crit: false,
-                                effectiveness: 0,
-                                absorbed: false,
-                                from_effect: Some("Future Sight".to_string()),
-                            },
-                        ));
+                        battle.log.push(crate::sim::log::BattleLog::Damage {
+                            target: attack.target,
+                            damage: attack.damage,
+                            is_crit: false,
+                            effectiveness: 0,
+                            absorbed: false,
+                            from_effect: Some("Future Sight".to_string()),
+                        });
                     }
                 } else {
                     battle.future_sight_attacks.push(attack);
@@ -312,12 +300,10 @@ impl EndOfTurnPhase {
                         && target.hp.into_inner() > 0
                         && target.hp < target.maxhp
                     {
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Activate {
-                                target: wish.target,
-                                effect: "Wish".to_string(),
-                            },
-                        ));
+                        battle.log.push(crate::sim::log::BattleLog::Activate {
+                            target: wish.target,
+                            effect: "Wish".to_string(),
+                        });
                         battle.section_heal(wish.target, wish.heal_amount.into());
                     }
                 } else {
@@ -381,10 +367,10 @@ impl EndOfTurnPhase {
                         cured = true;
                     }
                     if cured {
-                        battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                        battle.log.push(BattleLog::Activate {
                             target: ident,
                             effect: "ability: Hydration".to_string(),
-                        }));
+                        });
                         battle.section_cure_status(ident);
                     }
                 }
@@ -419,10 +405,10 @@ impl EndOfTurnPhase {
                     }
                 }
                 if cured {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    battle.log.push(BattleLog::Activate {
                         target: ident,
                         effect: "ability: Shed Skin".to_string(),
-                    }));
+                    });
                     battle.section_cure_status(ident);
                 }
             }
@@ -465,10 +451,10 @@ impl EndOfTurnPhase {
                 }
 
                 if let Some(ally_ident) = cure_ally {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    battle.log.push(BattleLog::Activate {
                         target: ident,
                         effect: "ability: Healer".to_string(),
-                    }));
+                    });
                     battle.section_cure_status(ally_ident);
                 }
             }
@@ -502,16 +488,14 @@ impl EndOfTurnPhase {
                 {
                     let damage = std::cmp::max(1, p.maxhp.into_inner() / 8);
                     battle.section_take_damage(ident, damage);
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::Damage {
-                            target: ident,
-                            damage,
-                            is_crit: false,
-                            effectiveness: 0,
-                            absorbed: false,
-                            from_effect: Some("Leech Seed".to_string()),
-                        },
-                    ));
+                    battle.log.push(crate::sim::log::BattleLog::Damage {
+                        target: ident,
+                        damage,
+                        is_crit: false,
+                        effectiveness: 0,
+                        absorbed: false,
+                        from_effect: Some("Leech Seed".to_string()),
+                    });
                     let source_item = battle.get_pokemon(source).and_then(|p| p.item);
                     let heal_amount = if source_item == Some(ItemId::BigRoot) {
                         ((damage * 5324) / 4096).max(1)
@@ -526,16 +510,14 @@ impl EndOfTurnPhase {
 
                     if is_ooze {
                         battle.section_take_damage(source, heal_amount);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Damage {
-                                target: source,
-                                damage: heal_amount,
-                                is_crit: false,
-                                effectiveness: 0,
-                                absorbed: false,
-                                from_effect: Some("ability: Liquid Ooze".to_string()),
-                            },
-                        ));
+                        battle.log.push(crate::sim::log::BattleLog::Damage {
+                            target: source,
+                            damage: heal_amount,
+                            is_crit: false,
+                            effectiveness: 0,
+                            absorbed: false,
+                            from_effect: Some("ability: Liquid Ooze".to_string()),
+                        });
                     } else {
                         battle.section_heal(source, heal_amount.into());
                     }
@@ -655,12 +637,12 @@ impl EndOfTurnPhase {
                             p.volatile_status
                                 .retain(|v| v != &VolatileStatus::Partiallytrapped);
                             p.partially_trapped_by = None;
-                            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                                crate::sim::log::BattleLog::VolatileStatusEnd {
+                            battle
+                                .log
+                                .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                     target: ident,
                                     volatile_status: "partiallytrapped".to_string(),
-                                },
-                            ));
+                                });
                         } else if !is_magic_guard {
                             let divisor = if source_item == Some(ItemId::BindingBand) {
                                 6
@@ -781,11 +763,9 @@ impl EndOfTurnPhase {
                     }
                     if p.taunt_turns == 0 {
                         p.volatile_status.retain(|v| v != &VolatileStatus::Taunt);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Text {
-                                message: format!("|-end|{}|move: Taunt", ident),
-                            },
-                        ));
+                        battle.log.push(crate::sim::log::BattleLog::Text {
+                            message: format!("|-end|{}|move: Taunt", ident),
+                        });
                     }
                 }
             }
@@ -806,12 +786,12 @@ impl EndOfTurnPhase {
                     if p.encore_turns == 0 {
                         p.volatile_status.retain(|v| v != &VolatileStatus::Encore);
                         p.encored_move = None;
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::VolatileStatusEnd {
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                 target: ident,
                                 volatile_status: "Encore".to_string(),
-                            },
-                        ));
+                            });
                     }
                 }
             }
@@ -832,12 +812,12 @@ impl EndOfTurnPhase {
                     if p.disable_turns == 0 {
                         p.volatile_status.retain(|v| v != &VolatileStatus::Disable);
                         p.disabled_move = None;
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::VolatileStatusEnd {
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                 target: ident,
                                 volatile_status: "Disable".to_string(),
-                            },
-                        ));
+                            });
                     }
                 }
             }
@@ -858,12 +838,12 @@ impl EndOfTurnPhase {
                     if p.magnet_rise_turns == 0 {
                         p.volatile_status
                             .retain(|v| v != &VolatileStatus::Magnetrise);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::VolatileStatusEnd {
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                 target: ident,
                                 volatile_status: "Magnet Rise".to_string(),
-                            },
-                        ));
+                            });
                     }
                 }
             }
@@ -884,12 +864,12 @@ impl EndOfTurnPhase {
                     if p.telekinesis_turns == 0 {
                         p.volatile_status
                             .retain(|v| v != &VolatileStatus::Telekinesis);
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::VolatileStatusEnd {
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                 target: ident,
                                 volatile_status: "Telekinesis".to_string(),
-                            },
-                        ));
+                            });
                     }
                 }
             }
@@ -955,15 +935,13 @@ impl EndOfTurnPhase {
                 };
 
                 if has_perish {
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::Text {
-                            message: format!("|-start|{}|perish{}", ident, current),
-                        },
-                    ));
+                    battle.log.push(crate::sim::log::BattleLog::Text {
+                        message: format!("|-start|{}|perish{}", ident, current),
+                    });
                     if current == 0 {
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Faint { target: ident },
-                        ));
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::Faint { target: ident });
                     }
                 }
             }
@@ -988,16 +966,13 @@ impl EndOfTurnPhase {
         // =========================================================================
         let sides = [(1, &mut battle.p1), (2, &mut battle.p2)];
         for (player, side) in sides {
-            if side.tailwind_turns > 0 {
-                side.tailwind_turns -= 1;
-                if side.tailwind_turns == 0 {
-                    side.tailwind = false;
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::SideEnd {
-                            player,
-                            effect: "Tailwind".to_string(),
-                        },
-                    ));
+            if let Some(turns) = side.tailwind {
+                side.tailwind = std::num::NonZeroU8::new(turns.get() - 1);
+                if side.tailwind.is_none() {
+                    battle.log.push(crate::sim::log::BattleLog::SideEnd {
+                        player,
+                        effect: "Tailwind".to_string(),
+                    });
                 }
             }
         }
@@ -1007,48 +982,39 @@ impl EndOfTurnPhase {
         // じゅうりょく(Gravity)、マジックルーム(Magic Room)、ワンダールーム(Wonder Room)、
         // フィールド(Terrain)、フェアリーロック(Fairy Lock)
         // =========================================================================
-        if battle.trick_room_turns_left > 0 {
-            battle.trick_room_turns_left -= 1;
-            if battle.trick_room_turns_left == 0 {
-                battle.trick_room = false;
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Text {
-                        message: "|-fieldend|move: Trick Room".to_string(),
-                    },
-                ));
+        if let Some(turns) = battle.trick_room {
+            battle.trick_room = std::num::NonZeroU8::new(turns.get() - 1);
+            if battle.trick_room.is_none() {
+                battle.log.push(crate::sim::log::BattleLog::Text {
+                    message: "|-fieldend|move: Trick Room".to_string(),
+                });
             }
         }
 
         if battle.gravity_turns_left > 0 {
             battle.gravity_turns_left -= 1;
             if battle.gravity_turns_left == 0 {
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Text {
-                        message: "|-fieldend|move: Gravity".to_string(),
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::Text {
+                    message: "|-fieldend|move: Gravity".to_string(),
+                });
             }
         }
 
         if battle.magic_room_turns_left > 0 {
             battle.magic_room_turns_left -= 1;
             if battle.magic_room_turns_left == 0 {
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Text {
-                        message: "|-fieldend|move: Magic Room".to_string(),
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::Text {
+                    message: "|-fieldend|move: Magic Room".to_string(),
+                });
             }
         }
 
         if battle.wonder_room_turns_left > 0 {
             battle.wonder_room_turns_left -= 1;
             if battle.wonder_room_turns_left == 0 {
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Text {
-                        message: "|-fieldend|move: Wonder Room".to_string(),
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::Text {
+                    message: "|-fieldend|move: Wonder Room".to_string(),
+                });
             }
         }
 
@@ -1057,12 +1023,10 @@ impl EndOfTurnPhase {
             if battle.terrain_turns_left == 0 {
                 let old_terrain = battle.terrain.take();
                 if let Some(t) = old_terrain {
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::TerrainChange {
-                            terrain: t.as_ref().to_string() + "Terrain",
-                            is_start: false,
-                        },
-                    ));
+                    battle.log.push(crate::sim::log::BattleLog::TerrainChange {
+                        terrain: t.as_ref().to_string() + "Terrain",
+                        is_start: false,
+                    });
                     battle.update_mimicry();
                 }
             }
@@ -1071,11 +1035,9 @@ impl EndOfTurnPhase {
         if battle.fairy_lock_turns > 0 {
             battle.fairy_lock_turns -= 1;
             if battle.fairy_lock_turns == 0 {
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Text {
-                        message: "-fieldend|move: Fairy Lock".to_string(),
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::Text {
+                    message: "-fieldend|move: Fairy Lock".to_string(),
+                });
             }
         }
 
@@ -1110,17 +1072,15 @@ impl EndOfTurnPhase {
                 }
 
                 if ended {
-                    battle
-                        .log
-                        .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
-                            target: ident,
-                            volatile_status: "Uproar".to_string(),
-                        }));
+                    battle.log.push(BattleLog::VolatileStatusEnd {
+                        target: ident,
+                        volatile_status: "Uproar".to_string(),
+                    });
                 } else if upkeep {
-                    battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+                    battle.log.push(BattleLog::SingleTurn {
                         target: ident,
                         effect: "uproar".to_string(),
-                    }));
+                    });
                 }
             }
         }
@@ -1142,12 +1102,10 @@ impl EndOfTurnPhase {
                 }
 
                 if interrupted {
-                    battle
-                        .log
-                        .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
-                            target: ident,
-                            volatile_status: "lockedmove".to_string(),
-                        }));
+                    battle.log.push(BattleLog::VolatileStatusEnd {
+                        target: ident,
+                        volatile_status: "lockedmove".to_string(),
+                    });
                 }
             }
         }
@@ -1170,14 +1128,14 @@ impl EndOfTurnPhase {
                     }
                 }
                 if should_activate && let Some(berry) = eaten_berry {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                    battle.log.push(BattleLog::Activate {
                         target: ident,
                         effect: "ability: Cud Chew".to_string(),
-                    }));
-                    battle.log.push(BattleLogEvent::new(BattleLog::EndItem {
+                    });
+                    battle.log.push(BattleLog::EndItem {
                         target: ident,
                         item: berry.to_string(),
-                    }));
+                    });
                     crate::sim::items::apply_berry_effect(battle, ident, berry.as_ref());
                 }
 
@@ -1255,9 +1213,9 @@ impl EndOfTurnPhase {
                 }
 
                 if let Some(berry) = restored_berry {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                    battle.log.push(BattleLog::Text {
                         message: format!("|-item|{}|{}|[from] ability: Harvest", ident, berry),
-                    }));
+                    });
                 }
             }
         }
@@ -1274,14 +1232,14 @@ impl EndOfTurnPhase {
                 {
                     if p.species.contains("hangry") {
                         p.species = "morpeko-full-belly".to_string();
-                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                        battle.log.push(BattleLog::Text {
                             message: format!("|-formechange|{}|Morpeko", ident),
-                        }));
+                        });
                     } else {
                         p.species = "morpeko-hangry".to_string();
-                        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                        battle.log.push(BattleLog::Text {
                             message: format!("|-formechange|{}|Morpeko-Hangry", ident),
-                        }));
+                        });
                     }
                 }
             }

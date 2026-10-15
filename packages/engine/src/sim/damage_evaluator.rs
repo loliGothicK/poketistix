@@ -1620,18 +1620,13 @@ impl<'a> DamageEvaluator<'a> {
 
         // Ability immunities
         let def_ability = defender.ability.as_ref().map(|a| a.as_str());
-        if matches!(def_ability, Some("flashfire") | Some("wellbakedbody"))
-            && move_type == pkmn_meta::types::Type::Fire
+        if (matches!(def_ability, Some("flashfire") | Some("wellbakedbody"))
+            && move_type == pkmn_meta::types::Type::Fire)
+            || (def_ability == Some("waterabsorb") && move_type == pkmn_meta::types::Type::Water)
+            || (def_ability == Some("voltabsorb") && move_type == pkmn_meta::types::Type::Electric)
+            || (def_ability == Some("eartheater") && move_type == pkmn_meta::types::Type::Ground)
+            || (def_ability == Some("sapsipper") && move_type == pkmn_meta::types::Type::Grass)
         {
-            input.immune_override = Some(true);
-        } else if def_ability == Some("waterabsorb") && move_type == pkmn_meta::types::Type::Water {
-            input.immune_override = Some(true);
-        } else if def_ability == Some("voltabsorb") && move_type == pkmn_meta::types::Type::Electric
-        {
-            input.immune_override = Some(true);
-        } else if def_ability == Some("eartheater") && move_type == pkmn_meta::types::Type::Ground {
-            input.immune_override = Some(true);
-        } else if def_ability == Some("sapsipper") && move_type == pkmn_meta::types::Type::Grass {
             input.immune_override = Some(true);
         }
 

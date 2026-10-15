@@ -1,6 +1,6 @@
 use crate::sim::abilities::on_start;
 use crate::sim::battle::{Battle, Stat};
-use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::sim::log::BattleLog;
 use crate::sim::pokemon::PokemonIdent;
 use pkmn_meta::types::*;
 
@@ -63,12 +63,10 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
             } else {
                 w.as_ref()
             };
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::WeatherChange {
-                    weather: log_weather.to_string(),
-                    is_start: true,
-                }));
+            battle.log.push(BattleLog::WeatherChange {
+                weather: log_weather.to_string(),
+                is_start: true,
+            });
             battle.update_forecast();
         }
         if let Some(t) = meta.on_start_terrain()
@@ -80,12 +78,10 @@ pub fn trigger_switch_in_ability(battle: &mut Battle, player: u8, slot: usize) {
             } else {
                 battle.terrain_turns_left = 5;
             }
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                    terrain: t.as_ref().to_string() + "Terrain",
-                    is_start: true,
-                }));
+            battle.log.push(BattleLog::TerrainChange {
+                terrain: t.as_ref().to_string() + "Terrain",
+                is_start: true,
+            });
             battle.update_mimicry();
             crate::sim::items::check_terrain_seeds(battle);
         }

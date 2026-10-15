@@ -54,24 +54,19 @@ impl GtoSolver {
         let mut tableau = vec![vec![0.0; total_vars + 1]; m + 1];
 
         // 制約行の設定
-        for i in 0..m {
-            for j in 0..n {
-                tableau[i][j] = matrix[i][j] + shift;
+        for (i, row) in matrix.iter().enumerate() {
+            for (j, &val) in row.iter().enumerate() {
+                tableau[i][j] = val + shift;
             }
             tableau[i][n + i] = 1.0; // スラック変数
             tableau[i][total_vars] = 1.0; // 右辺 (RHS)
         }
 
         // 目的関数行の設定 (max sum y_j <=> min -sum y_j)
-        for j in 0..n {
-            tableau[m][j] = -1.0;
-        }
+        tableau[m][..n].fill(-1.0);
 
         // 基底変数のインデックス (初期状態はスラック変数 s_0 .. s_{m-1})
-        let mut basis = vec![0; m];
-        for i in 0..m {
-            basis[i] = n + i;
-        }
+        let mut basis: Vec<usize> = (0..m).map(|i| n + i).collect();
 
         // 単体法 (Simplex Method) の反復
         let max_iters = 1000;
@@ -84,9 +79,9 @@ impl GtoSolver {
             // 1. ピボット列の選択 (Bland's rule: 最小の負の係数)
             let mut pivot_col = None;
             let mut min_obj = -eps;
-            for j in 0..total_vars {
-                if tableau[m][j] < min_obj {
-                    min_obj = tableau[m][j];
+            for (j, &val) in tableau[m].iter().enumerate().take(total_vars) {
+                if val < min_obj {
+                    min_obj = val;
                     pivot_col = Some(j);
                 }
             }
@@ -99,10 +94,10 @@ impl GtoSolver {
             // 2. ピボット行の選択 (最小比率テスト)
             let mut pivot_row = None;
             let mut min_ratio = f64::INFINITY;
-            for i in 0..m {
-                let entry = tableau[i][col];
+            for (i, row_vec) in tableau.iter().enumerate().take(m) {
+                let entry = row_vec[col];
                 if entry > eps {
-                    let ratio = tableau[i][total_vars] / entry;
+                    let ratio = row_vec[total_vars] / entry;
                     if ratio < min_ratio - eps {
                         min_ratio = ratio;
                         pivot_row = Some(i);
@@ -120,16 +115,17 @@ impl GtoSolver {
 
             // 3. ピボット操作
             let pivot_val = tableau[row][col];
-            for j in 0..=total_vars {
-                tableau[row][j] /= pivot_val;
+            for val in &mut tableau[row] {
+                *val /= pivot_val;
             }
 
-            for i in 0..=m {
+            let pivot_row_vals = tableau[row].clone();
+            for (i, row_vec) in tableau.iter_mut().enumerate() {
                 if i != row {
-                    let factor = tableau[i][col];
+                    let factor = row_vec[col];
                     if factor.abs() > eps {
-                        for j in 0..=total_vars {
-                            tableau[i][j] -= factor * tableau[row][j];
+                        for (dest, &p_val) in row_vec.iter_mut().zip(&pivot_row_vals) {
+                            *dest -= factor * p_val;
                         }
                     }
                 }
@@ -148,23 +144,19 @@ impl GtoSolver {
 
         // 列プレイヤー (P2) の解 y_j
         let mut y = vec![0.0; n];
-        for i in 0..m {
-            if basis[i] < n {
-                y[basis[i]] = tableau[i][total_vars];
+        for (&b, row_vec) in basis.iter().zip(&tableau) {
+            if b < n {
+                y[b] = row_vec[total_vars];
             }
         }
-        let mut p2_strategy = vec![0.0; n];
-        for j in 0..n {
-            p2_strategy[j] = (y[j] * v_shifted).max(0.0);
-        }
+        let mut p2_strategy: Vec<f64> = y.iter().map(|&val| (val * v_shifted).max(0.0)).collect();
         normalize(&mut p2_strategy);
 
         // 行プレイヤー (P1) の解 x_i (タブローの目的関数行のスラック変数位置にある潜在価格)
-        let mut p1_strategy = vec![0.0; m];
-        for i in 0..m {
-            let dual_val = tableau[m][n + i];
-            p1_strategy[i] = (dual_val * v_shifted).max(0.0);
-        }
+        let mut p1_strategy: Vec<f64> = tableau[m][n..n + m]
+            .iter()
+            .map(|&dual_val| (dual_val * v_shifted).max(0.0))
+            .collect();
         normalize(&mut p1_strategy);
 
         Some(GtoSolution {

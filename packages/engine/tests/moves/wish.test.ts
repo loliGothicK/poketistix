@@ -120,7 +120,7 @@ test("Move: wish", () => {
   );
 
   // Turn 1 end: Wish has not triggered yet
-  expect(events1.some((e: any) => e.type === "Activate" && e.effect === "Wish")).toBe(false);
+  expect(events1.some((e) => e.type === "Activate" && e.effect === "Wish")).toBe(false);
 
   // Turn 2: Wish should activate at the end of Turn 2 (next turn)
   const logs2 = engine.run_turn({

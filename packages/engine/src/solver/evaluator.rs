@@ -132,7 +132,7 @@ fn get_effective_speed(battle: &Battle, pkmn: &Pokemon, ignore_speed_control: bo
     }
     if !ignore_speed_control {
         let is_p1 = battle.p1.active.iter().any(|p| p.ident == pkmn.ident);
-        if (is_p1 && battle.p1.tailwind) || (!is_p1 && battle.p2.tailwind) {
+        if (is_p1 && battle.p1.is_tailwind()) || (!is_p1 && battle.p2.is_tailwind()) {
             spe = spe * 2.0;
         }
     }
@@ -193,7 +193,7 @@ pub fn resolve_board_threats(
     let is_trick_room = if ignore_speed_control {
         false
     } else {
-        battle.trick_room
+        battle.is_trick_room()
     };
 
     let mut slots = [
@@ -223,29 +223,29 @@ pub fn resolve_board_threats(
         },
     ];
 
-    if let Some(p) = battle.p1.active.get(0) {
-        if p.hp.into_inner() > 0 {
-            slots[0].is_alive = true;
-            slots[0].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
-        }
+    if let Some(p) = battle.p1.active.first()
+        && p.hp.into_inner() > 0
+    {
+        slots[0].is_alive = true;
+        slots[0].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
     }
-    if let Some(p) = battle.p1.active.get(1) {
-        if p.hp.into_inner() > 0 {
-            slots[1].is_alive = true;
-            slots[1].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
-        }
+    if let Some(p) = battle.p1.active.get(1)
+        && p.hp.into_inner() > 0
+    {
+        slots[1].is_alive = true;
+        slots[1].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
     }
-    if let Some(p) = battle.p2.active.get(0) {
-        if p.hp.into_inner() > 0 {
-            slots[2].is_alive = true;
-            slots[2].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
-        }
+    if let Some(p) = battle.p2.active.first()
+        && p.hp.into_inner() > 0
+    {
+        slots[2].is_alive = true;
+        slots[2].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
     }
-    if let Some(p) = battle.p2.active.get(1) {
-        if p.hp.into_inner() > 0 {
-            slots[3].is_alive = true;
-            slots[3].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
-        }
+    if let Some(p) = battle.p2.active.get(1)
+        && p.hp.into_inner() > 0
+    {
+        slots[3].is_alive = true;
+        slots[3].eff_speed = get_effective_speed(battle, p, ignore_speed_control);
     }
 
     // Sort order: if trick room, slower acts first (ascending). Otherwise faster acts first (descending).
@@ -423,8 +423,7 @@ pub fn resolve_board_threats(
         let mut foe_source_slot: Option<ActiveSlot> = None;
         let mut threat_move_id = "";
 
-        for earlier_idx in 0..idx {
-            let foe_slot = slots[earlier_idx];
+        for foe_slot in slots.iter().take(idx).copied() {
             if !foe_slot.is_alive || foe_slot.player == active.player {
                 continue;
             }
@@ -584,70 +583,70 @@ pub fn resolve_board_threats(
         if can_protect {
             // 条件A: 隣の相方による脅威排除・威力減衰 (R_partner)
             let mut r_partner: f64 = 0.0;
-            if let Some(partner) = partner_p {
-                if partner.hp.into_inner() > 0 {
-                    let partner_slot = 1 - active.slot;
-                    let partner_spe = slots
-                        .iter()
-                        .find(|s| s.is_alive && s.player == active.player && s.slot == partner_slot)
-                        .map(|s| s.eff_speed)
-                        .unwrap_or(0);
-                    let partner_acts_before_foe = if is_trick_room {
-                        partner_spe <= foe_act.eff_speed
-                    } else {
-                        partner_spe >= foe_act.eff_speed
-                    };
+            if let Some(partner) = partner_p
+                && partner.hp.into_inner() > 0
+            {
+                let partner_slot = 1 - active.slot;
+                let partner_spe = slots
+                    .iter()
+                    .find(|s| s.is_alive && s.player == active.player && s.slot == partner_slot)
+                    .map(|s| s.eff_speed)
+                    .unwrap_or(0);
+                let partner_acts_before_foe = if is_trick_room {
+                    partner_spe <= foe_act.eff_speed
+                } else {
+                    partner_spe >= foe_act.eff_speed
+                };
 
-                    let partner_survives = if partner_acts_before_foe {
-                        true
-                    } else {
-                        let (f_to_p_min, f_to_p_max) = dmg_eval.evaluate_range(
-                            threat_move_id,
-                            foe_act.player,
-                            foe_act.slot as u8,
+                let partner_survives = if partner_acts_before_foe {
+                    true
+                } else {
+                    let (f_to_p_min, f_to_p_max) = dmg_eval.evaluate_range(
+                        threat_move_id,
+                        foe_act.player,
+                        foe_act.slot as u8,
+                        active.player,
+                        partner_slot as u8,
+                        most_threatening_is_spread,
+                    );
+                    let f_to_p_exp = 0.5 * (f_to_p_min + f_to_p_max) as f64;
+                    let p_cur_hp = partner.hp.into_inner() as f64;
+                    (p_cur_hp - f_to_p_exp) / p_cur_hp > 0.25
+                };
+
+                if partner_survives {
+                    let foe_cur_hp = foe_p.hp.into_inner();
+                    for pm in &partner.moves {
+                        let (p_min, p_max) = dmg_eval.evaluate_range(
+                            pm,
                             active.player,
                             partner_slot as u8,
-                            most_threatening_is_spread,
+                            foe_act.player,
+                            foe_act.slot as u8,
+                            false,
                         );
-                        let f_to_p_exp = 0.5 * (f_to_p_min + f_to_p_max) as f64;
-                        let p_cur_hp = partner.hp.into_inner() as f64;
-                        (p_cur_hp - f_to_p_exp) / p_cur_hp > 0.25
-                    };
+                        let p_exp = 0.5 * (p_min + p_max) as f64;
+                        let d_foe = (p_exp / foe_cur_hp as f64).clamp(0.0, 1.0);
+                        let is_ko = p_min >= foe_cur_hp || p_exp >= foe_cur_hp as f64 * 0.95;
+                        if is_ko {
+                            r_partner = if partner_acts_before_foe { 1.0 } else { 0.95 };
+                        } else if matches!(
+                            threat_move_id,
+                            "eruption" | "waterspout" | "dragonenergy"
+                        ) && d_foe >= 0.25
+                        {
+                            r_partner = r_partner.max(0.85);
+                        }
 
-                    if partner_survives {
-                        let foe_cur_hp = foe_p.hp.into_inner();
-                        for pm in &partner.moves {
-                            let (p_min, p_max) = dmg_eval.evaluate_range(
-                                pm,
-                                active.player,
-                                partner_slot as u8,
-                                foe_act.player,
-                                foe_act.slot as u8,
-                                false,
-                            );
-                            let p_exp = 0.5 * (p_min + p_max) as f64;
-                            let d_foe = (p_exp / foe_cur_hp as f64).clamp(0.0, 1.0);
-                            let is_ko = p_min >= foe_cur_hp || p_exp >= foe_cur_hp as f64 * 0.95;
-                            if is_ko {
-                                r_partner = if partner_acts_before_foe { 1.0 } else { 0.95 };
-                            } else if matches!(
-                                threat_move_id,
-                                "eruption" | "waterspout" | "dragonenergy"
-                            ) && d_foe >= 0.25
-                            {
-                                r_partner = r_partner.max(0.85);
+                        if r_partner > 0.0 {
+                            let foe_p_idx = (foe_act.player - 1) as usize;
+                            let foe_s_idx = foe_act.slot;
+                            let chip = if is_ko { 1.0 } else { d_foe };
+                            if chip > counter_damage_on_foe[foe_p_idx][foe_s_idx] {
+                                counter_damage_on_foe[foe_p_idx][foe_s_idx] = chip;
                             }
-
-                            if r_partner > 0.0 {
-                                let foe_p_idx = (foe_act.player - 1) as usize;
-                                let foe_s_idx = foe_act.slot;
-                                let chip = if is_ko { 1.0 } else { d_foe };
-                                if chip > counter_damage_on_foe[foe_p_idx][foe_s_idx] {
-                                    counter_damage_on_foe[foe_p_idx][foe_s_idx] = chip;
-                                }
-                                if is_ko {
-                                    break;
-                                }
+                            if is_ko {
+                                break;
                             }
                         }
                     }
@@ -665,18 +664,10 @@ pub fn resolve_board_threats(
             } else {
                 &battle.p1
             };
-            let foe_tailwind_rem = if foe_side.tailwind {
-                foe_side.tailwind_turns
-            } else {
-                0
-            };
+            let foe_tailwind_rem = foe_side.tailwind_turns();
 
             if is_trick_room && faster_naturally {
-                let tr_rem = if battle.trick_room_turns_left > 0 {
-                    battle.trick_room_turns_left
-                } else {
-                    3
-                };
+                let tr_rem = battle.trick_room.map_or(3, |t| t.get());
                 if tr_rem == 1 {
                     r_stall = 1.0;
                 } else if tr_rem == 2 {
@@ -713,138 +704,137 @@ pub fn resolve_board_threats(
         // 3.4 隣の『このゆびとまれ／いかりのこな』による吸寄せ成立解析 (RedirectionViability)
         // -----------------------------------------------------------------
         let mut e_redirect = 0.0;
-        if let Some(partner) = partner_p {
-            if partner.hp.into_inner() > 0 {
-                let has_follow_me = partner.moves.iter().any(|m| m.as_str() == "followme");
-                let has_rage_powder = partner.moves.iter().any(|m| m.as_str() == "ragepowder");
-                let partner_can_act = partner.status.as_ref().map(|s| s.as_ref()) != Some("slp")
-                    && partner.status.as_ref().map(|s| s.as_ref()) != Some("frz")
-                    && partner.taunt_turns == 0;
+        if let Some(partner) = partner_p
+            && partner.hp.into_inner() > 0
+        {
+            let has_follow_me = partner.moves.iter().any(|m| m.as_str() == "followme");
+            let has_rage_powder = partner.moves.iter().any(|m| m.as_str() == "ragepowder");
+            let partner_can_act = partner.status.as_ref().map(|s| s.as_ref()) != Some("slp")
+                && partner.status.as_ref().map(|s| s.as_ref()) != Some("frz")
+                && partner.taunt_turns == 0;
 
-                let mut can_redirect = (has_follow_me || has_rage_powder) && partner_can_act;
+            let mut can_redirect = (has_follow_me || has_rage_powder) && partner_can_act;
 
-                // ① 全体技貫通
-                if most_threatening_is_spread {
+            // ① 全体技貫通
+            if most_threatening_is_spread {
+                can_redirect = false;
+            }
+
+            // ① 粉無効貫通 (Rage Powder Immunity)
+            if can_redirect && !has_follow_me && has_rage_powder {
+                let foe_types = foe_p.get_types();
+                let is_grass = foe_types.contains(&Type::Grass);
+                let has_overcoat = foe_p.ability.as_ref().map(|a| a.as_str()) == Some("overcoat");
+                let has_safety_goggles =
+                    foe_p.item.as_ref().map(|i| i.as_ref()) == Some("safetygoggles");
+                if is_grass || has_overcoat || has_safety_goggles {
                     can_redirect = false;
                 }
+            }
 
-                // ① 粉無効貫通 (Rage Powder Immunity)
-                if can_redirect && !has_follow_me && has_rage_powder {
-                    let foe_types = foe_p.get_types();
-                    let is_grass = foe_types.contains(&Type::Grass);
-                    let has_overcoat =
-                        foe_p.ability.as_ref().map(|a| a.as_str()) == Some("overcoat");
-                    let has_safety_goggles =
-                        foe_p.item.as_ref().map(|i| i.as_ref()) == Some("safetygoggles");
-                    if is_grass || has_overcoat || has_safety_goggles {
-                        can_redirect = false;
-                    }
-                }
+            // ① 吸寄せ無視特性・技
+            let foe_ability = foe_p.ability.as_ref().map(|a| a.as_str());
+            if matches!(foe_ability, Some("stalwart") | Some("propellertail"))
+                || threat_move_id == "snipeshot"
+            {
+                can_redirect = false;
+            }
 
-                // ① 吸寄せ無視特性・技
-                let foe_ability = foe_p.ability.as_ref().map(|a| a.as_str());
-                if matches!(foe_ability, Some("stalwart") | Some("propellertail"))
-                    || threat_move_id == "snipeshot"
-                {
-                    can_redirect = false;
-                }
-
-                // ① 優先度負け
-                let threat_prio = pkmn_meta::move_meta::get_move_meta(threat_move_id)
-                    .map(|m| *m.priority())
+            // ① 優先度負け
+            let threat_prio = pkmn_meta::move_meta::get_move_meta(threat_move_id)
+                .map(|m| *m.priority())
+                .unwrap_or(0);
+            if threat_prio > 2 {
+                can_redirect = false;
+            } else if threat_prio == 2 {
+                let partner_spe = slots
+                    .iter()
+                    .find(|s| {
+                        s.is_alive && s.player == active.player && s.slot == (1 - active.slot)
+                    })
+                    .map(|s| s.eff_speed)
                     .unwrap_or(0);
-                if threat_prio > 2 {
+                let foe_faster = if is_trick_room {
+                    foe_act.eff_speed <= partner_spe
+                } else {
+                    foe_act.eff_speed >= partner_spe
+                };
+                if foe_faster {
                     can_redirect = false;
-                } else if threat_prio == 2 {
-                    let partner_spe = slots
-                        .iter()
-                        .find(|s| {
-                            s.is_alive && s.player == active.player && s.slot == (1 - active.slot)
-                        })
-                        .map(|s| s.eff_speed)
-                        .unwrap_or(0);
-                    let foe_faster = if is_trick_room {
-                        foe_act.eff_speed <= partner_spe
-                    } else {
-                        foe_act.eff_speed >= partner_spe
-                    };
-                    if foe_faster {
-                        can_redirect = false;
+                }
+            }
+
+            if can_redirect {
+                // ② 吸寄せ役（相方）の被ダメージ（代償）計算
+                let partner_slot = 1 - active.slot;
+                let partner_cur_hp = partner.hp.into_inner();
+                let (red_min, red_max) = dmg_eval.evaluate_range(
+                    threat_move_id,
+                    foe_act.player,
+                    foe_act.slot as u8,
+                    active.player,
+                    partner_slot as u8,
+                    false,
+                );
+                let red_exp = 0.5 * (red_min + red_max) as f64;
+                let d_redirect = (red_exp / partner_cur_hp as f64).clamp(0.0, 1.0);
+
+                // ③ 守られたポケモン j の行動リターン
+                let mut r_attack = 0.0;
+                let foe_side_active = if active.player == 1 {
+                    &battle.p2.active
+                } else {
+                    &battle.p1.active
+                };
+                for (e_slot, foe_target) in foe_side_active.iter().enumerate() {
+                    if foe_target.hp.into_inner() <= 0 {
+                        continue;
+                    }
+                    let e_hp = foe_target.hp.into_inner();
+                    for j_move in &target_p.moves {
+                        let (j_min, j_max) = dmg_eval.evaluate_range(
+                            j_move,
+                            active.player,
+                            active.slot as u8,
+                            3 - active.player,
+                            e_slot as u8,
+                            false,
+                        );
+                        let j_exp = 0.5 * (j_min + j_max) as f64;
+                        let ret = (j_exp / e_hp as f64).clamp(0.0, 1.0);
+                        if ret > r_attack {
+                            r_attack = ret;
+                        }
                     }
                 }
 
-                if can_redirect {
-                    // ② 吸寄せ役（相方）の被ダメージ（代償）計算
-                    let partner_slot = 1 - active.slot;
-                    let partner_cur_hp = partner.hp.into_inner();
-                    let (red_min, red_max) = dmg_eval.evaluate_range(
-                        threat_move_id,
-                        foe_act.player,
-                        foe_act.slot as u8,
-                        active.player,
-                        partner_slot as u8,
-                        false,
-                    );
-                    let red_exp = 0.5 * (red_min + red_max) as f64;
-                    let d_redirect = (red_exp / partner_cur_hp as f64).clamp(0.0, 1.0);
+                let r_setup = if target_p.moves.iter().any(|m| {
+                    matches!(
+                        m.as_str(),
+                        "trickroom"
+                            | "tailwind"
+                            | "swordsdance"
+                            | "nastyplot"
+                            | "calmmind"
+                            | "quiverdance"
+                    )
+                }) {
+                    0.85
+                } else {
+                    0.0
+                };
 
-                    // ③ 守られたポケモン j の行動リターン
-                    let mut r_attack = 0.0;
-                    let foe_side_active = if active.player == 1 {
-                        &battle.p2.active
-                    } else {
-                        &battle.p1.active
-                    };
-                    for (e_slot, foe_target) in foe_side_active.iter().enumerate() {
-                        if foe_target.hp.into_inner() <= 0 {
-                            continue;
-                        }
-                        let e_hp = foe_target.hp.into_inner();
-                        for j_move in &target_p.moves {
-                            let (j_min, j_max) = dmg_eval.evaluate_range(
-                                j_move,
-                                active.player,
-                                active.slot as u8,
-                                3 - active.player,
-                                e_slot as u8,
-                                false,
-                            );
-                            let j_exp = 0.5 * (j_min + j_max) as f64;
-                            let ret = (j_exp / e_hp as f64).clamp(0.0, 1.0);
-                            if ret > r_attack {
-                                r_attack = ret;
-                            }
-                        }
-                    }
+                let r_action = r_attack.max(r_setup).max(0.50);
 
-                    let r_setup = if target_p.moves.iter().any(|m| {
-                        matches!(
-                            m.as_str(),
-                            "trickroom"
-                                | "tailwind"
-                                | "swordsdance"
-                                | "nastyplot"
-                                | "calmmind"
-                                | "quiverdance"
-                        )
-                    }) {
-                        0.85
-                    } else {
-                        0.0
-                    };
-
-                    let r_action = r_attack.max(r_setup).max(0.50);
-
-                    // ④ 吸寄せによる正味打開スコア
-                    let stat_val_partner = calculate_stat_value(partner);
-                    let cost_ratio = (stat_val_partner / stat_val_target.max(0.1)) * d_redirect;
-                    if d_redirect < 1.0 {
-                        e_redirect = (0.80 + 0.15 * r_action - 0.20 * cost_ratio).clamp(0.50, 0.95);
-                    } else {
-                        e_redirect = (r_action - 0.35 * cost_ratio).clamp(0.20, 0.90);
-                    }
-                    redirected_foes.push((foe_act.player, foe_act.slot, d_redirect));
+                // ④ 吸寄せによる正味打開スコア
+                let stat_val_partner = calculate_stat_value(partner);
+                let cost_ratio = (stat_val_partner / stat_val_target.max(0.1)) * d_redirect;
+                if d_redirect < 1.0 {
+                    e_redirect = (0.80 + 0.15 * r_action - 0.20 * cost_ratio).clamp(0.50, 0.95);
+                } else {
+                    e_redirect = (r_action - 0.35 * cost_ratio).clamp(0.20, 0.90);
                 }
+                redirected_foes.push((foe_act.player, foe_act.slot, d_redirect));
             }
         }
 
@@ -889,7 +879,8 @@ pub fn evaluate_state(battle: &Battle) -> f64 {
                 (actual_bv_p1[0] + actual_bv_p1[1]) - (actual_bv_p2[0] + actual_bv_p2[1]);
 
             // Step 4 Counterfactual Speed Control Evaluation
-            let has_speed_control = battle.trick_room || battle.p1.tailwind || battle.p2.tailwind;
+            let has_speed_control =
+                battle.is_trick_room() || battle.p1.is_tailwind() || battle.p2.is_tailwind();
             let speed_bonus = if has_speed_control {
                 let mut base_bv_p1 = [0.0; 2];
                 let mut base_bv_p2 = [0.0; 2];
@@ -898,19 +889,14 @@ pub fn evaluate_state(battle: &Battle) -> f64 {
                 let delta_b_speed = b_actual - b_base;
 
                 let mut t_future: i32 = 0;
-                if battle.p1.tailwind {
-                    t_future = t_future.max(battle.p1.tailwind_turns.saturating_sub(1) as i32);
+                if let Some(tw) = battle.p1.tailwind {
+                    t_future = t_future.max(tw.get().saturating_sub(1) as i32);
                 }
-                if battle.p2.tailwind {
-                    t_future = t_future.max(battle.p2.tailwind_turns.saturating_sub(1) as i32);
+                if let Some(tw) = battle.p2.tailwind {
+                    t_future = t_future.max(tw.get().saturating_sub(1) as i32);
                 }
-                if battle.trick_room {
-                    let tr_rem = if battle.trick_room_turns_left > 0 {
-                        battle.trick_room_turns_left
-                    } else {
-                        3
-                    };
-                    t_future = t_future.max(tr_rem.saturating_sub(1) as i32);
+                if let Some(tr) = battle.trick_room {
+                    t_future = t_future.max(tr.get().saturating_sub(1) as i32);
                 }
 
                 const LAMBDA: f64 = 0.55;

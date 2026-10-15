@@ -1,4 +1,4 @@
-use crate::sim::battle::{Battle, BattleLog, BattleLogEvent, PokemonIdent, Stat, TurnState};
+use crate::sim::battle::{Battle, BattleLog, PokemonIdent, Stat, TurnState};
 use pkmn_meta::types::*;
 
 /// Remove the active terrain (if any) and log its end.
@@ -14,12 +14,10 @@ fn clear_terrain(battle: &mut Battle) {
     };
     battle.terrain = None;
     battle.terrain_turns_left = 0;
-    battle
-        .log
-        .push(BattleLogEvent::new(BattleLog::TerrainChange {
-            terrain: terrain_name.to_string(),
-            is_start: false,
-        }));
+    battle.log.push(BattleLog::TerrainChange {
+        terrain: terrain_name.to_string(),
+        is_start: false,
+    });
 }
 
 fn check_aroma_veil(
@@ -69,9 +67,9 @@ fn check_aroma_veil(
             player: target_player,
             slot: target_slot,
         };
-        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+        battle.log.push(BattleLog::Text {
             message: format!("|-block|{}|ability: Aroma Veil|[of] {}", target_ident, h),
-        }));
+        });
         return true;
     }
     false
@@ -94,9 +92,9 @@ pub fn handle_move_target_effect(
         if let Some(target_p) = battle.get_pokemon_mut(target_ident) {
             target_p.boosts = pkmn_meta::Boosts::default();
         }
-        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+        battle.log.push(BattleLog::Text {
             message: format!("|-clearboost|{}", target_ident),
-        }));
+        });
     } else if move_id == "metalsound" {
         battle.apply_stat_change(
             target_player,
@@ -147,12 +145,12 @@ pub fn handle_move_target_effect(
                 pokemon.status = None;
                 pokemon.tox_counter = 0;
                 if had_status {
-                    battle.log.push(BattleLogEvent::new(BattleLog::CureStatus {
+                    battle.log.push(BattleLog::CureStatus {
                         target: PokemonIdent {
                             player: target_player,
                             slot,
                         },
-                    }));
+                    });
                 }
             }
         }
@@ -194,12 +192,12 @@ pub fn handle_move_target_effect(
             slot: target_slot,
         }) {
             if target_p.hp == target_p.maxhp {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent {
                         player: target_player,
                         slot: target_slot,
                     },
-                }));
+                });
             } else {
                 let heal = (target_p.maxhp.into_inner() as f64 * 0.5).ceil() as i32;
                 battle.section_heal(
@@ -236,18 +234,18 @@ pub fn handle_move_target_effect(
         }) {
             p.hp = (average).into();
         }
-        battle.log.push(BattleLogEvent::new(BattleLog::SetHp {
+        battle.log.push(BattleLog::SetHp {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
-        }));
-        battle.log.push(BattleLogEvent::new(BattleLog::SetHp {
+        });
+        battle.log.push(BattleLog::SetHp {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
-        }));
+        });
     }
 
     if move_id == "lifedew" {
@@ -332,7 +330,7 @@ pub fn handle_move_target_effect(
         }) {
             target.boosts.atk = (attacker_atk).into();
             target.boosts.spa = (attacker_spa).into();
-            battle.log.push(BattleLogEvent::new(BattleLog::SetBoost {
+            battle.log.push(BattleLog::SetBoost {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
@@ -340,8 +338,8 @@ pub fn handle_move_target_effect(
                 stat: "atk".to_string(),
                 amount: attacker_atk as i32,
                 from: "".to_string(),
-            }));
-            battle.log.push(BattleLogEvent::new(BattleLog::SetBoost {
+            });
+            battle.log.push(BattleLog::SetBoost {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
@@ -349,7 +347,7 @@ pub fn handle_move_target_effect(
                 stat: "spa".to_string(),
                 amount: attacker_spa as i32,
                 from: "".to_string(),
-            }));
+            });
         }
         if let Some(attacker) = battle.get_pokemon_mut(PokemonIdent {
             player: source_player,
@@ -357,7 +355,7 @@ pub fn handle_move_target_effect(
         }) {
             attacker.boosts.atk = (target_atk).into();
             attacker.boosts.spa = (target_spa).into();
-            battle.log.push(BattleLogEvent::new(BattleLog::SetBoost {
+            battle.log.push(BattleLog::SetBoost {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
@@ -365,8 +363,8 @@ pub fn handle_move_target_effect(
                 stat: "atk".to_string(),
                 amount: target_atk as i32,
                 from: "".to_string(),
-            }));
-            battle.log.push(BattleLogEvent::new(BattleLog::SetBoost {
+            });
+            battle.log.push(BattleLog::SetBoost {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
@@ -374,7 +372,7 @@ pub fn handle_move_target_effect(
                 stat: "spa".to_string(),
                 amount: target_spa as i32,
                 from: "".to_string(),
-            }));
+            });
         }
     }
 
@@ -401,12 +399,12 @@ pub fn handle_move_target_effect(
         if let Some(attacker) = battle.get_pokemon_mut(attacker_ident) {
             attacker.speed = target_spe.into();
         }
-        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+        battle.log.push(BattleLog::Text {
             message: format!(
                 "|-swap|{}|spe|[from] move: Speed Swap|[of] {}",
                 target_ident, attacker_ident
             ),
-        }));
+        });
     }
 
     if move_id == "psychup" {
@@ -424,12 +422,12 @@ pub fn handle_move_target_effect(
             })
         {
             attacker.boosts = boosts;
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
                 }, // just as a placeholder for psychup log
-            }));
+            });
         }
     }
 
@@ -450,13 +448,13 @@ pub fn handle_move_target_effect(
             item_str
         };
 
-        battle.log.push(BattleLogEvent::new(BattleLog::EndItem {
+        battle.log.push(BattleLog::EndItem {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             item: disp_name,
-        }));
+        });
     }
 
     if move_id == "feint"
@@ -485,7 +483,7 @@ pub fn handle_move_target_effect(
                         | VolatileStatus::Banefulbunker
                 )
             });
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: format!(
                     "|-activate|{}|move: Feint",
                     PokemonIdent {
@@ -493,16 +491,16 @@ pub fn handle_move_target_effect(
                         slot: target_slot
                     }
                 ),
-            }));
+            });
         }
     }
 
     if move_id == "gravity" {
         println!("EXECUTING GRAVITY LOGIC");
         battle.gravity_turns_left = 5;
-        battle.log.push(BattleLogEvent::new(BattleLog::Text {
+        battle.log.push(BattleLog::Text {
             message: "-fieldstart|move: Gravity".to_string(),
-        }));
+        });
     }
 
     if move_id == "entrainment" {
@@ -538,24 +536,24 @@ pub fn handle_move_target_effect(
         }
 
         if fail {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         } else if let Some(target) = battle.get_pokemon_mut(PokemonIdent {
             player: target_player,
             slot: target_slot,
         }) {
             target.ability = attacker_ability.clone();
-            battle.log.push(BattleLogEvent::new(BattleLog::EndAbility {
+            battle.log.push(BattleLog::EndAbility {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
-            battle.log.push(BattleLogEvent::new(BattleLog::Ability {
+            });
+            battle.log.push(BattleLog::Ability {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
@@ -564,7 +562,7 @@ pub fn handle_move_target_effect(
                 from_move: Some("Entrainment".to_string()),
 
                 of: None,
-            }));
+            });
         }
     }
 
@@ -627,16 +625,16 @@ pub fn handle_move_target_effect(
         }
 
         for condition in p1_removed {
-            battle.log.push(BattleLogEvent::new(BattleLog::SideEnd {
+            battle.log.push(BattleLog::SideEnd {
                 player: 1,
                 effect: condition.to_string(),
-            }));
+            });
         }
         for condition in p2_removed {
-            battle.log.push(BattleLogEvent::new(BattleLog::SideEnd {
+            battle.log.push(BattleLog::SideEnd {
                 player: 2,
                 effect: condition.to_string(),
-            }));
+            });
         }
     }
 
@@ -645,13 +643,13 @@ pub fn handle_move_target_effect(
         || move_id == "spiderweb"
         || move_id == "spiritshackle"
     {
-        battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+        battle.log.push(BattleLog::Activate {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             effect: "trapped".to_string(),
-        }));
+        });
     }
 
     if move_id == "jawlock" {
@@ -676,10 +674,10 @@ pub fn handle_move_target_effect(
                 if let Some(p) = battle.get_pokemon_mut(attacker_ident) {
                     p.trapped_by = Some(target_ident);
                 }
-                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                battle.log.push(BattleLog::Activate {
                     target: attacker_ident,
                     effect: "trapped".to_string(),
-                }));
+                });
             }
 
             let target_is_ghost = battle
@@ -690,10 +688,10 @@ pub fn handle_move_target_effect(
                 if let Some(p) = battle.get_pokemon_mut(target_ident) {
                     p.trapped_by = Some(attacker_ident);
                 }
-                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                battle.log.push(BattleLog::Activate {
                     target: target_ident,
                     effect: "trapped".to_string(),
-                }));
+                });
             }
         }
     }
@@ -706,17 +704,17 @@ pub fn handle_move_target_effect(
         };
         if side.spikes < 3 {
             side.spikes += 1;
-            battle.log.push(BattleLogEvent::new(BattleLog::SideStart {
+            battle.log.push(BattleLog::SideStart {
                 player: target_player,
                 effect: "Spikes".to_string(),
-            }));
+            });
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         }
     }
 
@@ -728,17 +726,17 @@ pub fn handle_move_target_effect(
         };
         if side.toxic_spikes < 2 {
             side.toxic_spikes += 1;
-            battle.log.push(BattleLogEvent::new(BattleLog::SideStart {
+            battle.log.push(BattleLog::SideStart {
                 player: target_player,
                 effect: "Toxic Spikes".to_string(),
-            }));
+            });
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         }
     }
 
@@ -749,18 +747,18 @@ pub fn handle_move_target_effect(
             &mut battle.p2
         };
         if side.stealth_rock {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         } else {
             side.stealth_rock = true;
-            battle.log.push(BattleLogEvent::new(BattleLog::SideStart {
+            battle.log.push(BattleLog::SideStart {
                 player: target_player,
                 effect: "Stealth Rock".to_string(),
-            }));
+            });
         }
     }
 
@@ -771,18 +769,18 @@ pub fn handle_move_target_effect(
             &mut battle.p2
         };
         if side.sticky_web {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         } else {
             side.sticky_web = true;
-            battle.log.push(BattleLogEvent::new(BattleLog::SideStart {
+            battle.log.push(BattleLog::SideStart {
                 player: target_player,
                 effect: "Sticky Web".to_string(),
-            }));
+            });
         }
     }
 
@@ -823,23 +821,25 @@ pub fn handle_move_target_effect(
         };
         if !side.stealth_rock {
             side.stealth_rock = true;
-            battle.log.push(BattleLogEvent::new(BattleLog::SideStart {
+            battle.log.push(BattleLog::SideStart {
                 player: target_player,
                 effect: "Stealth Rock".to_string(),
-            }));
+            });
         }
     }
 
     if move_id == "trickroom" {
-        battle.trick_room = !battle.trick_room;
-        battle.trick_room_turns_left = if battle.trick_room { 5 } else { 0 };
-        battle.log.push(BattleLogEvent::new(BattleLog::Text {
-            message: if battle.trick_room {
-                "|-fieldstart|move: Trick Room".to_string()
-            } else {
-                "|-fieldend|move: Trick Room".to_string()
-            },
-        }));
+        if battle.trick_room.is_some() {
+            battle.trick_room = None;
+            battle.log.push(BattleLog::Text {
+                message: "|-fieldend|move: Trick Room".to_string(),
+            });
+        } else {
+            battle.trick_room = std::num::NonZeroU8::new(5);
+            battle.log.push(BattleLog::Text {
+                message: "|-fieldstart|move: Trick Room".to_string(),
+            });
+        }
     }
 
     if move_id == "imprison" {
@@ -886,23 +886,23 @@ pub fn handle_move_target_effect(
 
     if move_id == "trick" || move_id == "switcheroo" {
         // Swap items - simplified version
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             effect: "trick".to_string(),
-        }));
+        });
     }
 
     if move_id == "spite" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             effect: "spite".to_string(),
-        }));
+        });
     }
 
     if move_id == "octolock" {
@@ -945,29 +945,27 @@ pub fn handle_move_target_effect(
             if user.volatile_status.contains(&VolatileStatus::Substitute)
                 || user.hp.into_inner() <= cost
             {
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::Fail { target: ident }));
+                battle.log.push(BattleLog::Fail { target: ident });
             } else {
                 user.hp = (user.hp.into_inner() - cost).into();
                 user.substitute_hp = cost;
                 user.volatile_status.push(VolatileStatus::Substitute);
-                battle.log.push(BattleLogEvent::new(BattleLog::Start {
+                battle.log.push(BattleLog::Start {
                     target: ident,
                     effect: "Substitute".to_string(),
-                }));
+                });
             }
         }
     }
 
     if move_id == "recycle" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
             effect: "recycle".to_string(),
-        }));
+        });
     }
 
     if move_id == "soak"
@@ -982,13 +980,13 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "instruct" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             effect: "instruct".to_string(),
-        }));
+        });
     }
 
     if move_id == "outrage"
@@ -1005,23 +1003,23 @@ pub fn handle_move_target_effect(
             user.volatile_status.push(VolatileStatus::Lockedmove);
             user.locked_move_turns = 3;
         }
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
             effect: "lockedmove".to_string(),
-        }));
+        });
     }
 
     if move_id == "teatime" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
             effect: "teatime".to_string(),
-        }));
+        });
     }
 
     if move_id == "stockpile" {
@@ -1035,13 +1033,13 @@ pub fn handle_move_target_effect(
     }
 
     if move_id == "swallow" || move_id == "spitup" {
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
             effect: "swallow".to_string(),
-        }));
+        });
     }
 
     if move_id == "transform" {
@@ -1056,9 +1054,7 @@ pub fn handle_move_target_effect(
         let success =
             crate::sim::sections::transform::section_transform(battle, user_ident, target_ident);
         if !success {
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::Fail { target: user_ident }));
+            battle.log.push(BattleLog::Fail { target: user_ident });
         }
     }
 
@@ -1071,13 +1067,13 @@ pub fn handle_move_target_effect(
             user.volatile_status.push(VolatileStatus::Uproar);
             user.uproar_turns = 3;
         }
-        battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+        battle.log.push(BattleLog::SingleTurn {
             target: PokemonIdent {
                 player: source_player,
                 slot: source_slot,
             },
             effect: "uproar".to_string(),
-        }));
+        });
     }
 
     if move_id == "wish" {
@@ -1092,15 +1088,13 @@ pub fn handle_move_target_effect(
         let already_wished = battle.wish_effects.iter().any(|w| w.target == user_ident);
 
         if is_heal_blocked {
-            battle.log.push(BattleLogEvent::new(BattleLog::Cant {
+            battle.log.push(BattleLog::Cant {
                 target: user_ident,
                 reason: "Heal Block".to_string(),
                 move_id: Some("wish".to_string()),
-            }));
+            });
         } else if already_wished {
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::Fail { target: user_ident }));
+            battle.log.push(BattleLog::Fail { target: user_ident });
         } else if let Some(user) = battle.get_pokemon(user_ident) {
             let heal_amount = (user.maxhp.into_inner() / 2).max(1);
             battle.wish_effects.push(crate::sim::battle::WishEffect {
@@ -1108,10 +1102,10 @@ pub fn handle_move_target_effect(
                 heal_amount,
                 turns_left: 2,
             });
-            battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+            battle.log.push(BattleLog::SingleTurn {
                 target: user_ident,
                 effect: "wish".to_string(),
-            }));
+            });
         }
     }
 
@@ -1150,7 +1144,7 @@ pub fn handle_move_target_effect(
                 },
                 damage,
             );
-            battle.log.push(BattleLogEvent::new(BattleLog::Damage {
+            battle.log.push(BattleLog::Damage {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
@@ -1160,7 +1154,7 @@ pub fn handle_move_target_effect(
                 is_crit: false,
                 absorbed: false,
                 from_effect: None,
-            }));
+            });
             battle.section_apply_volatile(
                 PokemonIdent {
                     player: target_player,
@@ -1281,12 +1275,12 @@ pub fn handle_move_target_effect(
     {
         if let Some(last_move) = target.last_move_used.as_ref() {
             if target.encore_turns > 0 {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent {
                         player: target_player,
                         slot: target_slot,
                     },
-                }));
+                });
                 return;
             }
 
@@ -1296,12 +1290,12 @@ pub fn handle_move_target_effect(
             let current_pp = *target.pp_used.get(last_move).unwrap_or(&0);
 
             if current_pp >= max_pp {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent {
                         player: target_player,
                         slot: target_slot,
                     },
-                }));
+                });
                 return;
             }
 
@@ -1343,12 +1337,12 @@ pub fn handle_move_target_effect(
                 }
             }
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         }
     }
 
@@ -1371,12 +1365,12 @@ pub fn handle_move_target_effect(
     {
         if let Some(last_move) = target.last_move_used.as_ref() {
             if target.disable_turns > 0 {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent {
                         player: target_player,
                         slot: target_slot,
                     },
-                }));
+                });
                 return;
             }
 
@@ -1389,12 +1383,12 @@ pub fn handle_move_target_effect(
                 target_mut.disable_turns = 4;
             }
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
-            }));
+            });
         }
     }
     if move_id == "pluck" || move_id == "bugbite" {
@@ -1423,7 +1417,7 @@ pub fn handle_move_target_effect(
             } else {
                 "Bug Bite"
             };
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: format!(
                     "|-enditem|{}|{}|[from] stealeat|[move] {}|[of] {}",
                     PokemonIdent {
@@ -1437,7 +1431,7 @@ pub fn handle_move_target_effect(
                         slot: source_slot
                     }
                 ),
-            }));
+            });
 
             if item_str == "sitrusberry" {
                 if let Some(attacker) = battle.get_pokemon(PokemonIdent {
@@ -1531,12 +1525,12 @@ pub fn handle_move_target_effect(
                 );
             } else {
                 // Fail if all stats are maxed
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent {
                         player: source_player,
                         slot: source_slot,
                     },
-                }));
+                });
             }
         }
     } else if move_id == "coaching" {
@@ -1648,9 +1642,9 @@ pub fn handle_move_target_effect(
             target.boosts.spe = (-target.boosts.spe.into_inner()).into();
             target.boosts.accuracy = (-target.boosts.accuracy.into_inner()).into();
             target.boosts.evasion = (-target.boosts.evasion.into_inner()).into();
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: format!("|-invertboost|{}|[from] move: Topsy-Turvy", target_ident),
-            }));
+            });
         }
     } else if move_id == "strengthsap" {
         let target_ident = PokemonIdent {
@@ -1672,16 +1666,14 @@ pub fn handle_move_target_effect(
             let is_ooze = target_p.ability.as_ref().map(|a| a.as_str()) == Some("liquidooze");
             if is_ooze {
                 battle.section_take_damage(attacker_ident, final_atk);
-                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::Damage {
-                        target: attacker_ident,
-                        damage: final_atk,
-                        is_crit: false,
-                        effectiveness: 0,
-                        absorbed: false,
-                        from_effect: Some("ability: Liquid Ooze".to_string()),
-                    },
-                ));
+                battle.log.push(crate::sim::log::BattleLog::Damage {
+                    target: attacker_ident,
+                    damage: final_atk,
+                    is_crit: false,
+                    effectiveness: 0,
+                    absorbed: false,
+                    from_effect: Some("ability: Liquid Ooze".to_string()),
+                });
             } else {
                 battle.section_heal(attacker_ident, final_atk.into());
             }
@@ -1718,9 +1710,9 @@ pub fn handle_move_target_effect(
             && target_p.status == Some(Status::Burn)
         {
             target_p.status = None;
-            battle.log.push(BattleLogEvent::new(BattleLog::CureStatus {
+            battle.log.push(BattleLog::CureStatus {
                 target: target_ident,
-            }));
+            });
         }
     } else if move_id == "toxic" {
         let attacker_ident = PokemonIdent {
@@ -1742,9 +1734,9 @@ pub fn handle_move_target_effect(
             if target.status.is_none() && !type_immune {
                 battle.section_apply_status(target_ident, Status::Toxic, Some(attacker_ident));
             } else {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: target_ident,
-                }));
+                });
             }
         }
     } else if move_id == "afteryou" {
@@ -1757,20 +1749,20 @@ pub fn handle_move_target_effect(
             let action = battle.turn_actions.remove(idx);
             battle.turn_actions.insert(0, action);
 
-            battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+            battle.log.push(BattleLog::Activate {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
                 effect: "move: After You".to_string(),
-            }));
+            });
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
                 },
-            }));
+            });
         }
     } else if move_id == "taunt" {
         if check_aroma_veil(
@@ -1806,9 +1798,9 @@ pub fn handle_move_target_effect(
             let p_mut = battle.get_pokemon_mut(target_ident).unwrap();
             p_mut.taunt_turns = turns;
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: target_ident,
-            }));
+            });
         }
     } else if move_id == "quash" {
         // Find the target's action in battle.turn_actions
@@ -1820,20 +1812,20 @@ pub fn handle_move_target_effect(
             let action = battle.turn_actions.remove(idx);
             battle.turn_actions.push(action);
 
-            battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+            battle.log.push(BattleLog::Activate {
                 target: PokemonIdent {
                     player: target_player,
                     slot: target_slot,
                 },
                 effect: "move: Quash".to_string(),
-            }));
+            });
         } else {
-            battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+            battle.log.push(BattleLog::Fail {
                 target: PokemonIdent {
                     player: source_player,
                     slot: source_slot,
                 },
-            }));
+            });
         }
     } else if move_id == "babydolleyes" {
         battle.apply_stat_change(
@@ -1868,12 +1860,10 @@ pub fn handle_move_self_effect(
                     .volatile_status
                     .retain(|status| *status != volatile_status);
             }
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::VolatileStatusEnd {
-                    target,
-                    volatile_status: volatile_status.to_string(),
-                }));
+            battle.log.push(BattleLog::VolatileStatusEnd {
+                target,
+                volatile_status: volatile_status.to_string(),
+            });
         } else {
             battle.section_apply_volatile(target, volatile_status);
         }
@@ -1928,14 +1918,14 @@ pub fn handle_move_self_effect(
                         })
                         .collect();
 
-                    battle.log.push(BattleLogEvent::new(BattleLog::Start {
+                    battle.log.push(BattleLog::Start {
                         target: PokemonIdent { player, slot },
                         effect: format!(
                             "typechange|{}|[from] move: {}",
                             type_strings.join("/"),
                             move_name
                         ),
-                    }));
+                    });
                 }
             }
         }
@@ -1943,37 +1933,37 @@ pub fn handle_move_self_effect(
             if let Some(p) = battle.get_pokemon(PokemonIdent { player, slot }) {
                 let cost = std::cmp::max(1, p.maxhp.into_inner() / 2);
                 battle.section_take_damage(PokemonIdent { player, slot }, cost);
-                battle.log.push(BattleLogEvent::new(BattleLog::Damage {
+                battle.log.push(BattleLog::Damage {
                     target: PokemonIdent { player, slot },
                     damage: cost,
                     is_crit: false,
                     effectiveness: 0,
                     absorbed: false,
                     from_effect: None,
-                }));
+                });
             }
             if let Some(p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
                 p.boosts.atk = 6.into();
-                battle.log.push(BattleLogEvent::new(BattleLog::SetBoost {
+                battle.log.push(BattleLog::SetBoost {
                     target: PokemonIdent { player, slot },
                     stat: "atk".to_string(),
                     amount: 6,
                     from: "Belly Drum".to_string(),
-                }));
+                });
             }
         }
         "clangoroussoul" => {
             if let Some(p) = battle.get_pokemon(PokemonIdent { player, slot }) {
                 let cost = std::cmp::max(1, p.maxhp.into_inner() * 33 / 100);
                 battle.section_take_damage(PokemonIdent { player, slot }, cost);
-                battle.log.push(BattleLogEvent::new(BattleLog::Damage {
+                battle.log.push(BattleLog::Damage {
                     target: PokemonIdent { player, slot },
                     damage: cost,
                     is_crit: false,
                     effectiveness: 0,
                     absorbed: false,
                     from_effect: None,
-                }));
+                });
             }
             battle.apply_stat_change(
                 player,
@@ -2019,9 +2009,9 @@ pub fn handle_move_self_effect(
                     p.weight = 1.into();
                 }
                 let ident = p.ident.clone();
-                battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                battle.log.push(BattleLog::Text {
                     message: format!("|-start|{}|Autotomize", ident),
-                }));
+                });
             }
         }
         "swordsdance" => {
@@ -2038,28 +2028,22 @@ pub fn handle_move_self_effect(
                 .unwrap_or(0);
             if hp > 0 {
                 battle.section_take_damage(ident, hp);
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::Faint { target: ident }));
+                battle.log.push(BattleLog::Faint { target: ident });
             }
         }
         "magicroom" => {
             battle.magic_room_turns_left = 5;
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                    terrain: "move: Magic Room".to_string(),
-                    is_start: true,
-                }));
+            battle.log.push(BattleLog::TerrainChange {
+                terrain: "move: Magic Room".to_string(),
+                is_start: true,
+            });
         }
         "wonderroom" => {
             battle.wonder_room_turns_left = 5;
-            battle
-                .log
-                .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                    terrain: "move: Wonder Room".to_string(),
-                    is_start: true,
-                }));
+            battle.log.push(BattleLog::TerrainChange {
+                terrain: "move: Wonder Room".to_string(),
+                is_start: true,
+            });
         }
         "scaleshot" => {
             battle.apply_stat_change(
@@ -2092,9 +2076,9 @@ pub fn handle_move_self_effect(
             if let Some(p) = battle.get_pokemon_mut(target) {
                 let item = p.item.take();
                 if let Some(item_name) = item {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                    battle.log.push(BattleLog::Text {
                         message: format!("|-enditem|{}|{}|[eat]", target, item_name),
-                    }));
+                    });
                 }
             }
             battle.apply_stat_change(player, slot, vec![(Stat::Def, 2)], player, Some(move_id));
@@ -2104,14 +2088,14 @@ pub fn handle_move_self_effect(
             if let Some(p) = battle.get_pokemon_mut(ident) {
                 let cost = (p.maxhp.into_inner() + 1) / 2;
                 p.hp = std::cmp::max(0, p.hp.into_inner() - cost).into();
-                battle.log.push(BattleLogEvent::new(BattleLog::Damage {
+                battle.log.push(BattleLog::Damage {
                     target: ident,
                     damage: cost,
                     is_crit: false,
                     effectiveness: 0,
                     absorbed: false,
                     from_effect: None,
-                }));
+                });
                 battle.section_apply_volatile(ident, VolatileStatus::Substitute);
             }
         }
@@ -2130,9 +2114,7 @@ pub fn handle_move_self_effect(
                     Some(move_id),
                 );
             } else {
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::Fail { target }));
+                battle.log.push(BattleLog::Fail { target });
             }
         }
         "meteorbeam" => {
@@ -2229,9 +2211,9 @@ pub fn handle_move_self_effect(
         | "morningsun" | "healorder" => {
             if let Some(p) = battle.get_pokemon(PokemonIdent { player, slot }) {
                 if p.hp == p.maxhp {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                    battle.log.push(BattleLog::Fail {
                         target: PokemonIdent { player, slot },
-                    }));
+                    });
                 } else {
                     let is_weather_healing =
                         ["moonlight", "synthesis", "morningsun"].contains(&move_id);
@@ -2273,21 +2255,19 @@ pub fn handle_move_self_effect(
                     (false, false, 0)
                 };
             if is_max_hp || is_slp {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent { player, slot },
-                }));
+                });
             } else {
                 battle.section_heal(PokemonIdent { player, slot }, maxhp.into());
                 if let Some(mut_p) = battle.get_pokemon_mut(PokemonIdent { player, slot }) {
                     mut_p.status = Some(Status::Sleep);
                     mut_p.sleep_turns = 3;
                 }
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::StatusInflicted {
-                        target: PokemonIdent { player, slot },
-                        status: "slp".to_string(),
-                    }));
+                battle.log.push(BattleLog::StatusInflicted {
+                    target: PokemonIdent { player, slot },
+                    status: "slp".to_string(),
+                });
             }
         }
         "electricterrain" | "grassyterrain" | "mistyterrain" | "psychicterrain" | "haze"
@@ -2313,9 +2293,9 @@ pub fn handle_move_self_effect(
                     if let Some(p) = battle.get_pokemon_mut(target) {
                         p.boosts = pkmn_meta::Boosts::default();
                     }
-                    battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                    battle.log.push(BattleLog::Text {
                         message: "|-clearallboost".to_string(),
-                    }));
+                    });
                 }
             } else if move_id == "sunnyday"
                 || move_id == "raindance"
@@ -2342,18 +2322,16 @@ pub fn handle_move_self_effect(
                     weather.as_ref().to_string()
                 };
 
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::WeatherChange {
-                        weather: log_str,
-                        is_start: true,
-                    }));
+                battle.log.push(BattleLog::WeatherChange {
+                    weather: log_str,
+                    is_start: true,
+                });
 
                 if move_id == "chillyreception" {
-                    battle.log.push(BattleLogEvent::new(BattleLog::Prepare {
+                    battle.log.push(BattleLog::Prepare {
                         target: PokemonIdent { player, slot },
                         move_id: "chillyreception".to_string(),
-                    }));
+                    });
                     battle.turn_state = TurnState::WaitingForSwitch {
                         player,
                         pass_stats: false,
@@ -2383,12 +2361,10 @@ pub fn handle_move_self_effect(
                     "psychicterrain" => Terrain::Psychic,
                     _ => unreachable!(),
                 };
-                battle
-                    .log
-                    .push(BattleLogEvent::new(BattleLog::TerrainChange {
-                        terrain: terrain.as_ref().to_string() + "Terrain",
-                        is_start: true,
-                    }));
+                battle.log.push(BattleLog::TerrainChange {
+                    terrain: terrain.as_ref().to_string() + "Terrain",
+                    is_start: true,
+                });
                 battle.terrain = Some(terrain);
                 battle.terrain_turns_left = if battle
                     .get_pokemon(PokemonIdent { player, slot })
@@ -2406,9 +2382,9 @@ pub fn handle_move_self_effect(
             }
         }
         "fairylock" => {
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: "-fieldactivate|move: Fairy Lock".to_string(),
-            }));
+            });
             battle.fairy_lock_turns = 2; // Lasts for the current and next turn
         }
         "protect" | "detect" | "spikyshield" | "kingsshield" | "banefulbunker" => {
@@ -2419,10 +2395,10 @@ pub fn handle_move_self_effect(
                 _ => VolatileStatus::Protect,
             };
             battle.section_apply_volatile(PokemonIdent { player, slot }, vs);
-            battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+            battle.log.push(BattleLog::SingleTurn {
                 target: PokemonIdent { player, slot },
                 effect: move_id.to_string(),
-            }));
+            });
         }
         "charge" => {
             battle.section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Charge);
@@ -2450,10 +2426,10 @@ pub fn handle_move_self_effect(
         }
         "endure" => {
             battle.section_apply_volatile(PokemonIdent { player, slot }, VolatileStatus::Endure);
-            battle.log.push(BattleLogEvent::new(BattleLog::SingleTurn {
+            battle.log.push(BattleLog::SingleTurn {
                 target: PokemonIdent { player, slot },
                 effect: "endure".to_string(),
-            }));
+            });
         }
         "perishsong" => {
             let active_targets = [
@@ -2474,7 +2450,7 @@ pub fn handle_move_self_effect(
             }
         }
         "courtchange" => {
-            let p1_has = battle.p1.tailwind
+            let p1_has = battle.p1.is_tailwind()
                 || battle.p1.reflect_turns > 0
                 || battle.p1.lightscreen_turns > 0
                 || battle.p1.aurora_veil_turns > 0
@@ -2484,7 +2460,7 @@ pub fn handle_move_self_effect(
                 || battle.p1.stealth_rock
                 || battle.p1.sticky_web;
 
-            let p2_has = battle.p2.tailwind
+            let p2_has = battle.p2.is_tailwind()
                 || battle.p2.reflect_turns > 0
                 || battle.p2.lightscreen_turns > 0
                 || battle.p2.aurora_veil_turns > 0
@@ -2495,12 +2471,11 @@ pub fn handle_move_self_effect(
                 || battle.p2.sticky_web;
 
             if !p1_has && !p2_has {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent { player, slot },
-                }));
+                });
             } else {
                 std::mem::swap(&mut battle.p1.tailwind, &mut battle.p2.tailwind);
-                std::mem::swap(&mut battle.p1.tailwind_turns, &mut battle.p2.tailwind_turns);
                 std::mem::swap(&mut battle.p1.reflect_turns, &mut battle.p2.reflect_turns);
                 std::mem::swap(
                     &mut battle.p1.lightscreen_turns,
@@ -2519,13 +2494,13 @@ pub fn handle_move_self_effect(
                 std::mem::swap(&mut battle.p1.stealth_rock, &mut battle.p2.stealth_rock);
                 std::mem::swap(&mut battle.p1.sticky_web, &mut battle.p2.sticky_web);
 
-                battle.log.push(BattleLogEvent::new(BattleLog::Text {
+                battle.log.push(BattleLog::Text {
                     message: "|-swapsideconditions".to_string(),
-                }));
-                battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+                });
+                battle.log.push(BattleLog::Activate {
                     target: PokemonIdent { player, slot },
                     effect: "move: Court Change".to_string(),
-                }));
+                });
             }
         }
         "glaiverush" => {
@@ -2535,9 +2510,9 @@ pub fn handle_move_self_effect(
             {
                 p.volatile_status.push(VolatileStatus::Glaiverush);
             }
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: format!("|-singlemove|{}|Glaive Rush|[silent]", ident),
-            }));
+            });
         }
         "revivalblessing" => {
             let fainted_member = {
@@ -2603,14 +2578,14 @@ pub fn handle_move_self_effect(
                 p.hp = heal_amount.into();
                 p.status = None;
 
-                battle.log.push(BattleLogEvent::new(BattleLog::Heal {
+                battle.log.push(BattleLog::Heal {
                     target: target_ident,
                     amount: heal_amount,
-                }));
+                });
             } else {
-                battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+                battle.log.push(BattleLog::Fail {
                     target: PokemonIdent { player, slot },
-                }));
+                });
             }
         }
         _ => {}
@@ -2662,10 +2637,10 @@ pub fn handle_target_secondary_effect(
                 last_move.clone()
             };
 
-            battle.log.push(BattleLogEvent::new(BattleLog::Activate {
+            battle.log.push(BattleLog::Activate {
                 target: target_ident,
                 effect: format!("move: Eerie Spell|{}|3", move_name),
-            }));
+            });
         }
     }
 }

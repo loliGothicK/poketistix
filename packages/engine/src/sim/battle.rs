@@ -55,8 +55,7 @@ pub enum Stat {
 pub struct Side {
     pub active: Vec<Pokemon>,
     pub team: Vec<Pokemon>,
-    pub tailwind: bool,
-    pub tailwind_turns: u8,
+    pub tailwind: Option<std::num::NonZeroU8>,
     pub aurora_veil_turns: u8,
     pub reflect_turns: u8,
     pub lightscreen_turns: u8,
@@ -66,6 +65,18 @@ pub struct Side {
     pub stealth_rock: bool,
     pub sticky_web: bool,
     pub mega_used: bool,
+}
+
+impl Side {
+    #[inline]
+    pub fn is_tailwind(&self) -> bool {
+        self.tailwind.is_some()
+    }
+
+    #[inline]
+    pub fn tailwind_turns(&self) -> u8 {
+        self.tailwind.map_or(0, |t| t.get())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,13 +104,12 @@ pub struct Battle {
     pub turn_state: TurnState,
     pub p1: Side,
     pub p2: Side,
-    pub log: Vec<BattleLogEvent>,
+    pub log: Vec<BattleLog>,
     pub weather: Option<Weather>,
     pub weather_turns_left: u8,
     pub terrain: Option<Terrain>,
     pub terrain_turns_left: u8,
-    pub trick_room: bool,
-    pub trick_room_turns_left: u8,
+    pub trick_room: Option<std::num::NonZeroU8>,
     pub magic_room_turns_left: u8,
     pub wonder_room_turns_left: u8,
     pub gravity_turns_left: u8,
@@ -137,6 +147,16 @@ impl Battle {
             .unwrap_or((0.into(), 0.into()))
     }
 
+    #[inline]
+    pub fn is_trick_room(&self) -> bool {
+        self.trick_room.is_some()
+    }
+
+    #[inline]
+    pub fn trick_room_turns_left(&self) -> u8 {
+        self.trick_room.map_or(0, |t| t.get())
+    }
+
     pub fn get_pokemon_mut(&mut self, ident: PokemonIdent) -> Option<&mut Pokemon> {
         if ident.player == 1 {
             self.p1.active.get_mut(ident.slot)
@@ -170,8 +190,7 @@ impl Battle {
             weather_turns_left: 0,
             terrain: None,
             terrain_turns_left: 0,
-            trick_room: false,
-            trick_room_turns_left: 0,
+            trick_room: None,
             magic_room_turns_left: 0,
             wonder_room_turns_left: 0,
             gravity_turns_left: 0,
@@ -313,9 +332,7 @@ impl Battle {
                 let has_sleep_immunity =
                     matches!(target_ability, Some("insomnia") | Some("vitalspirit"));
                 if has_sleep_immunity {
-                    self.log.push(BattleLogEvent::new(BattleLog::Immune {
-                        target: ctx.target,
-                    }));
+                    self.log.push(BattleLog::Immune { target: ctx.target });
                     return;
                 }
                 if (has_flower_veil && is_grass) || has_sweet_veil {
@@ -351,10 +368,10 @@ impl Battle {
             }
 
             if applied && v_val != VolatileStatus::Flinch {
-                self.log.push(BattleLogEvent::new(BattleLog::Start {
+                self.log.push(BattleLog::Start {
                     target: ctx.target,
                     effect: v_val.to_string(),
-                }));
+                });
             }
 
             self.trigger_event(EventId::AfterApplyVolatile, &mut ctx);
@@ -366,9 +383,7 @@ impl Battle {
                 target_ability,
                 Some("owntempo") | Some("oblivious") | Some("innerfocus")
             ) {
-                self.log.push(BattleLogEvent::new(BattleLog::Immune {
-                    target: ctx.target,
-                }));
+                self.log.push(BattleLog::Immune { target: ctx.target });
             }
         }
     }
@@ -408,10 +423,10 @@ impl Battle {
             }
 
             if actual_heal > 0 {
-                self.log.push(BattleLogEvent::new(BattleLog::Heal {
+                self.log.push(BattleLog::Heal {
                     target,
                     amount: actual_heal,
-                }));
+                });
             }
         }
     }
@@ -435,9 +450,9 @@ impl Battle {
                 .and_then(|p| p.ability.as_ref().map(|a| a.as_str()))
                 == Some("infiltrator");
             if target_side.safeguard_turns > 0 && !is_infiltrator {
-                self.log.push(BattleLogEvent::new(BattleLog::Text {
+                self.log.push(BattleLog::Text {
                     message: format!("|-activate|{}|move: Safeguard", target),
-                }));
+                });
                 return;
             }
 
@@ -536,19 +551,15 @@ impl Battle {
                     Status::Toxic => "tox",
                 }
                 .to_string();
-                self.log.push(crate::sim::log::BattleLogEvent::new(
-                    crate::sim::log::BattleLog::StatusInflicted {
-                        target: ctx.target,
-                        status: status_str,
-                    },
-                ));
+                self.log.push(crate::sim::log::BattleLog::StatusInflicted {
+                    target: ctx.target,
+                    status: status_str,
+                });
             }
 
             self.trigger_event(EventId::AfterApplyStatus, &mut ctx);
         } else {
-            self.log.push(BattleLogEvent::new(BattleLog::Immune {
-                target: ctx.target,
-            }));
+            self.log.push(BattleLog::Immune { target: ctx.target });
         }
     }
 
@@ -586,10 +597,10 @@ impl Battle {
             }
 
             if let Some(item_id) = consumed_item {
-                self.log.push(BattleLogEvent::new(BattleLog::EndItem {
+                self.log.push(BattleLog::EndItem {
                     target: ctx.target,
                     item: item_id.as_ref().to_string(),
-                }));
+                });
             }
 
             self.trigger_event(EventId::AfterConsumeItem, &mut ctx);
@@ -631,9 +642,7 @@ impl Battle {
         };
 
         if had_status {
-            self.log.push(BattleLogEvent::new(BattleLog::CureStatus {
-                target: ctx.target,
-            }));
+            self.log.push(BattleLog::CureStatus { target: ctx.target });
         }
     }
 
@@ -752,8 +761,7 @@ impl Battle {
         active[target.slot].ident =
             format!("{}{}", prefix, if target.slot == 0 { "a" } else { "b" });
 
-        self.log
-            .push(BattleLogEvent::new(BattleLog::Drag { target }));
+        self.log.push(BattleLog::Drag { target });
 
         self.run_switch_in(target.player, target.slot);
     }
@@ -895,11 +903,11 @@ impl Battle {
             s
         };
 
-        self.log.push(BattleLogEvent::new(BattleLog::Mega {
+        self.log.push(BattleLog::Mega {
             target: ident,
             species: species_display,
             item: item_display,
-        }));
+        });
 
         crate::sim::sections::switch::trigger_switch_in_ability(self, player, slot);
         true

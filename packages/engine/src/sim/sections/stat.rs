@@ -1,6 +1,4 @@
-use crate::sim::battle::{
-    Battle, BattleLog, BattleLogEvent, EventContext, EventId, PokemonIdent, Stat,
-};
+use crate::sim::battle::{Battle, BattleLog, EventContext, EventId, PokemonIdent, Stat};
 use crate::wasm_api::Boosts;
 use pkmn_meta::types::Type;
 
@@ -133,16 +131,16 @@ pub fn apply_stat_change(
     };
 
     if blocked_immune {
-        battle.log.push(BattleLogEvent::new(BattleLog::Immune {
+        battle.log.push(BattleLog::Immune {
             target: target_ident,
-        }));
+        });
         return false;
     }
 
     if blocked_fail {
-        battle.log.push(BattleLogEvent::new(BattleLog::Fail {
+        battle.log.push(BattleLog::Fail {
             target: target_ident,
-        }));
+        });
         return false;
     }
 
@@ -208,14 +206,14 @@ pub fn apply_stat_change(
             Stat::Evasion => "evasion",
         }
         .to_string();
-        battle.log.push(BattleLogEvent::new(BattleLog::StatChange {
+        battle.log.push(BattleLog::StatChange {
             target: PokemonIdent {
                 player: target_player,
                 slot: target_slot,
             },
             stat: stat_name.clone(),
             amount: actual_change as i32,
-        }));
+        });
 
         battle.event_queue.push_back((
             EventId::AfterStatChange,

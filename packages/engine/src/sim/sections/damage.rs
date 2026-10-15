@@ -21,12 +21,10 @@ pub fn section_take_damage(battle: &mut Battle, target: PokemonIdent, damage: i3
         if endure {
             let hp = battle.get_pokemon(ctx.target).unwrap().hp.into_inner();
             ctx.num_val = hp - 1;
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::SingleTurn {
-                    target: ctx.target,
-                    effect: "move: Endure".to_string(),
-                },
-            ));
+            battle.log.push(crate::sim::log::BattleLog::SingleTurn {
+                target: ctx.target,
+                effect: "move: Endure".to_string(),
+            });
         }
 
         if ctx.target.player == 1 {

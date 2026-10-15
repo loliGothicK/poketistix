@@ -1,5 +1,6 @@
 import { test, expect } from "vitest";
 import { TestEnvironment, pokemon } from "@/sim-utils";
+import type { BattleLogEvent } from "../../pkg-node";
 
 test("Move: Trick Room toggles on and off with turn counter tracking", () => {
   const env = new TestEnvironment(
@@ -94,10 +95,10 @@ test("Move: Trick Room reverses action order by effective speed", () => {
     ],
   );
 
-  const getFacadeAttackerOrder = (logs: any[]) =>
+  const getFacadeAttackerOrder = (logs: BattleLogEvent[]) =>
     logs
       .filter((e) => e.event.type === "MoveUsed" && e.event.move_id === "facade")
-      .map((e) => e.event.attacker.player);
+      .map((e) => (e.event.type === "MoveUsed" ? e.event.attacker.player : 0));
 
   // Turn 1: Normal conditions -> Fast Jolteon (P2) must move BEFORE Slow Snorlax (P1)
   const t1 = env.executeTurn("move facade 2, move sleeptalk", "move facade 1, move sleeptalk");

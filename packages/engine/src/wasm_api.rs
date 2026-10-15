@@ -36,8 +36,8 @@ pub struct BattleState {
 
 fn side_data(side: &crate::sim::battle::Side) -> SideData {
     SideData {
-        tailwind: side.tailwind,
-        tailwind_turns: side.tailwind_turns,
+        tailwind: side.is_tailwind(),
+        tailwind_turns: side.tailwind_turns(),
         aurora_veil_turns: side.aurora_veil_turns,
         reflect_turns: side.reflect_turns,
         lightscreen_turns: side.lightscreen_turns,
@@ -55,9 +55,13 @@ fn side_data(side: &crate::sim::battle::Side) -> SideData {
 fn battle_logs_to_ts(
     battle: &crate::sim::battle::Battle,
 ) -> Result<tsify::Ts<crate::sim::log::BattleLogs>, wasm_bindgen::JsError> {
-    let logs = crate::sim::log::BattleLogs {
-        events: battle.log.clone(),
-    };
+    let events = battle
+        .log
+        .iter()
+        .cloned()
+        .map(crate::sim::log::BattleLogEvent::new)
+        .collect();
+    let logs = crate::sim::log::BattleLogs { events };
     tsify::Ts::from_rust(&logs).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
 }
 
@@ -489,12 +493,26 @@ impl Simulator {
             .filter(|s| !s.is_empty())
             .and_then(|s| std::str::FromStr::from_str(&s).ok());
         self.battle.terrain_turns_left = state.terrain_turns_left;
-        self.battle.trick_room = state.trick_room;
-        self.battle.trick_room_turns_left = state.trick_room_turns_left;
+        self.battle.trick_room = if state.trick_room {
+            std::num::NonZeroU8::new(if state.trick_room_turns_left > 0 {
+                state.trick_room_turns_left
+            } else {
+                5
+            })
+        } else {
+            None
+        };
         self.battle.gravity_turns_left = state.gravity_turns_left;
         self.battle.fairy_lock_turns = state.fairy_lock_turns;
-        self.battle.p1.tailwind = state.p1.tailwind;
-        self.battle.p1.tailwind_turns = state.p1.tailwind_turns;
+        self.battle.p1.tailwind = if state.p1.tailwind {
+            std::num::NonZeroU8::new(if state.p1.tailwind_turns > 0 {
+                state.p1.tailwind_turns
+            } else {
+                4
+            })
+        } else {
+            None
+        };
         self.battle.p1.aurora_veil_turns = state.p1.aurora_veil_turns;
         self.battle.p1.reflect_turns = state.p1.reflect_turns;
         self.battle.p1.lightscreen_turns = state.p1.lightscreen_turns;
@@ -504,8 +522,15 @@ impl Simulator {
         self.battle.p1.stealth_rock = state.p1.stealth_rock;
         self.battle.p1.sticky_web = state.p1.sticky_web;
         self.battle.p1.mega_used = state.p1.mega_used;
-        self.battle.p2.tailwind = state.p2.tailwind;
-        self.battle.p2.tailwind_turns = state.p2.tailwind_turns;
+        self.battle.p2.tailwind = if state.p2.tailwind {
+            std::num::NonZeroU8::new(if state.p2.tailwind_turns > 0 {
+                state.p2.tailwind_turns
+            } else {
+                4
+            })
+        } else {
+            None
+        };
         self.battle.p2.aurora_veil_turns = state.p2.aurora_veil_turns;
         self.battle.p2.reflect_turns = state.p2.reflect_turns;
         self.battle.p2.lightscreen_turns = state.p2.lightscreen_turns;
@@ -617,8 +642,8 @@ impl Simulator {
             weather_turns_left: self.battle.weather_turns_left,
             terrain: self.battle.terrain.as_ref().map(|t| t.to_string()),
             terrain_turns_left: self.battle.terrain_turns_left,
-            trick_room: self.battle.trick_room,
-            trick_room_turns_left: self.battle.trick_room_turns_left,
+            trick_room: self.battle.is_trick_room(),
+            trick_room_turns_left: self.battle.trick_room_turns_left(),
             gravity_turns_left: self.battle.gravity_turns_left,
             fairy_lock_turns: self.battle.fairy_lock_turns,
         };

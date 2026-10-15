@@ -102,13 +102,11 @@ impl Action {
                     slot: s.slot,
                 };
                 if !battle.can_switch(switch_ident) {
-                    battle.log.push(crate::sim::log::BattleLogEvent::new(
-                        crate::sim::log::BattleLog::Cant {
-                            target: switch_ident,
-                            reason: "trapped".to_string(),
-                            move_id: None,
-                        },
-                    ));
+                    battle.log.push(crate::sim::log::BattleLog::Cant {
+                        target: switch_ident,
+                        reason: "trapped".to_string(),
+                        move_id: None,
+                    });
                     return Ok(());
                 }
 
@@ -140,14 +138,12 @@ impl Action {
                                 && active[s.slot].status.is_some()
                             {
                                 active[s.slot].status = None;
-                                battle.log.push(crate::sim::log::BattleLogEvent::new(
-                                    crate::sim::log::BattleLog::CureStatus {
-                                        target: crate::sim::battle::PokemonIdent {
-                                            player: s.player,
-                                            slot: s.slot,
-                                        },
+                                battle.log.push(crate::sim::log::BattleLog::CureStatus {
+                                    target: crate::sim::battle::PokemonIdent {
+                                        player: s.player,
+                                        slot: s.slot,
                                     },
-                                ));
+                                });
                             }
                             if active[s.slot].ability.as_ref().map(|a| a.as_str())
                                 == Some("regenerator")

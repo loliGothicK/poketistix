@@ -1,5 +1,5 @@
 use crate::sim::battle::{Battle, EventContext, EventId, PokemonIdent, Stat};
-use crate::sim::log::{BattleLog, BattleLogEvent};
+use crate::sim::log::BattleLog;
 use crate::wasm_api::Boosts;
 use pkmn_meta::types::*;
 
@@ -122,14 +122,12 @@ pub fn execute_ability(
             && ctx.num_val >= hp.into_inner()
         {
             ctx.num_val = hp.into_inner() - 1;
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::Ability {
-                    target: ctx.target,
-                    ability: "Sturdy".to_string(),
-                    from_move: None,
-                    of: None,
-                },
-            ));
+            battle.log.push(crate::sim::log::BattleLog::Ability {
+                target: ctx.target,
+                ability: "Sturdy".to_string(),
+                from_move: None,
+                of: None,
+            });
         }
     }
 }
@@ -1586,14 +1584,12 @@ pub fn on_start(ability_id: &str, battle: &mut Battle, target: PokemonIdent) {
                 }
             }
             if shudder {
-                battle
-                    .log
-                    .push(crate::sim::log::BattleLogEvent::new(BattleLog::Ability {
-                        target,
-                        ability: "Anticipation".to_string(),
-                        from_move: None,
-                        of: None,
-                    }));
+                battle.log.push(crate::sim::log::BattleLog::Ability {
+                    target,
+                    ability: "Anticipation".to_string(),
+                    from_move: None,
+                    of: None,
+                });
             }
         }
     }
@@ -1606,12 +1602,12 @@ pub fn on_start(ability_id: &str, battle: &mut Battle, target: PokemonIdent) {
             && ally.hp.into_inner() > 0
         {
             ally.boosts = Boosts::default();
-            battle.log.push(BattleLogEvent::new(BattleLog::Text {
+            battle.log.push(BattleLog::Text {
                 message: format!(
                     "|-clearboost|{}|[from] ability: Curious Medicine|[of] {}",
                     ally_ident, target
                 ),
-            }));
+            });
         }
     }
     if ability_id == "trace" {
@@ -1639,12 +1635,12 @@ pub fn on_start(ability_id: &str, battle: &mut Battle, target: PokemonIdent) {
             let ab_name = crate::sim::abilities::get_ability(ab.as_str())
                 .map(|c| c.name)
                 .unwrap_or_else(|| ab.to_string());
-            battle.log.push(BattleLogEvent::new(BattleLog::Ability {
+            battle.log.push(BattleLog::Ability {
                 target,
                 ability: ab_name,
                 from_move: None,
                 of: target_foe_ident,
-            }));
+            });
         }
     }
 }

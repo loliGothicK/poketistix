@@ -162,14 +162,22 @@ pub struct BattleLogs {
 }
 
 impl BattleLogEvent {
+    #[inline]
     pub fn new(event: BattleLog) -> Self {
         let showdown = event.to_showdown_string();
         Self { event, showdown }
     }
 }
 
+impl From<BattleLog> for BattleLogEvent {
+    #[inline]
+    fn from(event: BattleLog) -> Self {
+        Self::new(event)
+    }
+}
+
 impl BattleLog {
-    fn to_showdown_string(&self) -> String {
+    pub fn to_showdown_string(&self) -> String {
         match self {
             BattleLog::MoveUsed {
                 attacker,

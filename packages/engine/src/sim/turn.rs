@@ -102,7 +102,7 @@ pub fn execute_turn(
         actions.push(action);
     }
 
-    let is_trick_room = battle.trick_room;
+    let is_trick_room = battle.is_trick_room();
 
     // Resolve Quick Draw (30% chance on attacking moves) and Quick Claw
     let mut rng = rand::rng();
@@ -140,15 +140,13 @@ pub fn execute_turn(
 
                     if activated {
                         m.quick_draw = true;
-                        battle.log.push(crate::sim::log::BattleLogEvent::new(
-                            crate::sim::log::BattleLog::Activate {
-                                target: crate::sim::pokemon::PokemonIdent {
-                                    player: m.player,
-                                    slot: m.slot,
-                                },
-                                effect: "Quick Draw".to_string(),
+                        battle.log.push(crate::sim::log::BattleLog::Activate {
+                            target: crate::sim::pokemon::PokemonIdent {
+                                player: m.player,
+                                slot: m.slot,
                             },
-                        ));
+                            effect: "Quick Draw".to_string(),
+                        });
                     }
                 }
             }
@@ -184,12 +182,10 @@ pub fn execute_turn(
             }
         }
         for ident in focuspunch_users {
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::SingleTurn {
-                    target: ident,
-                    effect: "move: Focus Punch".to_string(),
-                },
-            ));
+            battle.log.push(crate::sim::log::BattleLog::SingleTurn {
+                target: ident,
+                effect: "move: Focus Punch".to_string(),
+            });
         }
         for ident in beakblast_users {
             battle.section_apply_volatile(ident, VolatileStatus::Beakblast);
@@ -197,16 +193,12 @@ pub fn execute_turn(
                 .get_pokemon(ident)
                 .map(|p| p.ident.clone())
                 .unwrap_or_default();
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::Text {
-                    message: format!("|-anim|{}|Beak Blast", pkmn_name),
-                },
-            ));
-            battle.log.push(crate::sim::log::BattleLogEvent::new(
-                crate::sim::log::BattleLog::Text {
-                    message: format!("|-singleturn|{}|move: Beak Blast", pkmn_name),
-                },
-            ));
+            battle.log.push(crate::sim::log::BattleLog::Text {
+                message: format!("|-anim|{}|Beak Blast", pkmn_name),
+            });
+            battle.log.push(crate::sim::log::BattleLog::Text {
+                message: format!("|-singleturn|{}|move: Beak Blast", pkmn_name),
+            });
         }
     }
 
@@ -214,7 +206,7 @@ pub fn execute_turn(
 }
 
 pub fn sort_turn_actions(battle: &mut Battle) {
-    let is_trick_room = battle.trick_room;
+    let is_trick_room = battle.is_trick_room();
     // Update speeds and priorities for remaining actions based on current battle state
     let mut updates = Vec::with_capacity(battle.turn_actions.len());
     for action in &battle.turn_actions {

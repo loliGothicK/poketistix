@@ -118,11 +118,9 @@ describe("Ability: Quick Draw", () => {
 
     // Sludge Bomb should be used before Surf despite Slowbro having lower speed
     const sludgeBombIndex = events.findIndex(
-      (e) => e.type === "MoveUsed" && (e as any).move_id === "sludgebomb",
+      (e) => e.type === "MoveUsed" && e.move_id === "sludgebomb",
     );
-    const surfIndex = events.findIndex(
-      (e) => e.type === "MoveUsed" && (e as any).move_id === "surf",
-    );
+    const surfIndex = events.findIndex((e) => e.type === "MoveUsed" && e.move_id === "surf");
 
     expect(sludgeBombIndex).toBeGreaterThan(-1);
     expect(surfIndex).toBeGreaterThan(-1);
@@ -232,18 +230,14 @@ describe("Ability: Quick Draw", () => {
     const events = logs.events.map((e) => e.event);
 
     // Quick Draw should NOT activate on status move Sleep Talk
-    const quickDrawEvent = events.find(
-      (e) => e.type === "Activate" && (e as any).effect === "Quick Draw",
-    );
+    const quickDrawEvent = events.find((e) => e.type === "Activate" && e.effect === "Quick Draw");
     expect(quickDrawEvent).toBeUndefined();
 
     // Greninja moves before Slowbro
     const sleepTalkIndex = events.findIndex(
-      (e) => e.type === "MoveUsed" && (e as any).move_id === "sleeptalk",
+      (e) => e.type === "MoveUsed" && e.move_id === "sleeptalk",
     );
-    const surfIndex = events.findIndex(
-      (e) => e.type === "MoveUsed" && (e as any).move_id === "surf",
-    );
+    const surfIndex = events.findIndex((e) => e.type === "MoveUsed" && e.move_id === "surf");
     expect(surfIndex).toBeLessThan(sleepTalkIndex);
   });
 });

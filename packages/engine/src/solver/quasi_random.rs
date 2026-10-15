@@ -1,6 +1,6 @@
-/// 低不一致列 (Low-Discrepancy Sequence) を用いた準モンテカルロ法 (Quasi-Monte Carlo) サンプラー
-/// 擬似乱数 (PRNG) と異なり、多次元の確率空間 (命中・急所・ダメージ乱数・追加効果) を
-/// 偏りなく均等に散布することで、O(1/N) に迫る高速収束を実現します。
+//! 低不一致列 (Low-Discrepancy Sequence) を用いた準モンテカルロ法 (Quasi-Monte Carlo) サンプラー
+//! 擬似乱数 (PRNG) と異なり、多次元の確率空間 (命中・急所・ダメージ乱数・追加効果) を
+//! 偏りなく均等に散布することで、O(1/N) に迫る高速収束を実現します。
 
 /// 基数 b に対する Van der Corput 根数逆変換 (Radical Inverse)
 pub fn radical_inverse(mut n: usize, base: usize) -> f64 {
@@ -85,8 +85,8 @@ impl LatinHypercubeSampler {
                 perm.swap(i, j);
             }
 
-            for i in 0..samples {
-                result[i][d] = intervals[perm[i]];
+            for (row, &p) in result.iter_mut().zip(&perm) {
+                row[d] = intervals[p];
             }
         }
 

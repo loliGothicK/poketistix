@@ -113,7 +113,7 @@ export class ScenarioTestEvaluator {
    */
   async evaluateBatch(testCases: ParsedTestCase[], concurrency = 6): Promise<EvaluationResult[]> {
     if (testCases.length === 0) return [];
-    const results: EvaluationResult[] = new Array(testCases.length);
+    const results: EvaluationResult[] = Array.from({ length: testCases.length });
     let currentIndex = 0;
 
     const workerCount = Math.min(concurrency, testCases.length);
