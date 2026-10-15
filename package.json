@@ -17,7 +17,9 @@
     "prepare": "husky",
     "benchmark": "pnpm --filter @poketistix/app run benchmark",
     "check": "pnpm -r run check",
-    "renovate": "pnpm -r run renovate"
+    "renovate": "pnpm -r run renovate",
+    "kev:serve": "uv run --directory tools/kev --extra serve python -m kev.serve --run jaredpalmer/kev-0.8b --port 8009",
+    "eval:scenarios": "pnpm --filter @poketistix/engine run eval:scenarios"
   },
   "devDependencies": {
     "@changesets/changelog-github": "1.0.1",

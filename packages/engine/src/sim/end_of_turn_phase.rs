@@ -1007,6 +1007,18 @@ impl EndOfTurnPhase {
         // じゅうりょく(Gravity)、マジックルーム(Magic Room)、ワンダールーム(Wonder Room)、
         // フィールド(Terrain)、フェアリーロック(Fairy Lock)
         // =========================================================================
+        if battle.trick_room_turns_left > 0 {
+            battle.trick_room_turns_left -= 1;
+            if battle.trick_room_turns_left == 0 {
+                battle.trick_room = false;
+                battle.log.push(crate::sim::log::BattleLogEvent::new(
+                    crate::sim::log::BattleLog::Text {
+                        message: "|-fieldend|move: Trick Room".to_string(),
+                    },
+                ));
+            }
+        }
+
         if battle.gravity_turns_left > 0 {
             battle.gravity_turns_left -= 1;
             if battle.gravity_turns_left == 0 {

@@ -832,6 +832,7 @@ pub fn handle_move_target_effect(
 
     if move_id == "trickroom" {
         battle.trick_room = !battle.trick_room;
+        battle.trick_room_turns_left = if battle.trick_room { 5 } else { 0 };
         battle.log.push(BattleLogEvent::new(BattleLog::Text {
             message: if battle.trick_room {
                 "|-fieldstart|move: Trick Room".to_string()

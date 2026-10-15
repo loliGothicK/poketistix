@@ -244,6 +244,8 @@ pub struct FullBattleState {
     pub terrain: Option<String>,
     pub terrain_turns_left: u8,
     pub trick_room: bool,
+    #[serde(default)]
+    pub trick_room_turns_left: u8,
     pub gravity_turns_left: u8,
     pub fairy_lock_turns: u8,
 }
@@ -281,6 +283,8 @@ pub struct InputFullBattleState {
     pub terrain_turns_left: u8,
     #[serde(default)]
     pub trick_room: bool,
+    #[serde(default)]
+    pub trick_room_turns_left: u8,
     #[serde(default)]
     pub gravity_turns_left: u8,
     #[serde(default)]
@@ -351,6 +355,7 @@ impl From<InputFullBattleState> for FullBattleState {
             terrain: input.terrain,
             terrain_turns_left: input.terrain_turns_left,
             trick_room: input.trick_room,
+            trick_room_turns_left: input.trick_room_turns_left,
             gravity_turns_left: input.gravity_turns_left,
             fairy_lock_turns: input.fairy_lock_turns,
         }
@@ -485,6 +490,7 @@ impl Simulator {
             .and_then(|s| std::str::FromStr::from_str(&s).ok());
         self.battle.terrain_turns_left = state.terrain_turns_left;
         self.battle.trick_room = state.trick_room;
+        self.battle.trick_room_turns_left = state.trick_room_turns_left;
         self.battle.gravity_turns_left = state.gravity_turns_left;
         self.battle.fairy_lock_turns = state.fairy_lock_turns;
         self.battle.p1.tailwind = state.p1.tailwind;
@@ -612,6 +618,7 @@ impl Simulator {
             terrain: self.battle.terrain.as_ref().map(|t| t.to_string()),
             terrain_turns_left: self.battle.terrain_turns_left,
             trick_room: self.battle.trick_room,
+            trick_room_turns_left: self.battle.trick_room_turns_left,
             gravity_turns_left: self.battle.gravity_turns_left,
             fairy_lock_turns: self.battle.fairy_lock_turns,
         };

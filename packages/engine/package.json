@@ -29,7 +29,8 @@
     "check": "cargo check && pnpm exec tsc --noEmit",
     "lint:fix": "cargo clippy --fix --allow-dirty --allow-staged -- -D warnings && oxlint --fix-dangerously .",
     "pretty": "pnpm run check && pnpm run lint:fix && pnpm run fmt",
-    "todo": "pnpm exec tsx .scratch/todo.ts"
+    "todo": "pnpm exec tsx .scratch/todo.ts",
+    "eval:scenarios": "pnpm exec tsx tools/kev-evaluator/cli.ts"
   },
   "dependencies": {
     "rand": "0.0.4"

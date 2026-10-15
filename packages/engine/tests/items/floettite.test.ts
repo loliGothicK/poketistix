@@ -1,8 +1,8 @@
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TestEnvironment, pokemon } from "@/sim-utils";
 
 describe("Item: Floettite", () => {
-  it("allows Floette Eternal to hold its mega stone in battle", () => {
+  it("allows Floette-Eternal to Mega Evolve in battle", () => {
     const env = new TestEnvironment(
       [
         pokemon({ species: "floette-eternal", item: "floettite", moves: ["sleeptalk"] }),
@@ -14,6 +14,14 @@ describe("Item: Floettite", () => {
       ],
     );
 
-    env.executeAndAssert("move sleeptalk, move sleeptalk", "move sleeptalk, move sleeptalk");
+    const { engineState } = env.executeAndAssert(
+      "move sleeptalk mega, move sleeptalk",
+      "move sleeptalk, move sleeptalk",
+    );
+
+    const p1a = engineState.p1.active[0];
+    expect(p1a.is_mega).toBe(true);
+    expect(p1a.species).toBe("floette-mega");
+    expect(engineState.p1.mega_used).toBe(true);
   });
 });

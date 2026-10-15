@@ -48,6 +48,14 @@ const lucarioMegaZ = championsDex.species.get("lucario-mega-z");
 if (lucarioMegaZ) {
   Reflect.set(lucarioMegaZ, "abilities", { 0: "Aura Guard" });
 }
+const absolMegaZ = championsDex.species.get("absol-mega-z");
+if (absolMegaZ) {
+  Reflect.set(absolMegaZ, "abilities", { 0: "Sharpness" });
+}
+const garchompMegaZ = championsDex.species.get("garchomp-mega-z");
+if (garchompMegaZ) {
+  Reflect.set(garchompMegaZ, "abilities", { 0: "Levitate" });
+}
 const indeedeeF = championsDex.species.get("indeedee-f");
 if (indeedeeF) {
   Reflect.set(championsDex.data.Species, "indeedeefemale", indeedeeF);
@@ -553,6 +561,7 @@ export class TestEnvironment {
       weather_turns_left: 0,
       terrain_turns_left: 0,
       trick_room: false,
+      trick_room_turns_left: 0,
     };
   }
 

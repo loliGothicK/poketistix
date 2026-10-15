@@ -1,4 +1,4 @@
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TestEnvironment, pokemon } from "@/sim-utils";
 
 describe("Item: Air Balloon", () => {
@@ -9,11 +9,23 @@ describe("Item: Air Balloon", () => {
         pokemon({ species: "clefable", moves: ["sleeptalk"] }),
       ],
       [
-        pokemon({ species: "gengar", moves: ["shadowball", "sleeptalk"] }),
+        pokemon({ species: "gengar", moves: ["sludgebomb", "sleeptalk"] }),
         pokemon({ species: "pikachu", moves: ["sleeptalk"] }),
       ],
     );
 
-    env.executeAndAssert("move sleeptalk, move sleeptalk", "move shadowball 1, move sleeptalk");
+    const { engineState, simLog } = env.executeAndAssert(
+      "move sleeptalk, move sleeptalk",
+      "move sludgebomb 1, move sleeptalk",
+    );
+
+    // Snorlax took damage from Sludge Bomb
+    expect(engineState.p1.active[0].hp).toBeLessThan(engineState.p1.active[0].maxhp);
+
+    // Air Balloon popped and was removed
+    expect(engineState.p1.active[0].item).toBeFalsy();
+
+    // Verify pop message in battle logs
+    expect(simLog.some((l) => l.includes("Air Balloon") || l.includes("-enditem"))).toBe(true);
   });
 });

@@ -1470,4 +1470,174 @@ impl<'a> DamageEvaluator<'a> {
 
         (*roll as i32, absorbed_by, input.is_crit)
     }
+
+    /// Evaluates minimum and maximum damage rolls directly without PRNG sampling.
+    /// Useful for evaluator O(1) KO/threat analysis.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_range(
+        &self,
+        move_id: &str,
+        player: u8,
+        slot: u8,
+        target_player: u8,
+        target_slot: u8,
+        is_spread: bool,
+    ) -> (i32, i32) {
+        let (dmg, _, _) = self.evaluate(
+            move_id,
+            player,
+            slot,
+            target_player,
+            target_slot,
+            is_spread,
+            0,
+        );
+        let min_dmg = (dmg as f64 * 0.85).floor() as i32;
+        let max_dmg = dmg;
+        (min_dmg, max_dmg)
+    }
+
+    /// Evaluates damage range from an attacker on field against an explicit defender (e.g. benched Pokemon).
+    pub fn evaluate_range_against_pokemon(
+        &self,
+        move_id: &str,
+        player: u8,
+        slot: u8,
+        defender: &crate::sim::pokemon::Pokemon,
+        is_spread: bool,
+    ) -> (i32, i32) {
+        let attacker = if player == 1 {
+            self.battle.p1.active.get(slot as usize)
+        } else {
+            self.battle.p2.active.get(slot as usize)
+        };
+        let attacker = match attacker {
+            Some(a) => a,
+            None => return (0, 0),
+        };
+
+        if move_id == "splash" || move_id == "teleport" {
+            return (0, 0);
+        }
+
+        if ["fissure", "guillotine", "horndrill", "sheercold"].contains(&move_id) {
+            let maxhp = defender.maxhp.into_inner();
+            return (maxhp, maxhp);
+        }
+
+        if move_id == "seismictoss" || move_id == "nightshade" {
+            return (50, 50);
+        }
+
+        if move_id == "superfang" {
+            let dmg = std::cmp::max(1, defender.hp.into_inner() / 2);
+            return (dmg, dmg);
+        }
+
+        let meta_opt = pkmn_meta::move_meta::get_move_meta(move_id);
+        let (mut base_power, move_type, is_physical) = match meta_opt {
+            Some(meta) if *meta.category() != pkmn_meta::types::Category::Status => {
+                let bp = *meta.base_power();
+                let mt = *meta.move_type();
+                let ip = *meta.category() == pkmn_meta::types::Category::Physical;
+                (bp, mt, ip)
+            }
+            _ => return (0, 0),
+        };
+
+        if move_id == "eruption" || move_id == "waterspout" || move_id == "dragonenergy" {
+            let hp = attacker.hp.into_inner();
+            let maxhp = attacker.maxhp.into_inner();
+            base_power = std::cmp::max(1, 150 * hp / maxhp) as u32;
+        }
+
+        let attack = if is_physical {
+            attacker
+                .attack
+                .apply_boost(attacker.boosts.atk)
+                .into_inner()
+        } else {
+            attacker
+                .sp_attack
+                .apply_boost(attacker.boosts.spa)
+                .into_inner()
+        };
+
+        let defense = if is_physical {
+            defender
+                .defense
+                .apply_boost(defender.boosts.def)
+                .into_inner()
+        } else {
+            defender
+                .sp_defense
+                .apply_boost(defender.boosts.spd)
+                .into_inner()
+        };
+
+        let def_types = defender.get_types();
+        let mut input = damage_calc::types::DamageInput {
+            level: 50,
+            base_power: base_power as u16,
+            bp_modifiers: vec![],
+            attack: attack as u16,
+            attack_boost: 0,
+            attack_modifiers: vec![],
+            defense: defense as u16,
+            defense_boost: 0,
+            defense_modifiers: vec![],
+            is_physical,
+            move_type,
+            defender_type1: def_types
+                .first()
+                .copied()
+                .unwrap_or(pkmn_meta::types::Type::Normal),
+            defender_type2: def_types.get(1).copied(),
+            defender_type3: def_types.get(2).copied(),
+            effectiveness_override: None,
+            immune_override: None,
+            spread_modifier: if is_spread {
+                damage_calc::MOD_0_75
+            } else {
+                4096
+            },
+            parental_bond_modifier: 4096,
+            weather_modifier: 4096,
+            is_crit: false,
+            crit_modifier: 4096,
+            stab_modifier: if attacker.get_types().contains(&move_type) {
+                damage_calc::MOD_1_5
+            } else {
+                4096
+            },
+            is_burned: is_physical && attacker.status.as_ref().map(|s| s.as_ref()) == Some("brn"),
+            final_modifiers: vec![],
+            protect_modifier: 4096,
+            tinted_lens: false,
+            neuroforce: false,
+            solid_rock: false,
+        };
+
+        // Ability immunities
+        let def_ability = defender.ability.as_ref().map(|a| a.as_str());
+        if matches!(def_ability, Some("flashfire") | Some("wellbakedbody"))
+            && move_type == pkmn_meta::types::Type::Fire
+        {
+            input.immune_override = Some(true);
+        } else if def_ability == Some("waterabsorb") && move_type == pkmn_meta::types::Type::Water {
+            input.immune_override = Some(true);
+        } else if def_ability == Some("voltabsorb") && move_type == pkmn_meta::types::Type::Electric
+        {
+            input.immune_override = Some(true);
+        } else if def_ability == Some("eartheater") && move_type == pkmn_meta::types::Type::Ground {
+            input.immune_override = Some(true);
+        } else if def_ability == Some("sapsipper") && move_type == pkmn_meta::types::Type::Grass {
+            input.immune_override = Some(true);
+        }
+
+        let output = damage_calc::calculate_input(&input);
+        let min_dmg = output.rolls.first().copied().unwrap_or(0) as i32;
+        let max_dmg = output.rolls.last().copied().unwrap_or(0) as i32;
+        (min_dmg, max_dmg)
+    }
 }

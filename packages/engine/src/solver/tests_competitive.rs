@@ -308,3 +308,579 @@ fn test_expecti_engine_full_battle_integration() {
             .all(|c| c.probability <= best_prob + 1e-6)
     );
 }
+
+// =========================================================================
+// 仕様書 v3 必須検証テストケース (1〜6)
+// =========================================================================
+
+#[allow(clippy::too_many_arguments)]
+fn make_full_pokemon(
+    ident: &str,
+    species: &str,
+    hp: i32,
+    maxhp: i32,
+    speed: i32,
+    attack: i32,
+    defense: i32,
+    sp_attack: i32,
+    sp_defense: i32,
+    moves: Vec<&str>,
+    type1: &str,
+    type2: Option<&str>,
+    ability: Option<&str>,
+    item: Option<&str>,
+) -> crate::sim::pokemon::Pokemon {
+    build_pokemon(&InputPokemonData {
+        ident: ident.to_string(),
+        species: species.to_string(),
+        hp,
+        maxhp,
+        speed,
+        attack,
+        defense,
+        sp_attack,
+        sp_defense,
+        moves: moves.into_iter().map(String::from).collect(),
+        type1: type1.to_string(),
+        type2: type2.map(String::from),
+        ability: ability.map(String::from),
+        item: item.map(String::from),
+        ..Default::default()
+    })
+}
+
+/// 1. 『ふんか』トリル制圧 vs 無意味なまもる・交代・このゆびテスト (`test_eval_eruption_trick_room_checkmate`)
+/// トリックルーム下。P2コータスの『ふんか』でP1が上から全滅縛り。全体技のため指でも吸えず、P1の勝率が0.15以下。
+#[test]
+fn test_eval_eruption_trick_room_checkmate() {
+    let mut battle = Battle::new();
+    battle.trick_room = true;
+    battle.trick_room_turns_left = 3;
+
+    // P1: エース + 指サポーター + 控え (全員ふんかで確定1発、トリル下でコータスより遅い)
+    battle.p1.active.push(make_full_pokemon(
+        "p1a",
+        "venusaur",
+        155,
+        155,
+        100,
+        90,
+        90,
+        120,
+        120,
+        vec!["protect", "sludgebomb"],
+        "Grass",
+        Some("Poison"),
+        Some("chlorophyll"),
+        None,
+    ));
+    battle.p1.active.push(make_full_pokemon(
+        "p1b",
+        "clefable",
+        170,
+        170,
+        80,
+        80,
+        80,
+        100,
+        100,
+        vec!["followme", "protect"],
+        "Fairy",
+        None,
+        Some("magicguard"),
+        None,
+    ));
+    battle.p1.team.push(make_full_pokemon(
+        "p1c",
+        "chesnaught",
+        160,
+        160,
+        84,
+        110,
+        130,
+        80,
+        90,
+        vec!["spikyshield"],
+        "Grass",
+        Some("Fighting"),
+        Some("overcoat"),
+        None,
+    ));
+
+    // P2: コータス (S30、ふんかで上からP1全員をワンパン)
+    battle.p2.active.push(make_full_pokemon(
+        "p2a",
+        "torkoal",
+        177,
+        177,
+        30,
+        90,
+        160,
+        150,
+        90,
+        vec!["eruption", "heatwave", "protect"],
+        "Fire",
+        None,
+        Some("drought"),
+        Some("charcoal"),
+    ));
+    battle.p2.active.push(make_full_pokemon(
+        "p2b",
+        "volcarona",
+        160,
+        160,
+        120,
+        70,
+        85,
+        155,
+        125,
+        vec!["protect"],
+        "Bug",
+        Some("Fire"),
+        Some("flamebody"),
+        None,
+    ));
+
+    let score = crate::solver::evaluator::evaluate_for_player(&battle, 1);
+    assert!(
+        score <= 0.15,
+        "ふんかトリル詰み盤面ではP1勝率が0.15以下（実質敗北）となるべき (実際: {score})"
+    );
+}
+
+/// 2. 『このゆびとまれ』による単体脅威吸寄せ＆エース反撃成立テスト (`test_eval_follow_me_redirection_saves_ace`)
+/// P1エースが相手の高速単体技で上から縛られているが、相方の指で吸ってエースが返しの攻撃でワンパンできる盤面。
+#[test]
+fn test_eval_follow_me_redirection_saves_ace() {
+    // 盤面A: 指サポーターあり
+    let mut battle_with_followme = Battle::new();
+    battle_with_followme.p1.active.push(make_full_pokemon(
+        "p1a",
+        "charizard",
+        150,
+        150,
+        90,
+        100,
+        90,
+        160,
+        100,
+        vec!["flamethrower"],
+        "Fire",
+        Some("Flying"),
+        Some("blaze"),
+        None,
+    ));
+    battle_with_followme.p1.active.push(make_full_pokemon(
+        "p1b",
+        "clefable",
+        190,
+        190,
+        70,
+        80,
+        120,
+        100,
+        120,
+        vec!["followme", "protect"],
+        "Fairy",
+        None,
+        Some("magicguard"),
+        None,
+    ));
+    battle_with_followme.p2.active.push(make_full_pokemon(
+        "p2a",
+        "cinderace",
+        150,
+        150,
+        140,
+        150,
+        85,
+        75,
+        85,
+        vec!["pyroball", "ironhead"],
+        "Fire",
+        None,
+        Some("libero"),
+        None,
+    ));
+    battle_with_followme.p2.active.push(make_full_pokemon(
+        "p2b",
+        "forretress",
+        150,
+        150,
+        40,
+        100,
+        160,
+        70,
+        70,
+        vec!["protect"],
+        "Bug",
+        Some("Steel"),
+        Some("sturdy"),
+        None,
+    ));
+
+    // 盤面B: 指サポーターなし (ただの置き物)
+    let mut battle_without_followme = battle_with_followme.clone();
+    battle_without_followme.p1.active[1].moves = vec!["pound".to_string()];
+
+    let score_with = crate::solver::evaluator::evaluate_for_player(&battle_with_followme, 1);
+    let score_without = crate::solver::evaluator::evaluate_for_player(&battle_without_followme, 1);
+
+    assert!(
+        score_with > score_without,
+        "このゆびとまれによる吸寄せが成立する場合、評価値が高くなるべき (with: {score_with}, without: {score_without})"
+    );
+    assert!(
+        score_with >= 0.50,
+        "エースを守って打開できる盤面は対等以上の高評価になるべき (実際: {score_with})"
+    );
+}
+
+/// 3. 『いかりのこな』の草タイプ・防塵ゴーグル貫通テスト (`test_eval_rage_powder_grass_immunity`)
+/// 相方の技が『いかりのこな』で、敵アタッカーが草タイプ（または防塵ゴーグル）の場合、粉が無効化されて低評価になること。
+#[test]
+fn test_eval_rage_powder_grass_immunity() {
+    // 盤面A: 敵アタッカーが草タイプ (フシギバナ) -> 粉無効
+    let mut battle_grass_foe = Battle::new();
+    battle_grass_foe.p1.active.push(make_full_pokemon(
+        "p1a",
+        "swampert",
+        160,
+        160,
+        70,
+        130,
+        100,
+        95,
+        100,
+        vec!["waterfall"],
+        "Water",
+        Some("Ground"),
+        Some("torrent"),
+        None,
+    ));
+    battle_grass_foe.p1.active.push(make_full_pokemon(
+        "p1b",
+        "volcarona",
+        170,
+        170,
+        80,
+        70,
+        85,
+        135,
+        105,
+        vec!["ragepowder", "protect"],
+        "Bug",
+        Some("Fire"),
+        Some("flamebody"),
+        None,
+    ));
+    battle_grass_foe.p2.active.push(make_full_pokemon(
+        "p2a",
+        "venusaur",
+        160,
+        160,
+        110,
+        90,
+        95,
+        130,
+        110,
+        vec!["gigadrain", "sludgebomb"],
+        "Grass",
+        Some("Poison"),
+        Some("overgrow"),
+        None,
+    ));
+    battle_grass_foe.p2.active.push(make_full_pokemon(
+        "p2b",
+        "forretress",
+        150,
+        150,
+        40,
+        90,
+        140,
+        60,
+        60,
+        vec!["protect"],
+        "Bug",
+        Some("Steel"),
+        Some("sturdy"),
+        None,
+    ));
+
+    // 盤面B: 相方が『このゆびとまれ』を持つピッピ（草タイプでも吸える）
+    let mut battle_follow_me = battle_grass_foe.clone();
+    battle_follow_me.p1.active[1] = make_full_pokemon(
+        "p1b",
+        "clefable",
+        170,
+        170,
+        80,
+        70,
+        85,
+        95,
+        105,
+        vec!["followme", "protect"],
+        "Fairy",
+        None,
+        Some("magicguard"),
+        None,
+    );
+
+    let score_rage_powder = crate::solver::evaluator::evaluate_for_player(&battle_grass_foe, 1);
+    let score_follow_me = crate::solver::evaluator::evaluate_for_player(&battle_follow_me, 1);
+
+    assert!(
+        score_follow_me > score_rage_powder,
+        "草タイプに対して『このゆびとまれ』は有効だが『いかりのこな』は貫通されるため、後者の方が低評価になるべき (粉: {score_rage_powder}, 指: {score_follow_me})"
+    );
+}
+
+/// 4. 『まもる』＋隣の先制技/高打点による『ふんか』打開テスト (`test_eval_protect_and_partner_counter`)
+/// テスト1と似た盤面だが、P1の隣が耐えて返しの水技でコータスを倒せる/大幅削りできる盤面。
+#[test]
+fn test_eval_protect_and_partner_counter() {
+    let mut battle = Battle::new();
+    battle.trick_room = true;
+    battle.trick_room_turns_left = 3;
+
+    // P1: まもる持ちエース + 高耐久水アタッカー (ふんかを耐えて水技で返り討ち)
+    battle.p1.active.push(make_full_pokemon(
+        "p1a",
+        "venusaur",
+        155,
+        155,
+        100,
+        90,
+        90,
+        120,
+        120,
+        vec!["protect", "sludgebomb"],
+        "Grass",
+        Some("Poison"),
+        Some("chlorophyll"),
+        None,
+    ));
+    battle.p1.active.push(make_full_pokemon(
+        "p1b",
+        "vaporeon",
+        220,
+        220,
+        75,
+        75,
+        80,
+        130,
+        120,
+        vec!["surf", "protect"],
+        "Water",
+        None,
+        Some("waterabsorb"),
+        None,
+    ));
+
+    // P2: コータス + 置き物
+    battle.p2.active.push(make_full_pokemon(
+        "p2a",
+        "torkoal",
+        150,
+        150,
+        30,
+        90,
+        160,
+        120,
+        90,
+        vec!["eruption", "protect"],
+        "Fire",
+        None,
+        Some("drought"),
+        None,
+    ));
+    battle.p2.active.push(make_full_pokemon(
+        "p2b",
+        "volcarona",
+        160,
+        160,
+        120,
+        70,
+        85,
+        155,
+        125,
+        vec!["protect"],
+        "Bug",
+        Some("Fire"),
+        Some("flamebody"),
+        None,
+    ));
+
+    let score = crate::solver::evaluator::evaluate_for_player(&battle, 1);
+    assert!(
+        score >= 0.55,
+        "相方が打開できる場合はテスト1と比べて大幅に高い評価（0.55以上）になるべき (実際: {score})"
+    );
+}
+
+/// 5. トリル残り1ターンの『まもる』枯らし成立テスト (`test_eval_trick_room_last_turn_stall`)
+/// トリル下でコータスに先手を取られているが、素の素早さはP1の方が速く、
+/// 追い風・トリルの枯らしが成立する盤面。
+#[test]
+fn test_eval_trick_room_last_turn_stall() {
+    let mut battle = Battle::new();
+    battle.trick_room = true;
+    battle.trick_room_turns_left = 1;
+
+    // P1: 素早さで勝る2体がまもる所持
+    battle.p1.active.push(make_full_pokemon(
+        "p1a",
+        "charizard",
+        160,
+        160,
+        120,
+        100,
+        90,
+        130,
+        100,
+        vec!["protect", "airslash"],
+        "Fire",
+        Some("Flying"),
+        Some("blaze"),
+        None,
+    ));
+    battle.p1.active.push(make_full_pokemon(
+        "p1b",
+        "blastoise",
+        160,
+        160,
+        95,
+        95,
+        115,
+        100,
+        115,
+        vec!["protect", "surf"],
+        "Water",
+        None,
+        Some("torrent"),
+        None,
+    ));
+
+    // P2: トリルコータス
+    battle.p2.active.push(make_full_pokemon(
+        "p2a",
+        "torkoal",
+        170,
+        170,
+        30,
+        90,
+        160,
+        120,
+        90,
+        vec!["eruption", "protect"],
+        "Fire",
+        None,
+        Some("drought"),
+        None,
+    ));
+    battle.p2.active.push(make_full_pokemon(
+        "p2b",
+        "forretress",
+        160,
+        160,
+        40,
+        90,
+        140,
+        60,
+        60,
+        vec!["protect"],
+        "Bug",
+        Some("Steel"),
+        Some("sturdy"),
+        None,
+    ));
+
+    let score = crate::solver::evaluator::evaluate_for_player(&battle, 1);
+    assert!(
+        score > 0.40,
+        "トリル下でも守れば素のSで逆転できる盤面は詰み判定にならず評価されるべき (実際: {score})"
+    );
+}
+
+/// 6. 受け出し成立（もらいび / 高耐久耐性）テスト (`test_eval_viable_switch_in`)
+/// P1の場が単体炎技で縛られているが、控えにもらいび（ウインディ）がいる盤面 vs 控えが炎弱点で受け出し即死する盤面。
+#[test]
+fn test_eval_viable_switch_in() {
+    // 盤面A: 控えにもらいびウインディ（炎無効）
+    let mut battle_viable = Battle::new();
+    battle_viable.p1.active.push(make_full_pokemon(
+        "p1a",
+        "forretress",
+        150,
+        150,
+        40,
+        90,
+        140,
+        60,
+        60,
+        vec!["gyroball"],
+        "Bug",
+        Some("Steel"),
+        Some("sturdy"),
+        None,
+    ));
+    battle_viable.p1.team.push(make_full_pokemon(
+        "p1b",
+        "arcanine",
+        180,
+        180,
+        110,
+        120,
+        90,
+        110,
+        90,
+        vec!["flareblitz"],
+        "Fire",
+        None,
+        Some("flashfire"),
+        None,
+    ));
+    battle_viable.p2.active.push(make_full_pokemon(
+        "p2a",
+        "charizard",
+        150,
+        150,
+        120,
+        100,
+        90,
+        130,
+        100,
+        vec!["flamethrower"],
+        "Fire",
+        Some("Flying"),
+        Some("blaze"),
+        None,
+    ));
+
+    // 盤面B: 控えが草・虫タイプで受け出し即死
+    let mut battle_collapse = battle_viable.clone();
+    battle_collapse.p1.team[0] = make_full_pokemon(
+        "p1b",
+        "venusaur",
+        120,
+        120,
+        70,
+        80,
+        70,
+        90,
+        80,
+        vec!["sludgebomb"],
+        "Grass",
+        Some("Poison"),
+        Some("overgrow"),
+        None,
+    );
+
+    let score_viable = crate::solver::evaluator::evaluate_for_player(&battle_viable, 1);
+    let score_collapse = crate::solver::evaluator::evaluate_for_player(&battle_collapse, 1);
+
+    assert!(
+        score_viable > score_collapse,
+        "受け出し成立（もらいび）の盤面評価は受け出し崩壊の盤面より明確に高くなるべき (viable: {score_viable}, collapse: {score_collapse})"
+    );
+}
