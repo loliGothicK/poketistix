@@ -203,6 +203,24 @@ pub struct PokemonIdent {
     pub slot: usize,
 }
 
+impl PokemonIdent {
+    pub const P1A: Self = Self { player: 1, slot: 0 };
+    pub const P1B: Self = Self { player: 1, slot: 1 };
+    pub const P2A: Self = Self { player: 2, slot: 0 };
+    pub const P2B: Self = Self { player: 2, slot: 1 };
+}
+
+impl From<&str> for PokemonIdent {
+    fn from(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "p1b" => Self::P1B,
+            "p2a" => Self::P2A,
+            "p2b" => Self::P2B,
+            _ => Self::P1A,
+        }
+    }
+}
+
 impl std::fmt::Display for PokemonIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let p = if self.player == 1 { "p1" } else { "p2" };

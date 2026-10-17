@@ -1,4 +1,6 @@
+pub mod belief;
 pub mod damage_distribution;
+pub mod determinizer;
 pub mod evaluator;
 pub mod expecti_engine;
 pub mod gto_solver;
@@ -6,7 +8,9 @@ pub mod ismcts;
 pub mod legal_actions;
 pub mod quasi_random;
 
+pub use belief::*;
 pub use damage_distribution::*;
+pub use determinizer::*;
 pub use evaluator::*;
 pub use expecti_engine::*;
 pub use gto_solver::*;
@@ -16,6 +20,8 @@ pub use quasi_random::*;
 
 #[cfg(test)]
 mod tests_competitive;
+#[cfg(test)]
+mod tests_kifu_cts;
 
 #[cfg(test)]
 mod tests {

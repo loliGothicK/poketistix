@@ -155,7 +155,7 @@ pub struct PokemonData {
     pub substitute_hp: i32,
 }
 
-#[derive(Deserialize, Tsify, Clone, Default)]
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug, Default)]
 #[serde(default)]
 pub struct InputPokemonData {
     pub ident: String,
@@ -1106,4 +1106,35 @@ fn convert_pokemon(p: &crate::sim::pokemon::Pokemon) -> PokemonData {
         nature: p.nature,
         substitute_hp: p.substitute_hp,
     }
+}
+
+#[wasm_bindgen]
+pub fn get_kifu_snapshot(
+    kifu: tsify::Ts<crate::kifu::BattleKifu>,
+    turn_index: usize,
+) -> Result<tsify::Ts<crate::kifu::TurnSnapshotView>, wasm_bindgen::JsError> {
+    let kifu_rust: crate::kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    let belief = crate::solver::belief::BeliefState::from_kifu_up_to_turn(&kifu_rust, turn_index);
+    let snapshot = belief.to_snapshot_view();
+    tsify::Ts::from_rust(&snapshot).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn analyze_kifu_turn(
+    kifu: tsify::Ts<crate::kifu::BattleKifu>,
+    turn_index: usize,
+    iterations: Option<usize>,
+) -> Result<tsify::Ts<crate::kifu::TurnEvaluationReport>, wasm_bindgen::JsError> {
+    let kifu_rust: crate::kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    let mut config = crate::solver::IsmctsConfig::default();
+    if let Some(iters) = iterations {
+        config.iterations = iters;
+    }
+    let ismcts = crate::solver::Ismcts::new(config);
+    let report = ismcts.evaluate_kifu_turn(&kifu_rust, turn_index);
+    tsify::Ts::from_rust(&report).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
 }

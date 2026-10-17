@@ -685,7 +685,41 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
     let patches_json: Value =
         serde_json::from_str(patches_str).expect("Failed to parse patches.json");
 
+    let moves_str = include_str!("../champions/moves.json");
+    let moves_json: Value = serde_json::from_str(moves_str).expect("Failed to parse moves.json");
+
+    let abilities_str = include_str!("../master/abilities.json");
+    let abilities_json: Value =
+        serde_json::from_str(abilities_str).expect("Failed to parse master/abilities.json");
+
+    let mut move_id_arms = Vec::new();
+    if let Some(arr) = moves_json["data"].as_array() {
+        for m in arr {
+            if let (Some(id), Some(ident)) = (m["id"].as_u64(), m["identifier"].as_str()) {
+                let id_u32 = id as u32;
+                let clean_slug = ident.replace("-", "").to_lowercase();
+                move_id_arms.push(quote! {
+                    #id_u32 => Some(#clean_slug),
+                });
+            }
+        }
+    }
+
+    let mut ability_map = std::collections::HashMap::new();
+    let ability_list = abilities_json
+        .get("data")
+        .and_then(|d| d.as_array())
+        .or_else(|| abilities_json.as_array());
+    if let Some(arr) = ability_list {
+        for ab in arr {
+            if let (Some(id), Some(ident)) = (ab["id"].as_u64(), ab["identifier"].as_str()) {
+                ability_map.insert(id, ident.replace("-", "").to_lowercase());
+            }
+        }
+    }
+
     let mut pokemon_entries = Vec::new();
+    let mut ability_arms = Vec::new();
 
     if let Some(arr) = pokemon_json["data"].as_array() {
         let mut base_pokemon_by_id: std::collections::HashMap<u64, &Value> =
@@ -718,6 +752,27 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
                     .filter_map(|m| m.as_u64().map(|v| v as u32))
                     .collect()
             };
+
+            let abilities: Vec<String> = if p["abilities"].as_str() == Some("inherit") {
+                base_p
+                    .and_then(|b| b["abilities"].as_array())
+                    .unwrap_or(&Vec::new())
+                    .iter()
+                    .filter_map(|a| a.as_u64().and_then(|aid| ability_map.get(&aid).cloned()))
+                    .collect()
+            } else {
+                p["abilities"]
+                    .as_array()
+                    .unwrap_or(&Vec::new())
+                    .iter()
+                    .filter_map(|a| a.as_u64().and_then(|aid| ability_map.get(&aid).cloned()))
+                    .collect()
+            };
+
+            let clean_slug = identifier.replace("-", "").to_lowercase();
+            ability_arms.push(quote! {
+                #clean_slug => Some(&[#(#abilities),*]),
+            });
 
             pokemon_entries.push((id, identifier, species_id, moves));
         }
@@ -877,12 +932,32 @@ pub fn generate_regulation_meta(_item: TokenStream) -> TokenStream {
             MC,
         }
 
+        pub fn get_move_slug_by_id(move_id: u32) -> Option<&'static str> {
+            match move_id {
+                #(#move_id_arms)*
+                _ => None,
+            }
+        }
+
+        pub fn get_pokemon_abilities(slug: &str) -> Option<&'static [&'static str]> {
+            let slug = slug.replace("-", "").to_lowercase();
+            match slug.as_str() {
+                #(#ability_arms)*
+                _ => None,
+            }
+        }
+
         pub fn get_pokemon_moves(slug: &str, reg: Regulation) -> Option<&'static [u32]> {
             let slug = slug.replace("-", "").to_lowercase();
             match (slug.as_str(), reg) {
                 #(#move_arms)*
                 _ => None,
             }
+        }
+
+        pub fn get_pokemon_move_slugs(slug: &str, reg: Regulation) -> Option<Vec<&'static str>> {
+            let ids = get_pokemon_moves(slug, reg)?;
+            Some(ids.iter().filter_map(|&id| get_move_slug_by_id(id)).collect())
         }
 
         pub fn is_move_allowed(slug: &str, move_id: u32, reg: Regulation) -> bool {
