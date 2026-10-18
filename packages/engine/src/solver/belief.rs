@@ -46,50 +46,28 @@ pub struct PokemonBelief {
     pub spe_stat_range: (u16, u16),
 }
 
-/// 1ステータス (HP以外) の Lv50 実数値を `(base, ev, nature_mod)` から計算
-/// `nature_mod`: -1 (下降 0.9倍), 0 (無補正 1.0倍), +1 (上昇 1.1倍)
-pub fn calc_stat_lv50(base: u32, ev: u8, nature_mod: i8) -> u16 {
-    let pre = (base + 20 + ev as u32) as i32;
-    let val = if nature_mod > 0 {
-        (pre * 11) / 10
-    } else if nature_mod < 0 {
-        (pre * 9) / 10
-    } else {
-        pre
-    };
-    val as u16
-}
-
-/// HP の Lv50 実数値を `(species, base_hp, hp_ev)` から計算
-pub fn calc_hp_lv50(species: &str, base_hp: u32, hp_ev: u8) -> u16 {
-    if species.replace('-', "").eq_ignore_ascii_case("shedinja") {
-        1
-    } else {
-        (base_hp + 75 + hp_ev as u32) as u16
-    }
-}
+pub use pkmn_meta::pokemon_meta::{calc_pokemon_hp_lv50, calc_pokemon_stat_lv50};
 
 /// 種族のベースステータスから `[0 EV 下降補正, 32 EV 上昇補正]` の初期実数値レンジを返す
 pub fn full_stat_bounds_for_species(species: &str) -> ([u16; 6], [u16; 6]) {
     if let Some(meta) = pkmn_meta::pokemon_meta::get_pokemon_meta(species) {
-        let bs = meta.base_stats();
-        let min_hp = calc_hp_lv50(species, bs[0], 0);
-        let max_hp = calc_hp_lv50(species, bs[0], 32);
+        let min_hp = meta.calc_hp_lv50(0);
+        let max_hp = meta.calc_hp_lv50(32);
         let mins = [
             min_hp,
-            calc_stat_lv50(bs[1], 0, -1),
-            calc_stat_lv50(bs[2], 0, -1),
-            calc_stat_lv50(bs[3], 0, -1),
-            calc_stat_lv50(bs[4], 0, -1),
-            calc_stat_lv50(bs[5], 0, -1),
+            meta.calc_stat_lv50(1, 0, -1),
+            meta.calc_stat_lv50(2, 0, -1),
+            meta.calc_stat_lv50(3, 0, -1),
+            meta.calc_stat_lv50(4, 0, -1),
+            meta.calc_stat_lv50(5, 0, -1),
         ];
         let maxs = [
             max_hp,
-            calc_stat_lv50(bs[1], 32, 1),
-            calc_stat_lv50(bs[2], 32, 1),
-            calc_stat_lv50(bs[3], 32, 1),
-            calc_stat_lv50(bs[4], 32, 1),
-            calc_stat_lv50(bs[5], 32, 1),
+            meta.calc_stat_lv50(1, 32, 1),
+            meta.calc_stat_lv50(2, 32, 1),
+            meta.calc_stat_lv50(3, 32, 1),
+            meta.calc_stat_lv50(4, 32, 1),
+            meta.calc_stat_lv50(5, 32, 1),
         ];
         (mins, maxs)
     } else {
@@ -794,12 +772,11 @@ impl BeliefState {
 
     fn recompute_mega_stat_bounds(belief: &mut PokemonBelief, mega_species: &str) {
         if let Some(meta) = pkmn_meta::pokemon_meta::get_pokemon_meta(mega_species) {
-            let bs = meta.base_stats();
-            belief.atk_stat_range = (calc_stat_lv50(bs[1], 0, -1), calc_stat_lv50(bs[1], 32, 1));
-            belief.def_stat_range = (calc_stat_lv50(bs[2], 0, -1), calc_stat_lv50(bs[2], 32, 1));
-            belief.spa_stat_range = (calc_stat_lv50(bs[3], 0, -1), calc_stat_lv50(bs[3], 32, 1));
-            belief.spd_stat_range = (calc_stat_lv50(bs[4], 0, -1), calc_stat_lv50(bs[4], 32, 1));
-            belief.spe_stat_range = (calc_stat_lv50(bs[5], 0, -1), calc_stat_lv50(bs[5], 32, 1));
+            belief.atk_stat_range = (meta.calc_stat_lv50(1, 0, -1), meta.calc_stat_lv50(1, 32, 1));
+            belief.def_stat_range = (meta.calc_stat_lv50(2, 0, -1), meta.calc_stat_lv50(2, 32, 1));
+            belief.spa_stat_range = (meta.calc_stat_lv50(3, 0, -1), meta.calc_stat_lv50(3, 32, 1));
+            belief.spd_stat_range = (meta.calc_stat_lv50(4, 0, -1), meta.calc_stat_lv50(4, 32, 1));
+            belief.spe_stat_range = (meta.calc_stat_lv50(5, 0, -1), meta.calc_stat_lv50(5, 32, 1));
         }
     }
 
@@ -1053,7 +1030,7 @@ impl BeliefState {
             // スカーフ持ちが素早さ下降補正 (-1) を採用することはないため、無補正0振り (または現在の min_raw) でスカーフを持った場合の下限で判定
             let neutral_zero_ev_spe =
                 pkmn_meta::pokemon_meta::get_pokemon_meta(&belief_clone.species)
-                    .map(|m| calc_stat_lv50(m.base_stats()[5], 0, 0))
+                    .map(|m| m.calc_stat_lv50(5, 0, 0))
                     .unwrap_or(min_raw)
                     .max(min_raw);
             let min_with_scarf =
@@ -1089,11 +1066,7 @@ impl BeliefState {
             return;
         };
 
-        let base_stat = if is_physical {
-            poke_meta.base_stats()[1]
-        } else {
-            poke_meta.base_stats()[3]
-        };
+        let stat_idx = if is_physical { 1 } else { 3 };
 
         let current_range = if is_physical {
             self.opponent_beliefs[b_idx].atk_stat_range
@@ -1107,7 +1080,7 @@ impl BeliefState {
 
         for ev in 0..=32u8 {
             for nature_mod in [-1i8, 0, 1] {
-                let cand_stat = calc_stat_lv50(base_stat, ev, nature_mod);
+                let cand_stat = poke_meta.calc_stat_lv50(stat_idx, ev, nature_mod);
                 if cand_stat < current_range.0 || cand_stat > current_range.1 {
                     continue;
                 }
@@ -1166,12 +1139,7 @@ impl BeliefState {
             return;
         };
 
-        let base_hp = poke_meta.base_stats()[0];
-        let base_def = if is_physical {
-            poke_meta.base_stats()[2]
-        } else {
-            poke_meta.base_stats()[4]
-        };
+        let def_stat_idx = if is_physical { 2 } else { 4 };
 
         let hp_ev_bounds = self.opponent_beliefs[b_idx].hp_ev_range;
         let def_bounds = if is_physical {
@@ -1191,7 +1159,7 @@ impl BeliefState {
 
         for def_ev in 0..=32u8 {
             for nature_mod in [-1i8, 0, 1] {
-                let cand_def = calc_stat_lv50(base_def, def_ev, nature_mod);
+                let cand_def = poke_meta.calc_stat_lv50(def_stat_idx, def_ev, nature_mod);
                 if cand_def < def_bounds.0 || cand_def > def_bounds.1 {
                     continue;
                 }
@@ -1211,7 +1179,7 @@ impl BeliefState {
                     if (hp_ev as u16 + def_ev as u16) > 66 {
                         continue;
                     }
-                    let max_hp = calc_hp_lv50(&species, base_hp, hp_ev) as i32;
+                    let max_hp = poke_meta.calc_hp_lv50(hp_ev) as i32;
                     // 最小ダメージでの割合減少と最大ダメージでの割合減少 (±1% の表示丸め許容)
                     let min_pct = (min_d * 100) / max_hp;
                     let max_pct = ((max_d * 100) + max_hp - 1) / max_hp;
@@ -1232,8 +1200,8 @@ impl BeliefState {
             let belief = &mut self.opponent_beliefs[b_idx];
             belief.hp_ev_range = (hp_ev_bounds.0.max(min_hev), hp_ev_bounds.1.min(max_hev));
             belief.hp_stat_range = (
-                calc_hp_lv50(&species, base_hp, belief.hp_ev_range.0),
-                calc_hp_lv50(&species, base_hp, belief.hp_ev_range.1),
+                poke_meta.calc_hp_lv50(belief.hp_ev_range.0),
+                poke_meta.calc_hp_lv50(belief.hp_ev_range.1),
             );
             if is_physical {
                 belief.def_stat_range = (def_bounds.0.max(min_def), def_bounds.1.min(max_def));

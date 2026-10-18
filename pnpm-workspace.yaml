@@ -23,10 +23,9 @@ allowBuilds:
   '@swc/core': true
   esbuild: true
   sharp: false
+  tesseract.js: true
   workerd: true
 
-ignoredBuiltDependencies:
-  - unrs-resolver
 minimumReleaseAgeExclude:
   - '@types/node@26.1.0 || 26.1.1 || 26.1.2'
   - '@sentry/browser-utils@10.64.0 || 10.65.0 || 10.67.0 || 10.75.1'

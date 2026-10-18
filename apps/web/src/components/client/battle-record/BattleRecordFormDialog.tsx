@@ -22,6 +22,7 @@ import {
   Chip,
 } from "@mui/material";
 import Close from "@mui/icons-material/Close";
+import VideoFile from "@mui/icons-material/VideoFile";
 import { useTheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -37,6 +38,7 @@ import { emptyDraft, draftFromRecord, type BattleRecordDraft } from "./formState
 import { emptySelection } from "./selection";
 import { YourTeamSelector } from "./YourTeamSelector";
 import { OpponentSlots } from "./OpponentSlots";
+import { VideoKifuImportDialog } from "./VideoKifuImportDialog";
 import { flexRowCenter, sectionLabel } from "@/theme/sx";
 
 interface BattleRecordFormDialogProps {
@@ -158,6 +160,7 @@ function BattleRecordFormContent({
       : emptyDraft({ teamId: initialTeam?.id ?? teamId, myTeam: resolvedTeamMembers }),
   );
   const [resultChosen, setResultChosen] = useState(!!editing);
+  const [videoImportOpen, setVideoImportOpen] = useState(false);
   const [localSubmitting, setLocalSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -219,6 +222,15 @@ function BattleRecordFormContent({
         <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: "0.06em", flexGrow: 1 }}>
           {editing ? t("battleRecord.form.editTitle") : t("battleRecord.form.newTitle")}
         </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<VideoFile />}
+          disabled={isPending}
+          onClick={() => setVideoImportOpen(true)}
+        >
+          {t("battleRecord.videoImport.button")}
+        </Button>
         <Typography
           variant="caption"
           color="text.secondary"
@@ -236,6 +248,18 @@ function BattleRecordFormContent({
         </IconButton>
       </Stack>
       <Divider />
+      <VideoKifuImportDialog
+        open={videoImportOpen}
+        onClose={() => setVideoImportOpen(false)}
+        teamId={draft.teamId}
+        teamMembers={draft.myTeam}
+        regulation={seasons.find((s) => s.id === seasonId)?.ruleMark ?? "M-C"}
+        onApplyDraft={(importedDraft) => {
+          setDraft(importedDraft);
+          setResultChosen(true);
+          setVideoImportOpen(false);
+        }}
+      />
 
       <DialogContent>
         <Stack spacing={3}>

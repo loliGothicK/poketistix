@@ -6,7 +6,7 @@ use crate::kifu::{
     TurnRecord,
 };
 use crate::sim::pokemon::PokemonIdent;
-use crate::solver::belief::{BeliefState, calc_hp_lv50, calc_stat_lv50};
+use crate::solver::belief::{BeliefState, calc_pokemon_hp_lv50, calc_pokemon_stat_lv50};
 use crate::solver::determinizer::Determinizer;
 use crate::solver::ismcts::{Ismcts, IsmctsConfig};
 use crate::wasm_api::{InputPokemonData, PlayerActionJs, SlotActionJs};
@@ -251,6 +251,7 @@ fn test_cts_vs_ots_belief_initialization_and_switch_in() {
             },
         ],
         turns: vec![],
+        ..Default::default()
     };
 
     let belief = BeliefState::from_kifu_up_to_turn(&kifu_cts, 0);
@@ -384,7 +385,9 @@ fn test_speed_order_and_choice_scarf_inference() {
                     target: Some(PokemonIdent::from("p1b")),
                 },
             ],
+            ..Default::default()
         }],
+        ..Default::default()
     };
 
     let belief = BeliefState::from_kifu_up_to_turn(&kifu, 1);
@@ -421,13 +424,13 @@ fn test_speed_order_and_choice_scarf_inference() {
 #[test]
 fn test_offensive_and_defensive_damage_inversion() {
     // P2a: garchomp (index 3) が P1b: dragonite (HP 166, Def 115, inner-focus) に dragon-claw (威力80, 物理ドラゴン, STAB 1.5x, 弱点 2.0x)
-    // いじっぱりA32振り garchomp の攻撃実数値 = calc_stat_lv50(130, 32, 1) = 200
-    let chomp_atk = calc_stat_lv50(130, 32, 1);
+    // いじっぱりA32振り garchomp の攻撃実数値 (種族値 130 はメタデータから自動取得)
+    let chomp_atk = calc_pokemon_stat_lv50("garchomp", 1, 32, 1).expect("garchomp atk");
     assert_eq!(chomp_atk, 200);
 
-    // P1a: charizard (SpA 161) が P2b: rillaboom (index 4, H32振り HP=207, D0振り SpD=90) に air-slash (威力75, 特殊ひこう, STAB 1.5x, 弱点 2.0x)
-    let rilla_hp = calc_hp_lv50("rillaboom", 100, 32);
-    let rilla_spd = calc_stat_lv50(70, 0, 0);
+    // P1a: charizard (SpA 161) が P2b: rillaboom (index 4, H32振り HP=207, D0振り SpD=90) に air-slash (種族値はメタデータから自動取得)
+    let rilla_hp = calc_pokemon_hp_lv50("rillaboom", 32).expect("rillaboom hp");
+    let rilla_spd = calc_pokemon_stat_lv50("rillaboom", 4, 0, 0).expect("rillaboom spd");
     assert_eq!(rilla_hp, 207);
     assert_eq!(rilla_spd, 90);
 
@@ -531,7 +534,9 @@ fn test_offensive_and_defensive_damage_inversion() {
                     is_spread: false,
                 },
             ],
+            ..Default::default()
         }],
+        ..Default::default()
     };
 
     let belief_before = BeliefState::from_kifu_up_to_turn(&kifu, 0);
@@ -653,6 +658,7 @@ fn test_negative_inference_choice_items_and_life_orb() {
                     },
                     // いのちのたまの反動ダメージが発生しなかった
                 ],
+                ..Default::default()
             },
             TurnRecord {
                 turn_number: 2,
@@ -666,8 +672,10 @@ fn test_negative_inference_choice_items_and_life_orb() {
                         target: Some(PokemonIdent::from("p1a")),
                     },
                 ],
+                ..Default::default()
             },
         ],
+        ..Default::default()
     };
 
     let belief = BeliefState::from_kifu_up_to_turn(&kifu, 2);
@@ -732,6 +740,7 @@ fn test_determinizer_samples_valid_champions_4_of_6_and_bounds() {
             },
         ],
         turns: vec![],
+        ..Default::default()
     };
 
     let belief = BeliefState::from_kifu_up_to_turn(&kifu, 0);
@@ -850,7 +859,9 @@ fn test_ismcts_evaluate_kifu_turn_produces_visualization_and_evaluation_report()
             p1_action: actual_action,
             p2_action: None,
             events: vec![],
+            ..Default::default()
         }],
+        ..Default::default()
     };
 
     let ismcts = Ismcts::new(IsmctsConfig {
@@ -879,4 +890,338 @@ fn test_ismcts_evaluate_kifu_turn_produces_visualization_and_evaluation_report()
             | Some(ActionQuality::Blunder)
             | None
     ));
+}
+
+#[test]
+fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
+    use crate::kifu::{EventProvenance, MatchOutcome, TurnAnnotation};
+
+    let p1_action = PlayerActionJs {
+        slot_a: SlotActionJs {
+            choice: "air-slash".to_string(),
+            target: 1,
+            mega: true,
+        },
+        slot_b: SlotActionJs {
+            choice: "earthquake".to_string(),
+            target: 0,
+            mega: false,
+        },
+    };
+
+    let best_action = PlayerActionJs {
+        slot_a: SlotActionJs {
+            choice: "flamethrower".to_string(),
+            target: 2,
+            mega: true,
+        },
+        slot_b: SlotActionJs {
+            choice: "extreme-speed".to_string(),
+            target: 1,
+            mega: false,
+        },
+    };
+
+    let kifu = BattleKifu {
+        regulation: Regulation::MA,
+        is_open_team_sheet: false,
+        result: MatchOutcome::P1Win,
+        p1_team: make_p1_team(),
+        p1_selection: [0, 1, 2, 3],
+        p2_preview: make_cts_preview(),
+        lead_timestamp_ms: Some(4200),
+        lead_events: vec![
+            ObservedEvent::SwitchIn {
+                player: 1,
+                slot: 0,
+                team_index: 0,
+                species: "charizard".to_string(),
+                hp: ObservedHp::Exact {
+                    current: 153,
+                    max: 153,
+                },
+            },
+            ObservedEvent::SwitchIn {
+                player: 1,
+                slot: 1,
+                team_index: 1,
+                species: "dragonite".to_string(),
+                hp: ObservedHp::Exact {
+                    current: 166,
+                    max: 166,
+                },
+            },
+            ObservedEvent::SwitchIn {
+                player: 2,
+                slot: 0,
+                team_index: 0,
+                species: "incineroar".to_string(),
+                hp: ObservedHp::Percent { percent: 100 },
+            },
+            ObservedEvent::SwitchIn {
+                player: 2,
+                slot: 1,
+                team_index: 4,
+                species: "rillaboom".to_string(),
+                hp: ObservedHp::Percent { percent: 100 },
+            },
+            ObservedEvent::AbilityTriggered {
+                source: PokemonIdent::from("p2a"),
+                ability: "intimidate".to_string(),
+            },
+            ObservedEvent::StatStageChanged {
+                target: PokemonIdent::from("p1a"),
+                stat: "atk".to_string(),
+                delta: -1,
+            },
+            ObservedEvent::AbilityTriggered {
+                source: PokemonIdent::from("p1b"),
+                ability: "inner-focus".to_string(),
+            },
+        ],
+        lead_provenance: vec![
+            EventProvenance {
+                timestamp_ms: Some(4300),
+                confidence: Some(99),
+                needs_review: false,
+                comment: None,
+            },
+            EventProvenance::default(),
+            EventProvenance::default(),
+            EventProvenance::default(),
+            EventProvenance {
+                timestamp_ms: Some(5800),
+                confidence: Some(95),
+                needs_review: false,
+                comment: Some("いかく発動".to_string()),
+            },
+            EventProvenance::default(),
+            EventProvenance::default(),
+        ],
+        turns: vec![TurnRecord {
+            turn_number: 1,
+            p1_action: p1_action.clone(),
+            p2_action: None,
+            annotation: TurnAnnotation {
+                comment: Some("相手のねこだましをケアしつつメガシンカ".to_string()),
+                timestamp_ms: Some(12500),
+                eval_win_rate: Some(0.642),
+                best_action: Some(best_action.clone()),
+                action_quality: Some(ActionQuality::Good),
+            },
+            events: vec![
+                ObservedEvent::MegaEvolve {
+                    target: PokemonIdent::from("p1a"),
+                    mega_species: "charizard-mega-y".to_string(),
+                    item: "-".to_string(),
+                },
+                ObservedEvent::AbilityTriggered {
+                    source: PokemonIdent::from("p1a"),
+                    ability: "drought".to_string(),
+                },
+                ObservedEvent::WeatherChanged {
+                    weather: Some("Sun".to_string()),
+                },
+                ObservedEvent::MoveUsed {
+                    attacker: PokemonIdent::from("p2b"),
+                    move_id: "fake-out".to_string(),
+                    target: Some(PokemonIdent::from("p1a")),
+                },
+                ObservedEvent::Damage {
+                    target: PokemonIdent::from("p1a"),
+                    hp_after: ObservedHp::Exact {
+                        current: 121,
+                        max: 153,
+                    },
+                    damage_exact: Some(32),
+                    is_crit: false,
+                    effectiveness: Some(0),
+                    from_effect: None,
+                    attacker: Some(PokemonIdent::from("p2b")),
+                    move_id: Some("fake-out".to_string()),
+                    is_spread: false,
+                },
+            ],
+            event_provenance: vec![
+                EventProvenance::default(),
+                EventProvenance::default(),
+                EventProvenance::default(),
+                EventProvenance::default(),
+                EventProvenance {
+                    timestamp_ms: Some(18400),
+                    confidence: Some(82),
+                    needs_review: true,
+                    comment: Some("エフェクト重なりでHPバー要確認".to_string()),
+                },
+            ],
+            field_effects: vec!["Sun 1/5".to_string()],
+        }],
+    };
+
+    // 1. PBN テキスト双方向変換の検証
+    let pbn_text = kifu.to_pbn();
+    assert!(pbn_text.contains("[PBN \"1.0\"]"));
+    assert!(pbn_text.contains("[Sheet \"CTS\"]"));
+    assert!(pbn_text.contains("[Result \"WIN\"]"));
+    assert!(pbn_text.contains("@turn 1 @t=12500ms @eval=64.2%"));
+    assert!(pbn_text.contains("@field Sun 1/5"));
+    assert!(pbn_text.contains("@review"));
+
+    let from_pbn = BattleKifu::from_pbn(&pbn_text).expect("Should parse generated PBN cleanly");
+    assert_eq!(from_pbn.regulation, kifu.regulation);
+    assert_eq!(from_pbn.is_open_team_sheet, kifu.is_open_team_sheet);
+    assert_eq!(from_pbn.result, kifu.result);
+    assert_eq!(from_pbn.p1_selection, kifu.p1_selection);
+    assert_eq!(from_pbn.lead_timestamp_ms, Some(4200));
+    assert_eq!(from_pbn.lead_events, kifu.lead_events);
+    assert_eq!(from_pbn.turns.len(), 1);
+    assert_eq!(from_pbn.turns[0].p1_action, p1_action);
+    assert_eq!(from_pbn.turns[0].field_effects, vec!["Sun 1/5".to_string()]);
+    assert_eq!(from_pbn.turns[0].events, kifu.turns[0].events);
+    assert_eq!(
+        from_pbn.turns[0].annotation.comment.as_deref(),
+        Some("相手のねこだましをケアしつつメガシンカ")
+    );
+    assert_eq!(
+        from_pbn.turns[0].annotation.action_quality,
+        Some(ActionQuality::Good)
+    );
+    assert_eq!(from_pbn.turns[0].annotation.best_action, Some(best_action));
+    assert!(from_pbn.turns[0].event_provenance[4].needs_review);
+
+    // 2. PKF バイナリおよび Base64URL 双方向変換の検証
+    let pkf_bytes = kifu.to_pkf_bytes();
+    assert_eq!(&pkf_bytes[0..4], b"PKF\x01");
+    // PBNテキストよりもさらにコンパクトであること
+    assert!(
+        pkf_bytes.len() < pbn_text.len(),
+        "PKF binary ({} bytes) should be smaller than PBN text ({} bytes)",
+        pkf_bytes.len(),
+        pbn_text.len()
+    );
+
+    let from_pkf =
+        BattleKifu::from_pkf_bytes(&pkf_bytes).expect("Should decode PKF binary cleanly");
+    assert_eq!(from_pkf.regulation, kifu.regulation);
+    assert_eq!(from_pkf.result, kifu.result);
+    assert_eq!(from_pkf.lead_events, kifu.lead_events);
+    assert_eq!(from_pkf.lead_provenance, kifu.lead_provenance);
+    assert_eq!(from_pkf.turns[0].events, kifu.turns[0].events);
+    assert_eq!(
+        from_pkf.turns[0].event_provenance,
+        kifu.turns[0].event_provenance
+    );
+    assert_eq!(from_pkf.turns[0].annotation, kifu.turns[0].annotation);
+
+    let b64 = kifu.to_pkf_base64url();
+    let from_b64 =
+        BattleKifu::from_pkf_base64url(&b64).expect("Should decode Base64URL PKF cleanly");
+    assert_eq!(from_b64.turns[0].events, kifu.turns[0].events);
+}
+
+#[test]
+fn test_parse_target_outcome_lines_under_spread_move() {
+    let pbn = r#"
+[PBN "1.0"]
+[Regulation "M-C"]
+[Sheet "CTS"]
+[Result "WIN"]
+
+@p1 0 incineroar @ sitrus-berry | intimidate | Careful H32 D32+ | 200,135,110,90,150,80 | snarl, fake-out
+@select 0, 1, 2, 3
+@p2 0 garchomp
+@p2 1 farigiraf
+
+@lead
+  switch p1a incineroar 200/200
+  switch p2a garchomp 100%
+  switch p2b farigiraf 100%
+
+@turn 1
+  @cmd p1a: snarl | p1b: pass
+  mega p2a garchomp-mega-z
+  move p1a snarl {
+    target p2a: 100% -> 88%, spa -1
+    target p2b: 100% -> 80%, spa -1
+  }
+"#;
+
+    let kifu = BattleKifu::from_pbn(pbn).expect("Should parse target outcome lines");
+    assert_eq!(kifu.turns.len(), 1);
+    let events = &kifu.turns[0].events;
+    assert_eq!(events.len(), 6);
+    match &events[2] {
+        ObservedEvent::Damage {
+            target,
+            hp_after,
+            damage_exact,
+            attacker,
+            move_id,
+            ..
+        } => {
+            assert_eq!(target.to_string(), "p2a");
+            assert_eq!(*hp_after, ObservedHp::Percent { percent: 88 });
+            assert_eq!(*damage_exact, Some(12));
+            assert_eq!(attacker.map(|a| a.to_string()), Some("p1a".to_string()));
+            assert_eq!(move_id.as_deref(), Some("snarl"));
+        }
+        _ => panic!("Expected damage event for p2a"),
+    }
+    match &events[3] {
+        ObservedEvent::StatStageChanged {
+            target,
+            stat,
+            delta,
+        } => {
+            assert_eq!(target.to_string(), "p2a");
+            assert_eq!(stat, "spa");
+            assert_eq!(*delta, -1);
+        }
+        _ => panic!("Expected stat stage event for p2a"),
+    }
+}
+
+#[test]
+fn test_parse_inline_move_target_outcomes_under_spread_move() {
+    let pbn = r#"
+[PBN "1.0"]
+@turn 1
+  @cmd p1a: snarl | p1b: pass
+  mega p2a garchomp-mega-z
+  move p1a snarl -> p2a: 100% -> 88% (-12%), spa -1 | p2b: 100% -> 80% (-20%), spa -1
+"#;
+
+    let kifu = BattleKifu::from_pbn(pbn).expect("Should parse inline move target outcomes");
+    assert_eq!(kifu.turns.len(), 1);
+    let events = &kifu.turns[0].events;
+    assert_eq!(events.len(), 6);
+    match &events[2] {
+        ObservedEvent::Damage {
+            target,
+            hp_after,
+            damage_exact,
+            attacker,
+            move_id,
+            ..
+        } => {
+            assert_eq!(target.to_string(), "p2a");
+            assert_eq!(*hp_after, ObservedHp::Percent { percent: 88 });
+            assert_eq!(*damage_exact, Some(12));
+            assert_eq!(attacker.map(|a| a.to_string()), Some("p1a".to_string()));
+            assert_eq!(move_id.as_deref(), Some("snarl"));
+        }
+        _ => panic!("Expected damage event for p2a"),
+    }
+    match &events[3] {
+        ObservedEvent::StatStageChanged {
+            target,
+            stat,
+            delta,
+        } => {
+            assert_eq!(target.to_string(), "p2a");
+            assert_eq!(stat, "spa");
+            assert_eq!(*delta, -1);
+        }
+        _ => panic!("Expected stat stage event for p2a"),
+    }
 }

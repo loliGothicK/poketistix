@@ -385,14 +385,14 @@ pub struct TurnActions {
     #[serde(default)]
     pub p2b_mega: bool,
 }
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug, Default, PartialEq, Eq)]
 pub struct SlotActionJs {
     pub choice: String,
     pub target: i8,
     pub mega: bool,
 }
 
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
+#[derive(Serialize, Deserialize, Tsify, Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlayerActionJs {
     pub slot_a: SlotActionJs,
     pub slot_b: SlotActionJs,
@@ -886,48 +886,24 @@ pub fn create_pokemon(
     let meta = pkmn_meta::pokemon_meta::get_pokemon_meta(&species)
         .ok_or_else(|| wasm_bindgen::JsError::new(&format!("Unknown species: {}", species)))?;
 
-    // Math for Level 50 and 31 IVs:
-    // Base stat at 0 EVs:
-    // HP = floor((2 * Base + 31) * 50 / 100) + 50 + 10 = Base + 75
-    // Other = floor((2 * Base + 31) * 50 / 100) + 5 = Base + 20
-
-    let base_hp = meta.base_stats()[0] + 75;
-    let base_atk = meta.base_stats()[1] + 20;
-    let base_def = meta.base_stats()[2] + 20;
-    let base_spa = meta.base_stats()[3] + 20;
-    let base_spd = meta.base_stats()[4] + 20;
-    let base_spe = meta.base_stats()[5] + 20;
-
-    let pre_nature_hp = base_hp + evs.hp.unwrap_or(0) as u32;
-    let pre_nature_atk = base_atk + evs.atk.unwrap_or(0) as u32;
-    let pre_nature_def = base_def + evs.def.unwrap_or(0) as u32;
-    let pre_nature_spa = base_spa + evs.spa.unwrap_or(0) as u32;
-    let pre_nature_spd = base_spd + evs.spd.unwrap_or(0) as u32;
-    let pre_nature_spe = base_spe + evs.spe.unwrap_or(0) as u32;
-
-    let mut hp = pre_nature_hp as i32;
-    if species.to_lowercase().replace("-", "") == "shedinja" {
-        hp = 1;
-    }
-
-    let apply_nature = |val: u32, is_buff: bool, is_nerf: bool| -> i32 {
-        let mut stat = val as i32;
-        if is_buff {
-            stat = (stat * 11) / 10;
-        } else if is_nerf {
-            stat = (stat * 9) / 10;
-        }
-        stat
-    };
-
     let nature_enum = nature_opt.unwrap_or(Nature::Hardy);
     let (buff, nerf) = nature_enum.modifiers();
+    let nmod = |stat_idx: u8| -> i8 {
+        if buff == stat_idx {
+            1
+        } else if nerf == stat_idx {
+            -1
+        } else {
+            0
+        }
+    };
 
-    let atk = apply_nature(pre_nature_atk, buff == 1, nerf == 1);
-    let def = apply_nature(pre_nature_def, buff == 2, nerf == 2);
-    let spa = apply_nature(pre_nature_spa, buff == 3, nerf == 3);
-    let spd = apply_nature(pre_nature_spd, buff == 4, nerf == 4);
-    let spe = apply_nature(pre_nature_spe, buff == 5, nerf == 5);
+    let hp = meta.calc_hp_lv50(evs.hp.unwrap_or(0)) as i32;
+    let atk = meta.calc_stat_lv50(1, evs.atk.unwrap_or(0), nmod(1)) as i32;
+    let def = meta.calc_stat_lv50(2, evs.def.unwrap_or(0), nmod(2)) as i32;
+    let spa = meta.calc_stat_lv50(3, evs.spa.unwrap_or(0), nmod(3)) as i32;
+    let spd = meta.calc_stat_lv50(4, evs.spd.unwrap_or(0), nmod(4)) as i32;
+    let spe = meta.calc_stat_lv50(5, evs.spe.unwrap_or(0), nmod(5)) as i32;
 
     let data = PokemonData {
         ident,
@@ -1137,4 +1113,114 @@ pub fn analyze_kifu_turn(
     let ismcts = crate::solver::Ismcts::new(config);
     let report = ismcts.evaluate_kifu_turn(&kifu_rust, turn_index);
     tsify::Ts::from_rust(&report).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn format_kifu_to_pbn(
+    kifu: tsify::Ts<crate::kifu::BattleKifu>,
+) -> Result<String, wasm_bindgen::JsError> {
+    let kifu_rust: crate::kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    Ok(kifu_rust.to_pbn())
+}
+
+#[wasm_bindgen]
+pub fn parse_pbn_to_kifu(
+    pbn_text: &str,
+) -> Result<tsify::Ts<crate::kifu::BattleKifu>, wasm_bindgen::JsError> {
+    let kifu =
+        crate::kifu::BattleKifu::from_pbn(pbn_text).map_err(|e| wasm_bindgen::JsError::new(&e))?;
+    tsify::Ts::from_rust(&kifu).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn encode_kifu_to_pkf(
+    kifu: tsify::Ts<crate::kifu::BattleKifu>,
+) -> Result<Vec<u8>, wasm_bindgen::JsError> {
+    let kifu_rust: crate::kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    Ok(kifu_rust.to_pkf_bytes())
+}
+
+#[wasm_bindgen]
+pub fn decode_pkf_to_kifu(
+    pkf_bytes: &[u8],
+) -> Result<tsify::Ts<crate::kifu::BattleKifu>, wasm_bindgen::JsError> {
+    let kifu = crate::kifu::BattleKifu::from_pkf_bytes(pkf_bytes)
+        .map_err(|e| wasm_bindgen::JsError::new(&e))?;
+    tsify::Ts::from_rust(&kifu).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn encode_kifu_to_pkf_base64url(
+    kifu: tsify::Ts<crate::kifu::BattleKifu>,
+) -> Result<String, wasm_bindgen::JsError> {
+    let kifu_rust: crate::kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    Ok(kifu_rust.to_pkf_base64url())
+}
+
+#[wasm_bindgen]
+pub fn decode_pkf_base64url_to_kifu(
+    encoded: &str,
+) -> Result<tsify::Ts<crate::kifu::BattleKifu>, wasm_bindgen::JsError> {
+    let kifu = crate::kifu::BattleKifu::from_pkf_base64url(encoded)
+        .map_err(|e| wasm_bindgen::JsError::new(&e))?;
+    tsify::Ts::from_rust(&kifu).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn get_default_champions_roi_layout()
+-> Result<tsify::Ts<crate::kifu::video_analyzer::ChampionsRoiLayout>, wasm_bindgen::JsError> {
+    let layout = crate::kifu::video_analyzer::ChampionsRoiLayout::default();
+    tsify::Ts::from_rust(&layout).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn analyze_video_frame_rgba_wasm(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+    timestamp_ms: u32,
+) -> Result<tsify::Ts<crate::kifu::video_analyzer::VideoFrameAnalysis>, wasm_bindgen::JsError> {
+    let analysis = crate::kifu::video_analyzer::analyze_video_frame_rgba(
+        rgba,
+        width,
+        height,
+        timestamp_ms,
+        None,
+    );
+    tsify::Ts::from_rust(&analysis).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[derive(Serialize, Deserialize, Tsify)]
+pub struct CompileVideoObservationsArgs {
+    pub regulation: pkmn_meta::Regulation,
+    pub p1_team: Vec<InputPokemonData>,
+    pub observations: Vec<crate::kifu::video_analyzer::VideoFrameObservation>,
+    pub species_dict: Vec<crate::kifu::video_analyzer::LocalizedEntityAlias>,
+    pub move_dict: Vec<crate::kifu::video_analyzer::LocalizedEntityAlias>,
+    pub ability_dict: Vec<crate::kifu::video_analyzer::LocalizedEntityAlias>,
+}
+
+#[wasm_bindgen]
+pub fn compile_video_observations_to_kifu_wasm(
+    args: tsify::Ts<CompileVideoObservationsArgs>,
+) -> Result<tsify::Ts<crate::kifu::video_analyzer::VideoKifuExtractionResult>, wasm_bindgen::JsError>
+{
+    let args_rust: CompileVideoObservationsArgs = args
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    let result = crate::kifu::video_analyzer::compile_video_observations_to_kifu(
+        args_rust.regulation,
+        args_rust.p1_team,
+        &args_rust.observations,
+        &args_rust.species_dict,
+        &args_rust.move_dict,
+        &args_rust.ability_dict,
+    );
+    tsify::Ts::from_rust(&result).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
 }
