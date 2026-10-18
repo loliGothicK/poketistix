@@ -1,8 +1,9 @@
 use crate::sim::battle::Battle;
 use crate::sim::pokemon::Pokemon;
-use crate::solver::belief::{BeliefState, PokemonBelief, calc_hp_lv50, calc_stat_lv50};
+use crate::solver::belief::{BeliefState, PokemonBelief};
 use crate::wasm_api::{InputPokemonData, build_pokemon};
 use pkmn_meta::Regulation;
+use pkmn_meta::pokemon_meta::PokemonMeta;
 use pkmn_meta::types::{Category, Nature, PokemonEvs, Type};
 use rand::RngExt;
 
@@ -251,7 +252,7 @@ impl<P: PriorProvider> Determinizer<P> {
         let is_physical_biased = base_stats[1] >= base_stats[3];
 
         // 1. 実数値・EV・性格のサンプリング（Belief の実数値レンジ制約を満たすもの）
-        let (stats, evs, nature) = self.sample_stats_within_bounds(pb, &base_stats, rng);
+        let (stats, evs, nature) = self.sample_stats_within_bounds(pb, meta_opt.as_ref(), rng);
 
         let max_hp = stats[0] as i32;
         let cur_hp = if pb.hp_percent == 0 {
@@ -331,43 +332,45 @@ impl<P: PriorProvider> Determinizer<P> {
     fn sample_stats_within_bounds<R: rand::Rng + ?Sized>(
         &self,
         pb: &PokemonBelief,
-        base_stats: &[u32; 6],
+        meta_opt: Option<&PokemonMeta>,
         rng: &mut R,
     ) -> ([u16; 6], PokemonEvs, Nature) {
         let mut matching_templates = Vec::new();
 
-        for tpl in STANDARD_CHAMPIONS_TEMPLATES {
-            let (buff, nerf) = tpl.nature.modifiers();
-            let nmod = |stat_idx: u8| -> i8 {
-                if buff == stat_idx {
-                    1
-                } else if nerf == stat_idx {
-                    -1
-                } else {
-                    0
-                }
-            };
-            let hp = calc_hp_lv50(&pb.species, base_stats[0], tpl.evs[0]);
-            let atk = calc_stat_lv50(base_stats[1], tpl.evs[1], nmod(1));
-            let def = calc_stat_lv50(base_stats[2], tpl.evs[2], nmod(2));
-            let spa = calc_stat_lv50(base_stats[3], tpl.evs[3], nmod(3));
-            let spd = calc_stat_lv50(base_stats[4], tpl.evs[4], nmod(4));
-            let spe = calc_stat_lv50(base_stats[5], tpl.evs[5], nmod(5));
+        if let Some(meta) = meta_opt {
+            for tpl in STANDARD_CHAMPIONS_TEMPLATES {
+                let (buff, nerf) = tpl.nature.modifiers();
+                let nmod = |stat_idx: u8| -> i8 {
+                    if buff == stat_idx {
+                        1
+                    } else if nerf == stat_idx {
+                        -1
+                    } else {
+                        0
+                    }
+                };
+                let hp = meta.calc_hp_lv50(tpl.evs[0]);
+                let atk = meta.calc_stat_lv50(1, tpl.evs[1], nmod(1));
+                let def = meta.calc_stat_lv50(2, tpl.evs[2], nmod(2));
+                let spa = meta.calc_stat_lv50(3, tpl.evs[3], nmod(3));
+                let spd = meta.calc_stat_lv50(4, tpl.evs[4], nmod(4));
+                let spe = meta.calc_stat_lv50(5, tpl.evs[5], nmod(5));
 
-            if hp >= pb.hp_stat_range.0
-                && hp <= pb.hp_stat_range.1
-                && atk >= pb.atk_stat_range.0
-                && atk <= pb.atk_stat_range.1
-                && def >= pb.def_stat_range.0
-                && def <= pb.def_stat_range.1
-                && spa >= pb.spa_stat_range.0
-                && spa <= pb.spa_stat_range.1
-                && spd >= pb.spd_stat_range.0
-                && spd <= pb.spd_stat_range.1
-                && spe >= pb.spe_stat_range.0
-                && spe <= pb.spe_stat_range.1
-            {
-                matching_templates.push(([hp, atk, def, spa, spd, spe], tpl));
+                if hp >= pb.hp_stat_range.0
+                    && hp <= pb.hp_stat_range.1
+                    && atk >= pb.atk_stat_range.0
+                    && atk <= pb.atk_stat_range.1
+                    && def >= pb.def_stat_range.0
+                    && def <= pb.def_stat_range.1
+                    && spa >= pb.spa_stat_range.0
+                    && spa <= pb.spa_stat_range.1
+                    && spd >= pb.spd_stat_range.0
+                    && spd <= pb.spd_stat_range.1
+                    && spe >= pb.spe_stat_range.0
+                    && spe <= pb.spe_stat_range.1
+                {
+                    matching_templates.push(([hp, atk, def, spa, spd, spe], tpl));
+                }
             }
         }
 
@@ -398,7 +401,7 @@ impl<P: PriorProvider> Determinizer<P> {
         } else {
             rng.random_range(pb.hp_ev_range.0..=pb.hp_ev_range.1)
         };
-        let hp = calc_hp_lv50(&pb.species, base_stats[0], hp_ev);
+        let hp = meta_opt.map(|m| m.calc_hp_lv50(hp_ev)).unwrap_or(150);
         let atk = sample_in(pb.atk_stat_range, rng);
         let def = sample_in(pb.def_stat_range, rng);
         let spa = sample_in(pb.spa_stat_range, rng);

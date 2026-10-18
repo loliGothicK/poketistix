@@ -270,6 +270,24 @@
         "role": "Role / Archetype"
       }
     },
+    "videoImport": {
+      "button": "Import from Video",
+      "title": "Analyze Battle Video & Extract Kifu",
+      "dropPrompt": "Drag & drop a battle video file (MP4 / WebM / MOV, 4GB+ supported) or click to browse",
+      "selectFile": "Select Video File",
+      "changeFile": "Change Video",
+      "startAnalysis": "Extract Kifu from Video",
+      "initializing": "Initializing video decoder and analysis engine...",
+      "analyzing": "Scanning video... ({{current}}s / {{total}}s · {{turns}} turns detected)",
+      "pbnLabel": "PBN (Pokémon Battle Notation) Kifu Text",
+      "reviewListTitle": "Timestamped Events & Review Queue",
+      "reviewEmpty": "Analyze a video or edit PBN text to inspect timestamped events here.",
+      "needsReviewBadge": "Needs Review",
+      "jumpToTime": "Seek video to timestamp",
+      "jumpToTurn": "Jump to Turn",
+      "applyToForm": "Apply to Battle Record Form",
+      "analysisFailed": "An error occurred while analyzing the video."
+    },
     "analytics": {
       "title": "Winrate Insights",
       "backToRecords": "Records",

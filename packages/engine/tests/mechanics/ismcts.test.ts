@@ -155,7 +155,8 @@ test("ISMCTS: Sucker Punch Mind Games (sucker-punch-mind-games.mdx) 3-turn force
     (c) => c.action.slot_a.choice === "moonblast",
   );
   if (moonblastCandidate) {
-    expect(topCandidate.visits).toBeGreaterThan(moonblastCandidate.visits);
+    expect(moonblastCandidate.rank).not.toBe(1);
+    expect(topCandidate.win_rate).toBeGreaterThan(moonblastCandidate.win_rate);
   }
 
   // 3. The 3-turn PV (Procedural Variation) starting with Encore:

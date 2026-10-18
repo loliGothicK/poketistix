@@ -141,20 +141,99 @@ pub enum ObservedEvent {
     Faint { target: PokemonIdent },
 }
 
+/// 対戦の勝敗結果
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+pub enum MatchOutcome {
+    #[default]
+    Unknown,
+    #[serde(rename = "WIN")]
+    P1Win,
+    #[serde(rename = "LOSS")]
+    P2Win,
+    #[serde(rename = "DRAW")]
+    Draw,
+}
+
+/// 動画OCRからの抽出証跡およびイベント単位の注釈メタデータ
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+pub struct EventProvenance {
+    /// 元動画における発生時刻 (ミリ秒)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp_ms: Option<u32>,
+    /// OCR / 画像認識の信頼度 (0..=100%)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<u8>,
+    /// ユーザーによる目視確認を推奨するフラグ
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub needs_review: bool,
+    /// イベント行に付与されたインラインコメント
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+impl EventProvenance {
+    pub fn is_empty(&self) -> bool {
+        self.timestamp_ms.is_none()
+            && self.confidence.is_none()
+            && !self.needs_review
+            && self.comment.is_none()
+    }
+}
+
+/// ターン単位のAI評価値キャッシュ・振り返りコメント注釈
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Tsify)]
+pub struct TurnAnnotation {
+    /// プレイヤーまたは解析者の振り返りコメント
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// ターン開始時の動画タイムスタンプ (ミリ秒)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp_ms: Option<u32>,
+    /// キャッシュされた期待勝率 [0.0, 1.0]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_win_rate: Option<f64>,
+    /// キャッシュされたAI推奨最善手
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub best_action: Option<PlayerActionJs>,
+    /// キャッシュされた実戦手の評価分類
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_quality: Option<ActionQuality>,
+}
+
+impl TurnAnnotation {
+    pub fn is_empty(&self) -> bool {
+        self.comment.is_none()
+            && self.timestamp_ms.is_none()
+            && self.eval_win_rate.is_none()
+            && self.best_action.is_none()
+            && self.action_quality.is_none()
+    }
+}
+
 /// 1ターンの記録
-#[derive(Clone, Debug, Serialize, Deserialize, Tsify)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Tsify)]
+#[serde(default)]
 pub struct TurnRecord {
     pub turn_number: u16,
     /// P1（自分）がそのターン開始時に選択した行動
     pub p1_action: PlayerActionJs,
     /// P2（相手）の選択行動（リプレイ等で後から判明している場合のみ記録、通常は None でもイベント列から推論可能）
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p2_action: Option<PlayerActionJs>,
     /// そのターン中に発生した観測イベント列（発生順）
     pub events: Vec<ObservedEvent>,
+    /// ターン単位の注釈・AI評価値キャッシュ・動画タイムスタンプ
+    #[serde(default, skip_serializing_if = "TurnAnnotation::is_empty")]
+    pub annotation: TurnAnnotation,
+    /// `events` の各要素に対応する動画OCR証跡メタデータ（空または `events.len()` 以下）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub event_provenance: Vec<EventProvenance>,
+    /// ターン開始時に有効な場の状態（天候・フィールド・トリックルーム等、例: `Rain 3/5`, `Grassy 2/5`）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_effects: Vec<String>,
 }
 
-/// Showdown 非依存の新しい Ranked Battle 棋譜フォーマット
+/// Showdown 非依存の新しい Ranked Battle 棋譜フォーマット (PKF-JSON AST)
 #[derive(Clone, Debug, Serialize, Deserialize, Tsify)]
 pub struct BattleKifu {
     /// レギュレーション ("M-A", "M-B", "M-C")
@@ -162,6 +241,9 @@ pub struct BattleKifu {
     /// OTS (Open Team Sheet) かどうか（false なら CTS）
     #[serde(default)]
     pub is_open_team_sheet: bool,
+    /// 対戦の勝敗結果
+    #[serde(default)]
+    pub result: MatchOutcome,
     /// 自軍の6匹（完全情報）
     pub p1_team: Vec<InputPokemonData>,
     /// 自軍が選出した4匹の `p1_team` インデックス `[lead_a, lead_b, bench_1, bench_2]`
@@ -170,9 +252,36 @@ pub struct BattleKifu {
     pub p2_preview: Vec<OpponentPreviewSlot>,
     /// Turn 1 コマンド選択前に発生する繰り出し・入場時特性発動イベント列
     pub lead_events: Vec<ObservedEvent>,
+    /// Lead フェーズ開始時の動画タイムスタンプ (ミリ秒)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead_timestamp_ms: Option<u32>,
+    /// `lead_events` の各要素に対応する動画OCR証跡メタデータ
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lead_provenance: Vec<EventProvenance>,
     /// 各ターンの記録
     pub turns: Vec<TurnRecord>,
 }
+
+impl Default for BattleKifu {
+    fn default() -> Self {
+        Self {
+            regulation: Regulation::MA,
+            is_open_team_sheet: false,
+            result: MatchOutcome::Unknown,
+            p1_team: Vec::new(),
+            p1_selection: [0, 1, 2, 3],
+            p2_preview: Vec::new(),
+            lead_events: Vec::new(),
+            lead_timestamp_ms: None,
+            lead_provenance: Vec::new(),
+            turns: Vec::new(),
+        }
+    }
+}
+
+pub mod pbn;
+pub mod pkf_bin;
+pub mod video_analyzer;
 
 // =========================================================================
 // 状況可視化・評価値出力用データ構造 (Goal 1, 2, 3)
