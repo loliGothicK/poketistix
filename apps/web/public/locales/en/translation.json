@@ -273,7 +273,7 @@
     "videoImport": {
       "button": "Import from Video",
       "title": "Analyze Battle Video & Extract Kifu",
-      "dropPrompt": "Drag & drop a battle video file (MP4 / WebM / MOV, 4GB+ supported) or click to browse",
+      "dropPrompt": "Drag & drop a battle video file (MP4 / WebM / MOV) or click to browse",
       "selectFile": "Select Video File",
       "changeFile": "Change Video",
       "startAnalysis": "Extract Kifu from Video",

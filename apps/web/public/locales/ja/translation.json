@@ -345,7 +345,7 @@
     "videoImport": {
       "button": "動画から棋譜解析",
       "title": "動画から棋譜・戦績を自動解析",
-      "dropPrompt": "対戦動画ファイル（MP4 / WebM / MOV、4GB超対応）をドラッグ＆ドロップ、またはクリックして選択",
+      "dropPrompt": "対戦動画ファイル（MP4 / WebM / MOV）をドラッグ＆ドロップ、またはクリックして選択",
       "selectFile": "動画ファイルを選択",
       "changeFile": "別の動画を選択",
       "startAnalysis": "棋譜を自動抽出する",

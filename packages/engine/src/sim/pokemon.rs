@@ -2,8 +2,6 @@ use crate::sim::values::*;
 use crate::wasm_api::Boosts;
 use indexmap::IndexMap;
 use pkmn_meta::types::*;
-use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 
 #[derive(Clone, Debug)]
 pub struct Pokemon {
@@ -196,35 +194,4 @@ impl Pokemon {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Tsify)]
-
-pub struct PokemonIdent {
-    pub player: u8,
-    pub slot: usize,
-}
-
-impl PokemonIdent {
-    pub const P1A: Self = Self { player: 1, slot: 0 };
-    pub const P1B: Self = Self { player: 1, slot: 1 };
-    pub const P2A: Self = Self { player: 2, slot: 0 };
-    pub const P2B: Self = Self { player: 2, slot: 1 };
-}
-
-impl From<&str> for PokemonIdent {
-    fn from(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
-            "p1b" => Self::P1B,
-            "p2a" => Self::P2A,
-            "p2b" => Self::P2B,
-            _ => Self::P1A,
-        }
-    }
-}
-
-impl std::fmt::Display for PokemonIdent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let p = if self.player == 1 { "p1" } else { "p2" };
-        let s = if self.slot == 0 { "a" } else { "b" };
-        write!(f, "{}{}", p, s)
-    }
-}
+pub use kifu::PokemonIdent;
