@@ -27,6 +27,21 @@ export interface HealPhraseDef {
   readonly effect?: string;
 }
 
+export interface CantPhraseDef {
+  readonly phrase: string;
+  readonly reason: string;
+}
+
+export interface EffectivenessPhraseDef {
+  readonly phrase: string;
+  readonly eff: 1 | -1 | 0;
+}
+
+export interface ResidualDamagePhraseDef {
+  readonly phrase: string;
+  readonly effect: string;
+}
+
 /** 全9言語（ja, en, es, fr, de, it, ko, zh-Hant, zh-Hans）のメッセージテンプレート定義 */
 export interface BattleMessageTemplates {
   readonly lang: string;
@@ -48,6 +63,10 @@ export interface BattleMessageTemplates {
   readonly statChanges: readonly StatChangeDef[];
   readonly fieldPhrases: readonly FieldPhraseDef[];
   readonly healPhrases: readonly HealPhraseDef[];
+  readonly cantPhrases?: readonly CantPhraseDef[];
+  readonly critPhrases?: readonly string[];
+  readonly effectivenessPhrases?: readonly EffectivenessPhraseDef[];
+  readonly residualDamagePhrases?: readonly ResidualDamagePhraseDef[];
 }
 
 export interface BattleLogPatternSet {
@@ -56,6 +75,10 @@ export interface BattleLogPatternSet {
   readonly statWords: readonly StatWordDef[];
   readonly statChanges: readonly StatChangeDef[];
   readonly healPhrases: readonly HealPhraseDef[];
+  readonly cantPhrases: readonly CantPhraseDef[];
+  readonly critPhrases: readonly string[];
+  readonly effectivenessPhrases: readonly EffectivenessPhraseDef[];
+  readonly residualDamagePhrases: readonly ResidualDamagePhraseDef[];
   readonly faintedPhrases: readonly string[];
   readonly protectPhrases: {
     readonly wideGuard: readonly string[];
@@ -68,24 +91,24 @@ export interface BattleLogPatternSet {
   readonly matchMoveUsed: (
     rawText: string,
     textKey: string,
-  ) => { actorPart: string; movePart: string } | null;
+  ) => { actorPart: string; movePart: string; isOpposing?: boolean } | null;
   readonly matchReadyToHelp: (
     rawText: string,
     textKey: string,
   ) => { actorKey: string; targetKey: string } | null;
   readonly matchMegaReaction: (rawText: string, textKey: string) => { leftPart: string } | null;
-  readonly matchMegaEvolved: (
+  readonly matchMegaEvolved: (rawText: string, textKey: string) => { headKey: string } | null;
+  readonly matchPerishCount: (
     rawText: string,
-    textKey: string,
-  ) => { headKey: string; speciesPart: string } | null;
+  ) => { mon: string; count: number; isOpposing: boolean } | null;
+  readonly matchPerishStart: (rawText: string, textKey: string) => boolean;
+  readonly matchForfeit: (rawText: string, textKey: string) => boolean;
 }
 
 /** テンプレート文字列を名前抽出用キャプチャグループ付き正規表現にコンパイルする */
 function compileTemplateRegex(template: string): RegExp {
   const clean = template.trim().replace(/[!！.。]+$/, "");
-  const parts = clean.split(
-    /(\{mon1\}|\{mon2\}|\{mon\}|\{trainer\}|\{move\}|\{mega\}|\{item\}|\{ring\})/,
-  );
+  const parts = clean.split(/(\{mon1\}|\{mon2\}|\{mon\}|\{trainer\}|\{move\}|\{item\}|\{ring\})/);
 
   let pattern = "";
   for (const part of parts) {
@@ -94,7 +117,6 @@ function compileTemplateRegex(template: string): RegExp {
     else if (part === "{mon}") pattern += "(?<mon>.+?)";
     else if (part === "{trainer}") pattern += "(?<trainer>.+?)";
     else if (part === "{move}") pattern += "(?<move>.+?)";
-    else if (part === "{mega}") pattern += "(?<mega>.+?)";
     else if (part === "{item}") pattern += "(?<item>.+?)";
     else if (part === "{ring}") pattern += "(?<ring>.+?)";
     else {
@@ -103,11 +125,12 @@ function compileTemplateRegex(template: string): RegExp {
     }
   }
 
-  return new RegExp(`^.*?${pattern}[!！.\\s。]*$`, "i");
+  return new RegExp(`^.*?${pattern}(?:[!！|].*|[!！.\\s。]*)$`, "is");
 }
 
 const cleanName = (s: string): string =>
   s
+    .replace(/[!！|].*$/, "")
     .replace(/\s+the\s+.*$/i, "")
     .replace(/[!！.。\s]+$/, "")
     .trim();
@@ -138,6 +161,10 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
     statWords: templates.statWords,
     statChanges: templates.statChanges,
     healPhrases: templates.healPhrases,
+    cantPhrases: templates.cantPhrases ?? [],
+    critPhrases: templates.critPhrases ?? [],
+    effectivenessPhrases: templates.effectivenessPhrases ?? [],
+    residualDamagePhrases: templates.residualDamagePhrases ?? [],
     faintedPhrases: (templates.fainted ?? []).map((s) => normalizeOcrToken(s)),
     protectPhrases: {
       wideGuard: (templates.wideGuard ?? []).map((s) => normalizeOcrToken(s)),
@@ -184,7 +211,12 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
       for (const rx of moveUsedRegexes) {
         const m = rx.exec(rawText);
         if (m?.groups?.mon && m?.groups?.move) {
-          return { actorPart: m.groups.mon.trim(), movePart: m.groups.move.trim() };
+          const isOpposing = /opposing/i.test(rx.source);
+          return {
+            actorPart: m.groups.mon.trim(),
+            movePart: m.groups.move.trim(),
+            isOpposing,
+          };
         }
       }
       return null;
@@ -200,11 +232,7 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
     },
     matchMegaReaction: (rawText, textKey) => {
       if (!megaReactionToken || approxFind(textKey, megaReactionToken).score < 0.75) return null;
-      // 英語・日本語・欧州各言語でのメガ反応プレースホルダ
-      const m =
-        /^(.*?)\s*(?:'s|\s+の|\s+が|is\s+reacting|\s+reacciona|\s+réagit|\s+reagiert)/i.exec(
-          rawText,
-        );
+      const m = /^(.*?)\s*(?:'s|is\s+reacting)/i.exec(rawText);
       return m?.[1] ? { leftPart: m[1] } : null;
     },
     matchMegaEvolved: (rawText, textKey) => {
@@ -213,14 +241,37 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
       if (found.score < 0.75) return null;
       for (const rx of megaEvolvedRegexes) {
         const m = rx.exec(rawText);
-        if (m?.groups?.mega) {
+        if (m?.groups?.mon) {
           return {
-            headKey: textKey.slice(0, Math.max(0, found.end - megaEvolvedToken.length)),
-            speciesPart: m.groups.mega.trim(),
+            headKey: normalizeOcrToken(m.groups.mon),
           };
         }
       }
-      return null;
+      return {
+        headKey: textKey.slice(0, Math.max(0, found.end - megaEvolvedToken.length)),
+      };
+    },
+    matchPerishCount: (rawText: string) => {
+      const rx = /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+(\d+)[!.]?$/i;
+      const m = rx.exec(rawText.trim());
+      if (!m || !m[1] || !m[2]) return null;
+      const isOpposing = /^The\s+opposing\s+/i.test(rawText.trim());
+      const count = parseInt(m[2], 10);
+      return { mon: m[1].trim(), count, isOpposing };
+    },
+    matchPerishStart: (_rawText: string, textKey: string) => {
+      return (
+        approxFind(textKey, "allpokemonthathearthesong").score >= 0.75 ||
+        approxFind(textKey, "willfaintinthreeturns").score >= 0.75 ||
+        approxFind(textKey, "willfaintin3turns").score >= 0.75
+      );
+    },
+    matchForfeit: (_rawText: string, textKey: string) => {
+      return (
+        approxFind(textKey, "thebattlehasendedduetoaforfeit").score >= 0.75 ||
+        approxFind(textKey, "endedduetoaforfeit").score >= 0.75 ||
+        approxFind(textKey, "duetoaforfeit").score >= 0.8
+      );
     },
   };
 }
@@ -231,23 +282,39 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
 
 export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
   lang: "en",
-  withdraw: ["{trainer} withdrew {mon}!", "{mon}, come back!", "{mon} went back to {trainer}!"],
+  withdraw: [
+    "{trainer} withdrew {mon}!",
+    "{mon}, come back!",
+    "{mon}; come back!",
+    "{mon} come back!",
+    "{mon} went back to {trainer}!",
+  ],
   sentOutTwo: [
     "{trainer} sent out {mon1} and {mon2}!",
     "The opposing {trainer} sent out {mon1} and {mon2}!",
   ],
   sentOutOne: ["{trainer} sent out {mon}!", "The opposing {trainer} sent out {mon}!"],
-  goTwo: ["Go! {mon1} and {mon2}!", "Gol {mon1} and {mon2}!"],
-  goOne: ["Go! {mon}!", "Gol {mon}!"],
-  moveUsed: ["{mon} used {move}!"],
+  goTwo: [
+    "Go! {mon1} and {mon2}!",
+    "Gol! {mon1} and {mon2}!",
+    "Gol {mon1} and {mon2}!",
+    "Ga! {mon1} and {mon2}!",
+    "Gal {mon1} and {mon2}!",
+  ],
+  goOne: ["Go! {mon}!", "Gol! {mon}!", "Gol {mon}!", "Ga! {mon}!", "Gal {mon}!"],
+  moveUsed: ["The opposing {mon} used {move}!", "{mon} used {move}!"],
   readyToHelpPhrase: "readytohelp",
   megaReactionPhrase: "isreactingto",
   megaEvolvedPhrase: "megaevolved",
-  megaEvolved: ["{mon} has Mega Evolved into {mega}!", "{mon} evolved into {mega}!"],
+  megaEvolved: [
+    "{mon} has Mega Evolved!",
+    "The opposing {mon} has Mega Evolved!",
+    "{mon} evolved!",
+  ],
   fainted: ["fainted"],
   wideGuard: ["wideguard", "wide"],
   protectItself: ["protecteditself"],
-  protectGeneral: ["protected"],
+  protectGeneral: ["protecteditself", "protectedfrom"],
   statWords: [
     { words: ["attack"], stat: "atk" },
     { words: ["defense"], stat: "def" },
@@ -293,192 +360,33 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "healedbythegrassyterrain", effect: "grassy-terrain" },
     { phrase: "grassyterrainhealed", effect: "grassy-terrain" },
   ],
-};
-
-export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
-  lang: "ja",
-  withdraw: [
-    "{trainer}は {mon}を ひっこめた！",
-    "{trainer}は {mon}を 引っ込めた！",
-    "{trainer}は {mon}を 手元に戻した！",
-    "もどれ！ {mon}！",
-    "戻れ！ {mon}！",
+  cantPhrases: [
+    { phrase: "flinchedandcouldntmove", reason: "flinch" },
+    { phrase: "flinched", reason: "flinch" },
+    { phrase: "isparalyzedsoitwasunabletomove", reason: "par" },
+    { phrase: "paralyzedandcantmove", reason: "par" },
+    { phrase: "isfastasleep", reason: "slp" },
+    { phrase: "isfrozensolid", reason: "frz" },
   ],
-  sentOutTwo: [
-    "相手は {mon1}と {mon2}を 繰り出した！",
-    "相手は {mon1}と {mon2}を くりだした！",
-    "お相手は {mon1}と {mon2}を 繰り出した！",
-    "お相手は {mon1}と {mon2}を くりだした！",
-    "{trainer}は {mon1}と {mon2}を 繰り出した！",
-    "{trainer}は {mon1}と {mon2}を くりだした！",
+  critPhrases: ["acriticalhit", "criticalhit"],
+  effectivenessPhrases: [
+    { phrase: "itssupereffectiveon", eff: 1 },
+    { phrase: "itssupereffective", eff: 1 },
+    { phrase: "itsnotveryeffectiveon", eff: -1 },
+    { phrase: "itsnotveryeffective", eff: -1 },
+    { phrase: "itdoesntaffect", eff: 0 },
   ],
-  sentOutOne: [
-    "相手は {mon}を 繰り出した！",
-    "相手は {mon}を くりだした！",
-    "お相手は {mon}を 繰り出した！",
-    "お相手は {mon}を くりだした！",
-    "{trainer}は {mon}を 繰り出した！",
-    "{trainer}は {mon}を くりだした！",
-  ],
-  goTwo: [
-    "ゆけっ！ {mon1}と {mon2}！",
-    "行けっ！ {mon1}と {mon2}！",
-    "いけっ！ {mon1}と {mon2}！",
-    "お願い！ {mon1}と {mon2}！",
-  ],
-  goOne: ["ゆけっ！ {mon}！", "行けっ！ {mon}！", "いけっ！ {mon}！", "お願い！ {mon}！"],
-  moveUsed: [
-    "{mon}は {move}を 使った！",
-    "{mon}は {move}を つかった！",
-    "{mon}の {move}を 使った！",
-    "{mon}の {move}を つかった！",
-    "{mon}の {move}の攻撃！",
-    "{mon}の {move}！",
-  ],
-  readyToHelpPhrase: "手助けをしようとしている",
-  megaReactionPhrase: "反応している",
-  megaEvolvedPhrase: "メガシンカした",
-  megaEvolved: [
-    "{mon}は {mega}に メガシンカした！",
-    "{mon}は {mega}にメガシンカした！",
-    "{mon}が {mega}に メガシンカした！",
-  ],
-  fainted: ["倒れた", "たおれた"],
-  wideGuard: ["ワイドガードが守った", "ワイドガードが防いだ", "ワイドガード"],
-  protectItself: ["攻撃から身を守った", "守りきった", "まもりきった"],
-  protectGeneral: ["身を守った", "守った", "まもった"],
-  statWords: [
-    { words: [normalizeOcrToken("こうげき"), normalizeOcrToken("攻撃")], stat: "atk" },
-    { words: [normalizeOcrToken("ぼうぎょ"), normalizeOcrToken("防御")], stat: "def" },
-    { words: [normalizeOcrToken("とくこう"), normalizeOcrToken("特攻")], stat: "spa" },
-    { words: [normalizeOcrToken("とくぼう"), normalizeOcrToken("特防")], stat: "spd" },
-    { words: [normalizeOcrToken("すばやさ"), normalizeOcrToken("素早さ")], stat: "spe" },
-    { words: [normalizeOcrToken("めいちゅう"), normalizeOcrToken("命中")], stat: "accuracy" },
-    { words: [normalizeOcrToken("かいひ"), normalizeOcrToken("回避")], stat: "evasion" },
-  ],
-  statChanges: [
-    { suffix: normalizeOcrToken("さがった"), delta: -1 },
-    { suffix: normalizeOcrToken("下がった"), delta: -1 },
-    { suffix: normalizeOcrToken("がくっとさがった"), delta: -2 },
-    { suffix: normalizeOcrToken("がくっと下がった"), delta: -2 },
-    { suffix: normalizeOcrToken("がくーんとさがった"), delta: -3 },
-    { suffix: normalizeOcrToken("がくーんと下がった"), delta: -3 },
-    { suffix: normalizeOcrToken("あがった"), delta: 1 },
-    { suffix: normalizeOcrToken("上がった"), delta: 1 },
-    { suffix: normalizeOcrToken("ぐーんとあがった"), delta: 2 },
-    { suffix: normalizeOcrToken("ぐーんと上がった"), delta: 2 },
-    { suffix: normalizeOcrToken("ぐぐーんとあがった"), delta: 3 },
-    { suffix: normalizeOcrToken("ぐぐーんと上がった"), delta: 3 },
-  ],
-  fieldPhrases: [
-    { phrase: normalizeOcrToken("時空が元に戻った"), effect: { kind: "trick-room", on: false } },
-    {
-      phrase: normalizeOcrToken("じくうがもとにもどった"),
-      effect: { kind: "trick-room", on: false },
-    },
-    { phrase: normalizeOcrToken("歪んだ時空"), effect: { kind: "trick-room", on: true } },
-    { phrase: normalizeOcrToken("時空を歪めた"), effect: { kind: "trick-room", on: true } },
-    { phrase: normalizeOcrToken("じくうをゆがめた"), effect: { kind: "trick-room", on: true } },
-    { phrase: normalizeOcrToken("雨が降り始めた"), effect: { kind: "weather", value: "Rain" } },
-    { phrase: normalizeOcrToken("あめがふりはじめた"), effect: { kind: "weather", value: "Rain" } },
-    { phrase: normalizeOcrToken("雨が上がった"), effect: { kind: "weather", value: "None" } },
-    { phrase: normalizeOcrToken("あめがあがった"), effect: { kind: "weather", value: "None" } },
-    {
-      phrase: normalizeOcrToken("日差しが強くなった"),
-      effect: { kind: "weather", value: "HarshSunlight" },
-    },
-    {
-      phrase: normalizeOcrToken("ひざしがつよくなった"),
-      effect: { kind: "weather", value: "HarshSunlight" },
-    },
-    { phrase: normalizeOcrToken("日差しが元に戻った"), effect: { kind: "weather", value: "None" } },
-    {
-      phrase: normalizeOcrToken("ひざしがもとにもどった"),
-      effect: { kind: "weather", value: "None" },
-    },
-    {
-      phrase: normalizeOcrToken("砂あらしが吹き荒れ"),
-      effect: { kind: "weather", value: "Sandstorm" },
-    },
-    {
-      phrase: normalizeOcrToken("すなあらしがふきあれ"),
-      effect: { kind: "weather", value: "Sandstorm" },
-    },
-    {
-      phrase: normalizeOcrToken("砂あらしが始まった"),
-      effect: { kind: "weather", value: "Sandstorm" },
-    },
-    {
-      phrase: normalizeOcrToken("砂あらしがおさまった"),
-      effect: { kind: "weather", value: "None" },
-    },
-    {
-      phrase: normalizeOcrToken("すなあらしがおさまった"),
-      effect: { kind: "weather", value: "None" },
-    },
-    { phrase: normalizeOcrToken("雪が降り始めた"), effect: { kind: "weather", value: "Snow" } },
-    { phrase: normalizeOcrToken("ゆきがふりはじめた"), effect: { kind: "weather", value: "Snow" } },
-    { phrase: normalizeOcrToken("雪がやんだ"), effect: { kind: "weather", value: "None" } },
-    { phrase: normalizeOcrToken("ゆきがやんだ"), effect: { kind: "weather", value: "None" } },
-    { phrase: normalizeOcrToken("草が生い茂った"), effect: { kind: "terrain", value: "Grassy" } },
-    {
-      phrase: normalizeOcrToken("くさがおいしげった"),
-      effect: { kind: "terrain", value: "Grassy" },
-    },
-    { phrase: normalizeOcrToken("グラスフィールド"), effect: { kind: "terrain", value: "Grassy" } },
-    { phrase: normalizeOcrToken("草の生い茂りが消え"), effect: { kind: "terrain", value: "None" } },
-    {
-      phrase: normalizeOcrToken("足元に電流が走った"),
-      effect: { kind: "terrain", value: "Electric" },
-    },
-    {
-      phrase: normalizeOcrToken("でんりゅうがはしった"),
-      effect: { kind: "terrain", value: "Electric" },
-    },
-    {
-      phrase: normalizeOcrToken("エレキフィールド"),
-      effect: { kind: "terrain", value: "Electric" },
-    },
-    { phrase: normalizeOcrToken("電流が消え去った"), effect: { kind: "terrain", value: "None" } },
-    { phrase: normalizeOcrToken("霧が立ち込めた"), effect: { kind: "terrain", value: "Misty" } },
-    { phrase: normalizeOcrToken("きりがたちこめた"), effect: { kind: "terrain", value: "Misty" } },
-    { phrase: normalizeOcrToken("ミストフィールド"), effect: { kind: "terrain", value: "Misty" } },
-    { phrase: normalizeOcrToken("霧が消え去った"), effect: { kind: "terrain", value: "None" } },
-    {
-      phrase: normalizeOcrToken("足元がおかしくなった"),
-      effect: { kind: "terrain", value: "Psychic" },
-    },
-    {
-      phrase: normalizeOcrToken("あしもとがおかしくなった"),
-      effect: { kind: "terrain", value: "Psychic" },
-    },
-    {
-      phrase: normalizeOcrToken("サイコフィールド"),
-      effect: { kind: "terrain", value: "Psychic" },
-    },
-    { phrase: normalizeOcrToken("おかしな感覚が消え"), effect: { kind: "terrain", value: "None" } },
-  ],
-  healPhrases: [
-    { phrase: normalizeOcrToken("グラスフィールドで回復した"), effect: "grassy-terrain" },
-    { phrase: normalizeOcrToken("グラスフィールドでかいふくした"), effect: "grassy-terrain" },
-    { phrase: normalizeOcrToken("グラスフィールドでhpを回復した"), effect: "grassy-terrain" },
-    { phrase: normalizeOcrToken("グラスフィールドでhpが回復した"), effect: "grassy-terrain" },
-    { phrase: normalizeOcrToken("hpを回復した") },
-    { phrase: normalizeOcrToken("hpが回復した") },
-    { phrase: normalizeOcrToken("少し回復した") },
-    { phrase: normalizeOcrToken("すこしかいふくした") },
-    { phrase: normalizeOcrToken("回復した") },
-    { phrase: normalizeOcrToken("かいふくした") },
+  residualDamagePhrases: [
+    { phrase: "isbuffetedbythesandstorm", effect: "sandstorm" },
+    { phrase: "buffetedbythesandstorm", effect: "sandstorm" },
+    { phrase: "lostsomeofitshp", effect: "life-orb" },
+    { phrase: "ishurtbyitsburn", effect: "burn" },
+    { phrase: "ishurtbypoison", effect: "poison" },
+    { phrase: "isdamagedbytherecoil", effect: "recoil" },
   ],
 };
 
 export const ENGLISH_LOG_PATTERNS: BattleLogPatternSet =
   compileMessagePatternSet(ENGLISH_MESSAGE_TEMPLATES);
-export const JAPANESE_LOG_PATTERNS: BattleLogPatternSet = compileMessagePatternSet(
-  JAPANESE_MESSAGE_TEMPLATES,
-);
 
-export const DEFAULT_LOG_PATTERN_SETS: readonly BattleLogPatternSet[] = [
-  ENGLISH_LOG_PATTERNS,
-  JAPANESE_LOG_PATTERNS,
-];
+export const DEFAULT_LOG_PATTERN_SETS: readonly BattleLogPatternSet[] = [ENGLISH_LOG_PATTERNS];

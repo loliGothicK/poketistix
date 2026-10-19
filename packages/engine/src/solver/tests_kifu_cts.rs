@@ -1,15 +1,16 @@
 //! CTS / OTS 棋譜 (`BattleKifu`) からの不完全情報推定 (`BeliefState`)・確定化サンプリング (`Determinizer`)・
 //! 情報集合MCTS (`Ismcts::evaluate_kifu_turn`) の単体テスト群
 
-use crate::kifu::{
-    ActionQuality, BattleKifu, ObservedEvent, ObservedHp, OpponentPreviewSlot, SpeedOrderKnowledge,
-    TurnRecord,
-};
 use crate::sim::pokemon::PokemonIdent;
+use crate::solver::BattleKifuSolverExt;
 use crate::solver::belief::{BeliefState, calc_pokemon_hp_lv50, calc_pokemon_stat_lv50};
 use crate::solver::determinizer::Determinizer;
 use crate::solver::ismcts::{Ismcts, IsmctsConfig};
 use crate::wasm_api::{InputPokemonData, PlayerActionJs, SlotActionJs};
+use kifu::{
+    ActionQuality, BattleKifu, ObservedEvent, ObservedHp, OpponentPreviewSlot, SpeedOrderKnowledge,
+    TurnRecord,
+};
 use pkmn_meta::Regulation;
 use rand::SeedableRng;
 
@@ -894,7 +895,7 @@ fn test_ismcts_evaluate_kifu_turn_produces_visualization_and_evaluation_report()
 
 #[test]
 fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
-    use crate::kifu::{EventProvenance, MatchOutcome, TurnAnnotation};
+    use kifu::{EventProvenance, MatchOutcome, TurnAnnotation};
 
     let p1_action = PlayerActionJs {
         slot_a: SlotActionJs {
@@ -985,6 +986,7 @@ fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
                 confidence: Some(99),
                 needs_review: false,
                 comment: None,
+                note: None,
             },
             EventProvenance::default(),
             EventProvenance::default(),
@@ -994,6 +996,7 @@ fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
                 confidence: Some(95),
                 needs_review: false,
                 comment: Some("いかく発動".to_string()),
+                note: None,
             },
             EventProvenance::default(),
             EventProvenance::default(),
@@ -1052,9 +1055,18 @@ fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
                     confidence: Some(82),
                     needs_review: true,
                     comment: Some("エフェクト重なりでHPバー要確認".to_string()),
+                    note: None,
                 },
             ],
             field_effects: vec!["Sun 1/5".to_string()],
+            state_effects: vec![
+                "p1:".to_string(),
+                "active: raichu 183/183".to_string(),
+                "bench: incineroar 234/234".to_string(),
+                "p2:".to_string(),
+                "active: garchomp 100%".to_string(),
+                "bench: 2 alive".to_string(),
+            ],
         }],
     };
 
@@ -1065,6 +1077,13 @@ fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
     assert!(pbn_text.contains("[Result \"WIN\"]"));
     assert!(pbn_text.contains("@turn 1 @t=12500ms @eval=64.2%"));
     assert!(pbn_text.contains("@field Sun 1/5"));
+    assert!(pbn_text.contains("@state"));
+    assert!(pbn_text.contains("  p1:"));
+    assert!(pbn_text.contains("| active: raichu 183/183"));
+    assert!(pbn_text.contains("| bench: incineroar 234/234"));
+    assert!(pbn_text.contains("  p2:"));
+    assert!(pbn_text.contains("| active: garchomp 100%"));
+    assert!(pbn_text.contains("| bench: 2 alive"));
     assert!(pbn_text.contains("@review"));
 
     let from_pbn = BattleKifu::from_pbn(&pbn_text).expect("Should parse generated PBN cleanly");
@@ -1077,6 +1096,17 @@ fn test_pbn_and_pkf_binary_base64url_lossless_roundtrip() {
     assert_eq!(from_pbn.turns.len(), 1);
     assert_eq!(from_pbn.turns[0].p1_action, p1_action);
     assert_eq!(from_pbn.turns[0].field_effects, vec!["Sun 1/5".to_string()]);
+    assert_eq!(
+        from_pbn.turns[0].state_effects,
+        vec![
+            "p1:".to_string(),
+            "active: raichu 183/183".to_string(),
+            "bench: incineroar 234/234".to_string(),
+            "p2:".to_string(),
+            "active: garchomp 100%".to_string(),
+            "bench: 2 alive".to_string(),
+        ]
+    );
     assert_eq!(from_pbn.turns[0].events, kifu.turns[0].events);
     assert_eq!(
         from_pbn.turns[0].annotation.comment.as_deref(),
@@ -1224,4 +1254,248 @@ fn test_parse_inline_move_target_outcomes_under_spread_move() {
         }
         _ => panic!("Expected stat stage event for p2a"),
     }
+}
+
+#[test]
+fn test_pbn_roundtrip_sample_walkthrough() {
+    let pbn = r#"[PBN "1.0"]
+[Regulation "M-C"]
+[Sheet "CTS"]
+[Result "WIN"]
+
+# ==============================================================================
+# P1（自軍）パーティ登録情報 (6匹)
+# ==============================================================================
+@p1 0 raichu @ raichunite-y | lightning-rod | Timid H24 B10 S32+ | 183,99,95,110,100,213 | zap-cannon, focus-blast, encore, protect
+@p1 1 incineroar @ sitrus-berry | intimidate | Impish H32 A3 B10+ D11 S10 | 234,141,143,90,132,100 | flare-blitz, snarl, parting-shot, fake-out
+@p1 2 rillaboom @ miracle-seed | grassy-surge | Adamant H17 A26+ S23 | 209,216,110,72,90,151 | grassy-glide, wood-hammer, high-horsepower, fake-out
+@p1 3 basculegion-male @ choice-scarf | adaptability | Jolly H1 A32 B1 S32+ | 197,196,87,90,95,178 | last-respects, wave-crash, flip-turn, icy-wind
+@p1 4 volcarona @ grassy-seed | flame-body | Modest H32 B29 C5+ | 224,72,143,181,125,120 | overheat, struggle-bug, rage-powder, tailwind
+@p1 5 salamence @ salamencite | intimidate | Mild H1 C32+ D1 S32 | 172,155,90,213,102,184 | hyper-voice, double-edge, tailwind, protect
+
+# 選出4匹: 先発(ボーマンダ#5, ガオガエン#1), 後発(ゴリランダー#2, ウルガモス#4)
+@select 5, 1, 2, 4
+
+# ==============================================================================
+# P2（相手）見せ合い情報 (6匹)
+# ==============================================================================
+@p2 0 golisopod
+@p2 1 rillaboom
+@p2 2 farigiraf
+@p2 3 pelipper
+@p2 4 garchomp
+@p2 5 archaludon
+
+# ==============================================================================
+# リード（Turn 0）: 先発の繰り出しと入場時特性の発動順序
+# ==============================================================================
+@lead @t=106000ms
+  switch p2b farigiraf 100%
+  switch p2a garchomp 100%
+  switch p1a salamence 172/172
+  switch p1b incineroar 234/234
+  ability p1a intimidate {
+    target p2a: atk -1
+    target p2b: atk -1
+  }
+  ability p1b intimidate {
+    target p2a: atk -1
+    target p2b: atk -1
+  }
+
+# ==============================================================================
+# Turn 1: 相手メガシンカ + てだすけ + まもる（竜の波動遮断）+ バークアウト
+# ==============================================================================
+@turn 1 @t=120000ms
+  @cmd p1a: protect | p1b: snarl
+  mega p2a garchomp-mega-z
+  move p2b helping-hand -> p2a
+  move p1a protect
+  move p2a dragon-pulse -> p1a { protected }
+  move p1b snarl {
+    target p2a: 100% -> 88%, spa -1
+    target p2b: 100% -> 80%, spa -1
+  }
+
+# ==============================================================================
+# Turn 2: 交代 + グラスメイカー + トリックルーム始動
+# ==============================================================================
+@turn 2 @t=174000ms
+  @cmd p1a: switch rillaboom | p1b: snarl
+  switch p2a archaludon 100%
+  switch p1a rillaboom 209/209 {
+    ability p1a grassy-surge
+    terrain Grassy
+  }
+  move p1b snarl {
+    target p2a: 100% -> 92%, spa -1 {
+      ability p2a stamina
+      boost p2a def +1
+    }
+    target p2b: 80% -> 62%, spa -1
+  }
+  move p2b trick-room {
+    field trick-room on
+  }
+
+# ==============================================================================
+# Turn 3: ターン開始時にグラスフィールドとトリックルームが有効 (2/5ターン目)
+# ==============================================================================
+@turn 3 @t=391000ms
+  @field
+    | entire: Grassy 2/5, Trick Room 2/5
+    | p1: Tailwind 2/4
+  @state
+  p1:
+    | active: rillaboom 209/209, incineroar 234/234
+    | bench: volcarona 224/224, salamence fnt
+  p2:
+    | active: archaludon 92% (def +1, spa -1), farigiraf 62% [par] (spa -1)
+    | bench: golisopod 100%, ? 100%
+  @cmd p1a: wood-hammer -> p2b | p1b: flare-blitz -> p2b
+  move p2b electro-shot {
+    target p1b: 234/234 -> 126/234
+  }
+"#;
+
+    let kifu = BattleKifu::from_pbn(pbn).expect("Should parse sample walkthrough PBN");
+    assert_eq!(kifu.p1_team.len(), 6);
+    assert_eq!(kifu.p2_preview.len(), 6);
+    assert_eq!(kifu.p1_selection, [5, 1, 2, 4]);
+    assert_eq!(kifu.turns.len(), 3);
+
+    // Turn 1 check
+    let t1 = &kifu.turns[0];
+    assert_eq!(t1.turn_number, 1);
+    assert_eq!(t1.annotation.timestamp_ms, Some(120000));
+    assert_eq!(t1.p1_action.slot_a.choice, "protect");
+    assert_eq!(t1.p1_action.slot_b.choice, "snarl");
+
+    // Turn 2 check
+    let t2 = &kifu.turns[1];
+    assert_eq!(t2.turn_number, 2);
+    assert_eq!(t2.annotation.timestamp_ms, Some(174000));
+
+    // Turn 3 check
+    let t3 = &kifu.turns[2];
+    assert_eq!(t3.turn_number, 3);
+    assert_eq!(t3.annotation.timestamp_ms, Some(391000));
+    assert_eq!(t3.field_effects.len(), 2);
+    assert_eq!(t3.field_effects[0], "entire: Grassy 2/5, Trick Room 2/5");
+    assert_eq!(t3.field_effects[1], "p1: Tailwind 2/4");
+    assert_eq!(t3.state_effects.len(), 6);
+    assert_eq!(t3.state_effects[0], "p1:");
+    assert_eq!(
+        t3.state_effects[1],
+        "active: rillaboom 209/209, incineroar 234/234"
+    );
+    assert_eq!(
+        t3.state_effects[2],
+        "bench: volcarona 224/224, salamence fnt"
+    );
+    assert_eq!(t3.state_effects[3], "p2:");
+    assert_eq!(
+        t3.state_effects[4],
+        "active: archaludon 92% (def +1, spa -1), farigiraf 62% [par] (spa -1)"
+    );
+    assert_eq!(t3.state_effects[5], "bench: golisopod 100%, ? 100%");
+
+    // Roundtrip to PBN and parse back
+    let serialized = kifu.to_pbn();
+    let reparsed = BattleKifu::from_pbn(&serialized).expect("Should parse back serialized PBN");
+    assert_eq!(reparsed.turns.len(), 3);
+    assert_eq!(reparsed.p1_team.len(), 6);
+    assert_eq!(reparsed.p1_selection, [5, 1, 2, 4]);
+    assert_eq!(
+        reparsed.turns[2].field_effects,
+        vec![
+            "entire: Grassy 2/5, Trick Room 2/5".to_string(),
+            "p1: Tailwind 2/4".to_string()
+        ]
+    );
+    assert_eq!(
+        reparsed.turns[2].state_effects,
+        vec![
+            "p1:".to_string(),
+            "active: rillaboom 209/209, incineroar 234/234".to_string(),
+            "bench: volcarona 224/224, salamence fnt".to_string(),
+            "p2:".to_string(),
+            "active: archaludon 92% (def +1, spa -1), farigiraf 62% [par] (spa -1)".to_string(),
+            "bench: golisopod 100%, ? 100%".to_string()
+        ]
+    );
+}
+
+#[test]
+fn test_annotate_pbn_with_evaluation_and_kifu_methods() {
+    let raw_pbn = r#"[PBN "1.0"]
+[Regulation "Champions"]
+[Sheet "CTS"]
+[Result "WIN"]
+
+@p1 0 rillaboom @ miracle-seed | grassy-surge | Adamant A32 S32 | 205,194,110,72,90,137 | wood-hammer, grassy-glide, high-horsepower, fake-out
+@p1 1 incineroar @ sitrus-berry | intimidate | Careful H32 D32 | 200,135,110,90,154,80 | flare-blitz, knock-off, parting-shot, fake-out
+@p1 2 flutter-mane @ booster-energy | protosynthesis | Timid C32 S32 | 130,67,75,187,155,205 | moonblast, shadow-ball, dazzling-gleam, protect
+@p1 3 urshifu-rapid-strike @ choice-scarf | unseen-fist | Jolly A32 S32 | 175,182,120,74,80,163 | surging-strikes, close-combat, aqua-jet, u-turn
+@p1 4 archaludon @ assault-vest | stamina | Modest H32 C32 | 195,112,150,192,85,105 | flash-cannon, draco-meteor, body-press, electro-shot
+@p1 5 ogerpon-hearthflame @ hearthflame-mask | mold-breaker | Jolly A32 S32 | 155,172,104,72,116,178 | ivy-cudgel, horn-leech, follow-me, spiky-shield
+@select 0, 1, 2, 3
+
+@p2 0 archaludon
+@p2 1 farigiraf
+@p2 2 urshifu-rapid-strike
+@p2 3 incineroar
+@p2 4 flutter-mane
+@p2 5 rillaboom
+
+@lead @t=0ms
+  switch p1a rillaboom 205/205
+  switch p1b incineroar 200/200
+  switch p2a archaludon 100%
+  switch p2b farigiraf 100%
+
+@turn 1 @t=10000ms
+  @field Grassy 1/5
+  @state
+  p1:
+    | active: rillaboom 205/205, incineroar 200/200
+    | bench: flutter-mane 130/130, urshifu-rapid-strike 175/175
+  p2:
+    | active: archaludon 100%, farigiraf 100%
+    | bench: ? 100%, ? 100%
+  @cmd p1a: fake-out -> p2a | p1b: knock-off -> p2b
+  move p1a fake-out p2a
+  damage p2a 100% -> 92%
+  move p1b knock-off p2b
+  damage p2b 100% -> 58%
+"#;
+
+    // 1. BattleKifu::annotate_turn_with_evaluation
+    let mut kifu = BattleKifu::from_pbn(raw_pbn).expect("PBN should parse cleanly");
+    assert!(kifu.turns[0].annotation.eval_win_rate.is_none());
+
+    let ann = kifu
+        .annotate_turn_with_evaluation(0, Some(25))
+        .expect("annotate_turn_with_evaluation should succeed");
+    assert!(ann.eval_win_rate.is_some());
+    assert!(ann.best_action.is_some());
+
+    let pbn_turn0 = kifu.to_pbn();
+    assert!(pbn_turn0.contains("@turn 1"));
+    assert!(pbn_turn0.contains("@eval="));
+    assert!(pbn_turn0.contains("@best="));
+
+    // 2. wasm_api::annotate_pbn_with_evaluation directly on full PBN
+    let annotated_pbn = crate::wasm_api::annotate_pbn_with_evaluation(raw_pbn, None, Some(20))
+        .expect("annotate_pbn_with_evaluation should succeed");
+    assert!(annotated_pbn.contains("@turn 1"));
+    assert!(annotated_pbn.contains("@eval="));
+    assert!(annotated_pbn.contains("@best="));
+    assert!(annotated_pbn.contains("@state"));
+
+    // 3. Ensure annotated PBN can be roundtrip parsed back into BattleKifu losslessly
+    let reparsed = BattleKifu::from_pbn(&annotated_pbn).expect("Annotated PBN must parse back");
+    assert_eq!(reparsed.turns.len(), 1);
+    assert!(reparsed.turns[0].annotation.eval_win_rate.is_some());
+    assert!(reparsed.turns[0].annotation.best_action.is_some());
 }

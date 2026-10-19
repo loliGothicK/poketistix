@@ -1,4 +1,3 @@
-pub mod kifu;
 pub mod sim;
 pub mod solver;
 pub mod wasm_api;

@@ -1,12 +1,12 @@
-use crate::kifu::{
-    ActiveSpeedComparison, BattleKifu, ObservedEvent, ObservedHp, OpponentPokemonBeliefView,
-    SpeedOrderKnowledge, TurnSnapshotView,
-};
 use crate::sim::battle::Battle;
 use crate::sim::damage_evaluator::DamageEvaluator;
 use crate::sim::pokemon::{Pokemon, PokemonIdent};
 use crate::solver::evaluator::resolve_board_threats;
 use crate::wasm_api::{Boosts, InputPokemonData, build_pokemon};
+use kifu::{
+    ActiveSpeedComparison, BattleKifu, ObservedEvent, ObservedHp, OpponentPokemonBeliefView,
+    SpeedOrderKnowledge, TurnSnapshotView,
+};
 use pkmn_meta::Regulation;
 use pkmn_meta::types::{Category, Terrain, Weather};
 
@@ -618,7 +618,7 @@ impl BeliefState {
                     }
                 }
 
-                ObservedEvent::StatusChanged { target, status } => {
+                ObservedEvent::StatusChanged { target, status, .. } => {
                     if target.player == 1 {
                         if let Some(p) = self.base_battle.p1.active.get_mut(target.slot) {
                             p.status = status
@@ -630,6 +630,8 @@ impl BeliefState {
                         self.sync_p2_representative_actives();
                     }
                 }
+
+                ObservedEvent::CantMove { .. } | ObservedEvent::MoveOutcome { .. } => {}
 
                 ObservedEvent::WeatherChanged { weather } => {
                     self.base_battle.weather = weather

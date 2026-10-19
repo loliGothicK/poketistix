@@ -1,9 +1,10 @@
-use crate::kifu::{
+use crate::types::{
+    Boosts, InputPokemonData, PlayerActionJs, PokemonEvs, PokemonIdent, SlotActionJs,
+};
+use crate::{
     ActionQuality, BattleKifu, EventProvenance, MatchOutcome, ObservedEvent, ObservedHp,
     OpponentPreviewSlot, TurnAnnotation, TurnRecord,
 };
-use crate::sim::pokemon::PokemonIdent;
-use crate::wasm_api::{Boosts, InputPokemonData, PlayerActionJs, PokemonEvs, SlotActionJs};
 use pkmn_meta::Regulation;
 use std::collections::HashMap;
 
@@ -28,6 +29,8 @@ const OP_TERRAIN_CHANGED: u8 = 0x0B;
 const OP_FIELD_COND_CHANGED: u8 = 0x0C;
 const OP_SIDE_COND_CHANGED: u8 = 0x0D;
 const OP_FAINT: u8 = 0x0E;
+const OP_CANT_MOVE: u8 = 0x0F;
+const OP_MOVE_OUTCOME: u8 = 0x10;
 const OP_PROVENANCE_BIT: u8 = 0x80;
 
 impl BattleKifu {
@@ -62,6 +65,7 @@ impl BattleKifu {
             intern_event(&mut stab, ev);
             if let Some(prov) = self.lead_provenance.get(idx) {
                 stab.intern_opt(prov.comment.as_deref());
+                stab.intern_opt(prov.note.as_deref());
             }
         }
         for turn in &self.turns {
@@ -77,6 +81,7 @@ impl BattleKifu {
                 intern_event(&mut stab, ev);
                 if let Some(prov) = turn.event_provenance.get(idx) {
                     stab.intern_opt(prov.comment.as_deref());
+                    stab.intern_opt(prov.note.as_deref());
                 }
             }
         }
@@ -407,6 +412,7 @@ impl BattleKifu {
                 annotation,
                 event_provenance,
                 field_effects: Vec::new(),
+                state_effects: Vec::new(),
             });
         }
 
@@ -513,8 +519,22 @@ fn intern_event(stab: &mut StringTableBuilder, ev: &ObservedEvent) {
         ObservedEvent::StatStageChanged { stat, .. } => {
             stab.intern(stat);
         }
-        ObservedEvent::StatusChanged { status, .. } => {
+        ObservedEvent::StatusChanged {
+            status,
+            from_effect,
+            ..
+        } => {
             stab.intern_opt(status.as_deref());
+            stab.intern_opt(from_effect.as_deref());
+        }
+        ObservedEvent::CantMove {
+            reason, move_id, ..
+        } => {
+            stab.intern(reason);
+            stab.intern_opt(move_id.as_deref());
+        }
+        ObservedEvent::MoveOutcome { outcome, .. } => {
+            stab.intern(outcome);
         }
         ObservedEvent::WeatherChanged { weather } => {
             stab.intern_opt(weather.as_deref());
@@ -682,6 +702,9 @@ impl<'a> PkfWriter<'a> {
         if prov.comment.is_some() {
             flags |= 0x08;
         }
+        if prov.note.is_some() {
+            flags |= 0x10;
+        }
         self.write_u8(flags);
         if let Some(ts) = prov.timestamp_ms {
             self.write_u32(ts);
@@ -691,6 +714,9 @@ impl<'a> PkfWriter<'a> {
         }
         if let Some(c) = &prov.comment {
             self.write_str(c);
+        }
+        if let Some(n) = &prov.note {
+            self.write_str(n);
         }
     }
 
@@ -821,10 +847,32 @@ impl<'a> PkfWriter<'a> {
                 self.write_str(stat);
                 self.write_u8(*delta as u8);
             }
-            ObservedEvent::StatusChanged { target, status } => {
+            ObservedEvent::StatusChanged {
+                target,
+                status,
+                is_cure,
+                from_effect,
+            } => {
                 self.write_u8(OP_STATUS_CHANGED | prov_bit);
                 self.write_ident(*target);
                 self.write_opt_str(status.as_deref());
+                self.write_u8(if *is_cure { 1 } else { 0 });
+                self.write_opt_str(from_effect.as_deref());
+            }
+            ObservedEvent::CantMove {
+                target,
+                reason,
+                move_id,
+            } => {
+                self.write_u8(OP_CANT_MOVE | prov_bit);
+                self.write_ident(*target);
+                self.write_str(reason);
+                self.write_opt_str(move_id.as_deref());
+            }
+            ObservedEvent::MoveOutcome { target, outcome } => {
+                self.write_u8(OP_MOVE_OUTCOME | prov_bit);
+                self.write_opt_ident(*target);
+                self.write_str(outcome);
             }
             ObservedEvent::WeatherChanged { weather } => {
                 self.write_u8(OP_WEATHER_CHANGED | prov_bit);
@@ -1048,11 +1096,17 @@ impl<'a> PkfReader<'a> {
         } else {
             None
         };
+        let note = if (flags & 0x10) != 0 {
+            Some(self.read_str()?)
+        } else {
+            None
+        };
         Ok(EventProvenance {
             timestamp_ms,
             confidence,
             needs_review,
             comment,
+            note,
         })
     }
 
@@ -1176,7 +1230,29 @@ impl<'a> PkfReader<'a> {
             OP_STATUS_CHANGED => {
                 let target = self.read_ident()?;
                 let status = self.read_opt_str()?;
-                ObservedEvent::StatusChanged { target, status }
+                let is_cure = self.read_u8()? != 0;
+                let from_effect = self.read_opt_str()?;
+                ObservedEvent::StatusChanged {
+                    target,
+                    status,
+                    is_cure,
+                    from_effect,
+                }
+            }
+            OP_CANT_MOVE => {
+                let target = self.read_ident()?;
+                let reason = self.read_str()?;
+                let move_id = self.read_opt_str()?;
+                ObservedEvent::CantMove {
+                    target,
+                    reason,
+                    move_id,
+                }
+            }
+            OP_MOVE_OUTCOME => {
+                let target = self.read_opt_ident()?;
+                let outcome = self.read_str()?;
+                ObservedEvent::MoveOutcome { target, outcome }
             }
             OP_WEATHER_CHANGED => {
                 let weather = self.read_opt_str()?;

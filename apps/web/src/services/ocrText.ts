@@ -94,32 +94,73 @@ export interface ApproxMatch {
  *
  * @param anchorStart `true` のとき `needle` は `haystack` の先頭から始まる必要がある
  */
-export function approxFind(haystack: string, needle: string, anchorStart = false): ApproxMatch {
+export function approxFindMyers(
+  haystack: string,
+  needle: string,
+  anchorStart = false,
+): ApproxMatch {
   const hay = Array.from(haystack);
   const pat = Array.from(needle);
   const m = pat.length;
   if (m === 0) return { score: 1, end: 0 };
 
-  let prev = Array.from({ length: m + 1 }, (_, i) => i);
-  let bestDistance = prev[m] ?? m;
+  // 1. 前処理: 各文字が needle のどの位置にあるかをビットマスク化 (Peqテーブル)
+  const peq = new Map<string, bigint>();
+  for (let i = 0; i < m; i++) {
+    const ch = pat[i]!;
+    peq.set(ch, (peq.get(ch) ?? 0n) | (1n << BigInt(i)));
+  }
+
+  const allOnes = (1n << BigInt(m)) - 1n;
+  const highestBit = 1n << BigInt(m - 1);
+
+  // 2. DPの初期状態: 0列目は [0, 1, 2, ..., m] なので、縦の差分は全て +1
+  let Pv = allOnes; // +1 の位置を表すビット列
+  let Mv = 0n; // -1 の位置を表すビット列
+  let currentDistance = m;
+
+  let bestDistance = m;
   let bestEnd = 0;
 
+  // 3. haystack を1文字ずつ走査（内側の i ループが消滅し、ビット演算のみになる）
   for (let j = 1; j <= hay.length; j++) {
-    const curr: number[] = [anchorStart ? j : 0];
-    for (let i = 1; i <= m; i++) {
-      const cost = pat[i - 1] === hay[j - 1] ? 0 : 1;
-      curr[i] = Math.min((prev[i] ?? 0) + 1, (curr[i - 1] ?? 0) + 1, (prev[i - 1] ?? 0) + cost);
+    const Eq = peq.get(hay[j - 1]!) ?? 0n;
+
+    const Xv = Eq | Mv;
+    // anchorStart が true なら 0行目の横差分が +1 になるよう調整
+    const Xh = (((Eq & Pv) + Pv) ^ Pv) | Eq | (anchorStart ? Mv : 0n);
+
+    let Ph = Mv | ~(Xh | Pv);
+    let Mh = Pv & Xh;
+
+    // 最終行 (i = m) の横方向の差分を見て、現在の編集距離を更新
+    if ((Ph & highestBit) !== 0n) {
+      currentDistance += 1;
+    } else if ((Mh & highestBit) !== 0n) {
+      currentDistance -= 1;
     }
-    const distance = curr[m] ?? m;
-    if (distance < bestDistance) {
-      bestDistance = distance;
+
+    // 次の列へ進むために横差分を1ビット左シフト（0行目の境界条件をここで注入）
+    // anchorStart = true なら 0行目は毎回 +1 されるため Ph の最下位ビットに 1n を入れる
+    // anchorStart = false (Sellers) なら 0行目は常に 0 なので 0n を入れる
+    Ph = (Ph << 1n) | (anchorStart ? 1n : 0n);
+    Mh = Mh << 1n;
+
+    // 次の列の縦差分 (Pv, Mv) を確定
+    Pv = Mh | ~(Xv | Ph);
+    Mv = Ph & Xv;
+
+    if (currentDistance < bestDistance) {
+      bestDistance = currentDistance;
       bestEnd = j;
+      if (bestDistance === 0) break; // 完全一致が見つかったら早期終了も可能
     }
-    prev = curr;
   }
 
   return { score: Math.max(0, 1 - bestDistance / m), end: bestEnd };
 }
+
+export const approxFind = approxFindMyers;
 
 /** 2 文字列の類似度 (0..=1)。編集距離を長い方の文字数で正規化する */
 export function similarity(a: string, b: string): number {

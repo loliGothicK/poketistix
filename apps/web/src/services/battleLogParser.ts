@@ -19,6 +19,7 @@ import {
   type BattleLogPatternSet,
   type FieldEffect,
 } from "./battleLogPatterns";
+import { moveByIdentifier } from "@/data/moves";
 
 export type SlotIdent = "p1a" | "p1b" | "p2a" | "p2b";
 
@@ -69,16 +70,40 @@ interface LogEvent {
   readonly review: boolean;
   comment?: string;
   bracket?: string;
+  protectedSlots?: string[];
 }
 
 interface SlotAction {
   readonly choice: string;
 }
 
+interface SlotStateSnapshot {
+  readonly slug: string | null;
+  readonly teamIdx: number | null;
+  readonly hp: string | null;
+  readonly fainted: boolean;
+  readonly status: string | null;
+  readonly volatileStatus: Record<string, number | boolean>;
+  readonly boosts: Record<string, number>;
+}
+
+interface TurnStateSnapshot {
+  readonly p1a: SlotStateSnapshot;
+  readonly p1b: SlotStateSnapshot;
+  readonly p2a: SlotStateSnapshot;
+  readonly p2b: SlotStateSnapshot;
+  readonly ownHpByTeamIdx: Record<number, string>;
+  readonly oppHpBySlug: Record<string, string>;
+  readonly faintedOwnIndices: number[];
+  readonly faintedOppSlugs: string[];
+  readonly observedOppSlugs: string[];
+}
+
 interface TurnRecord {
   readonly turnNumber: number;
   readonly timestampMs: number;
   readonly fieldEffects: readonly string[];
+  readonly stateSnapshot: TurnStateSnapshot;
   readonly actions: [SlotAction | null, SlotAction | null];
   readonly mega: Record<"p1a" | "p1b", boolean>;
   readonly activeAtStart: Record<"p1a" | "p1b", boolean>;
@@ -87,12 +112,28 @@ interface TurnRecord {
 
 const PROTECT_MOVE = /protect|detect|shield|bunker|silk-trap|bulwark|obstruct|guard/;
 
+export function isMultiTargetMove(moveSlug: string): boolean {
+  const move = moveByIdentifier.get(moveSlug);
+  if (!move) return false;
+  return (
+    move.range === "all-pokemon" ||
+    move.range === "all-opponents" ||
+    move.range === "all-allies" ||
+    move.range === "entire-field" ||
+    move.range === "user's-side" ||
+    move.range === "opponent's-side"
+  );
+}
+
 const reverse = (s: string): string => Array.from(s).reverse().join("");
 
 const nameVariants = (name: string): string[] => {
   const full = normalizeOcrToken(name);
   const base = normalizeOcrToken(name.split("-")[0] ?? name);
-  return base.length >= 4 && base !== full ? [full, base] : [full];
+  const res = base.length >= 4 && base !== full ? [full, base] : [full];
+  if (full.length >= 7) res.push(full.slice(1));
+  if (base.length >= 7 && base !== full) res.push(base.slice(1));
+  return res;
 };
 
 const slotIndex = (slot: "p1a" | "p1b"): 0 | 1 => (slot === "p1a" ? 0 : 1);
@@ -117,6 +158,25 @@ export class BattleLogParser {
     p2a: null,
     p2b: null,
   };
+  private readonly statusCondition: Record<SlotIdent, string | null> = {
+    p1a: null,
+    p1b: null,
+    p2a: null,
+    p2b: null,
+  };
+  private readonly volatileStatus: Record<SlotIdent, Record<string, number | boolean>> = {
+    p1a: {},
+    p1b: {},
+    p2a: {},
+    p2b: {},
+  };
+  private readonly statStages: Record<SlotIdent, Record<string, number>> = {
+    p1a: {},
+    p1b: {},
+    p2a: {},
+    p2b: {},
+  };
+  private readonly pendingPerishFaint = new Set<SlotIdent>();
   /** 自軍ポケモンごとの最新HP（キー: teamIdx 0..5, 形式: "curr/max" または "XX%"） */
   private readonly lastKnownOwnHp: Record<number, string> = {};
   /** 相手ポケモンごとの最新HP（キー: slug, 形式: "XX%"） */
@@ -142,15 +202,26 @@ export class BattleLogParser {
   private pendingHealBracket: Partial<Record<SlotIdent, string>> = {};
   private healedFromTerrainThisTurn: Partial<Record<SlotIdent, boolean>> = {};
   private pendingSideItemHeal: Partial<Record<"p1" | "p2", string>> = {};
+  private pendingCrit = false;
+  private recentBracketedDamage: Partial<Record<SlotIdent, { hpAfter: string; t: number }>> = {};
 
   private readonly patternSets: readonly BattleLogPatternSet[];
 
   /** 実際に場に出た自分のポケモン（登録パーティ内インデックス, 出現順） */
   readonly observedOwnIndices: number[] = [];
 
+  private p1Selection: number[] = [];
+  private readonly faintedOwnTeamIndices = new Set<number>();
+  private readonly faintedOppSlugs = new Set<string>();
+  private readonly observedOppSlugs = new Set<string>();
+
   constructor(options: BattleLogParserOptions) {
     this.options = options;
     this.patternSets = options.patternSets ?? DEFAULT_LOG_PATTERN_SETS;
+  }
+
+  setP1Selection(selection: readonly number[]): void {
+    this.p1Selection = [...selection];
   }
 
   get hasLead(): boolean {
@@ -231,10 +302,34 @@ export class BattleLogParser {
       this.slots[slot] !== null && !this.fainted[slot];
     const turnNumber = this.turns.length + 1;
     const fieldEffects = this.computeActiveFieldEffects(turnNumber);
+
+    const snapshotSlot = (slot: SlotIdent): SlotStateSnapshot => ({
+      slug: this.slots[slot]?.slug ?? null,
+      teamIdx: this.slots[slot]?.teamIdx ?? null,
+      hp: this.currentHp[slot],
+      fainted: this.fainted[slot],
+      status: this.statusCondition[slot],
+      volatileStatus: { ...this.volatileStatus[slot] },
+      boosts: { ...this.statStages[slot] },
+    });
+
+    const stateSnapshot: TurnStateSnapshot = {
+      p1a: snapshotSlot("p1a"),
+      p1b: snapshotSlot("p1b"),
+      p2a: snapshotSlot("p2a"),
+      p2b: snapshotSlot("p2b"),
+      ownHpByTeamIdx: { ...this.lastKnownOwnHp },
+      oppHpBySlug: { ...this.lastKnownOppHp },
+      faintedOwnIndices: Array.from(this.faintedOwnTeamIndices),
+      faintedOppSlugs: Array.from(this.faintedOppSlugs),
+      observedOppSlugs: Array.from(this.observedOppSlugs),
+    };
+
     this.turns.push({
       turnNumber,
       timestampMs,
       fieldEffects,
+      stateSnapshot,
       actions: [null, null],
       mega: { p1a: false, p1b: false },
       activeAtStart: { p1a: alive("p1a"), p1b: alive("p1b") },
@@ -244,11 +339,48 @@ export class BattleLogParser {
     this.pendingHealBracket = {};
     this.healedFromTerrainThisTurn = {};
     this.pendingSideItemHeal = {};
+    this.pendingCrit = false;
+    this.recentBracketedDamage = {};
   }
 
   /** 指定スロットの現在のポケモン識別子（種族スラッグ）を返す */
   getActiveSlotSlug(slot: SlotIdent): string | null {
     return this.slots[slot]?.slug ?? null;
+  }
+
+  /** 指定スロットの現在の登録パーティインデックスを返す */
+  getActiveSlotTeamIdx(slot: SlotIdent): number | null {
+    return this.slots[slot]?.teamIdx ?? null;
+  }
+
+  /** 指定スロットの現在のHP表記（"169/202" または "94%"）を返す */
+  getCurrentSlotHp(slot: SlotIdent): string | null {
+    return this.currentHp[slot];
+  }
+
+  /** コマンド選択時などHUD静止時に最新HPを同期する（イベントは発行しない） */
+  reconcileSlotHp(slot: SlotIdent, hpStr: string): void {
+    const mon = this.slots[slot];
+    if (!mon) return;
+    const formatted = this.formatHp(slot, hpStr);
+    if (!formatted) return;
+    this.currentHp[slot] = formatted;
+    if (slot.startsWith("p1")) {
+      this.lastKnownOwnHp[mon.teamIdx] = formatted;
+    } else {
+      this.lastKnownOppHp[mon.slug] = formatted;
+    }
+  }
+
+  /** 技選択UIで選択された技を記録する（ひるみ等で不発になっても `@cmd` に残るようにする） */
+  setDeclaredMove(slot: "p1a" | "p1b", moveSlug: string): void {
+    const turn = this.currentTurn();
+    if (!turn) return;
+    if (turn.events.some((e) => (e.verb === "move" || e.verb === "switch") && e.args[0] === slot)) {
+      return;
+    }
+    const idx = slotIndex(slot);
+    turn.actions[idx] = { choice: moveSlug };
   }
 
   /** 特性バナー（`<Pokémon>'s <Ability>`）の OCR 結果を投入する */
@@ -260,8 +392,7 @@ export class BattleLogParser {
     const text = raw.replace(/\s+/g, " ").trim();
     if (normalizeOcrToken(text).length < 5) return false;
 
-    const parts =
-      /^(.*?)(?:['’]?s|\s*の\s*)\s+(\S.*)$/iu.exec(text) ?? /^(.*?)\s*の\s*(\S.*)$/u.exec(text);
+    const parts = /^(.*?)(?:['’]?s)\s+(\S.*)$/iu.exec(text);
     const ownerPart = parts?.[1] ?? lines[0] ?? text;
     const bannerPart = parts?.[2] ?? (lines.length >= 2 ? lines[lines.length - 1] : null) ?? "";
 
@@ -293,18 +424,11 @@ export class BattleLogParser {
 
     const candidates = side === "p1" ? OWN_SLOTS : OPP_SLOTS;
     const matched = this.resolveSlots(normalizeOcrToken(ownerPart), candidates);
-    let slot: SlotIdent | undefined = matched[0];
+    const slot: SlotIdent | undefined = matched[0];
+    if (!slot) return false;
     const entitySlug = isItem ? item!.slug : ability!.slug;
 
-    if (!slot && isItem && side === "p1") {
-      slot = candidates.find((s) => {
-        const mon = this.slots[s];
-        return mon && this.options.p1ItemSlug(mon.teamIdx) === entitySlug;
-      });
-    }
-
     if (
-      slot &&
       slot === this.lastBannerSlot &&
       entitySlug === this.lastBannerAbility &&
       timestampMs - this.lastBannerMs <= 6_000
@@ -312,11 +436,9 @@ export class BattleLogParser {
       this.lastBannerMs = timestampMs;
       return false;
     }
-    if (slot) {
-      this.lastBannerSlot = slot;
-      this.lastBannerAbility = entitySlug;
-      this.lastBannerMs = timestampMs;
-    }
+    this.lastBannerSlot = slot;
+    this.lastBannerAbility = entitySlug;
+    this.lastBannerMs = timestampMs;
 
     if (isItem) {
       const isHealItem =
@@ -324,26 +446,26 @@ export class BattleLogParser {
         entitySlug === "sitrus-berry" ||
         entitySlug === "black-sludge";
       if (isHealItem) {
-        if (slot) {
-          this.pendingHealBracket[slot] = entitySlug;
-        } else {
-          this.pendingSideItemHeal[side] = entitySlug;
-        }
+        this.pendingHealBracket[slot] = entitySlug;
       } else {
-        const emitSlot = slot ?? candidates.find((s) => this.slots[s] !== null);
-        if (emitSlot) {
-          this.emit("item", [emitSlot, entitySlug], timestampMs, item!.confidence / 100, {
-            review: matched.length === 0 || item!.confidence < 85,
-          });
+        if (entitySlug === "focus-sash") {
+          const mon = this.slots[slot];
+          const sashHp =
+            slot.startsWith("p1") && mon ? `1/${this.options.p1MaxHp(mon.teamIdx)}` : "1%";
+          this.currentHp[slot] = sashHp;
+          if (mon) {
+            if (slot.startsWith("p1")) this.lastKnownOwnHp[mon.teamIdx] = sashHp;
+            else this.lastKnownOppHp[mon.slug] = sashHp;
+          }
         }
-      }
-    } else {
-      const emitSlot = slot ?? candidates.find((s) => this.slots[s] !== null);
-      if (emitSlot) {
-        this.emit("ability", [emitSlot, ability!.slug], timestampMs, ability!.confidence / 100, {
-          review: matched.length === 0 || ability!.confidence < 85,
+        this.emit("item", [slot, entitySlug], timestampMs, item!.confidence / 100, {
+          review: item!.confidence < 80,
         });
       }
+    } else {
+      this.emit("ability", [slot, ability!.slug], timestampMs, ability!.confidence / 100, {
+        review: ability!.confidence < 80,
+      });
     }
     this.lastMessageKey = "";
     return true;
@@ -368,7 +490,11 @@ export class BattleLogParser {
     const isHeal = this.patternSets.some((p) =>
       p.healPhrases.some((h) => approxFind(key, h.phrase).score >= 0.75),
     );
-    const isMultiTargetEvent = isStatChange || isHeal;
+    const isResidualDamage = this.patternSets.some((p) =>
+      p.residualDamagePhrases.some((r) => approxFind(key, r.phrase).score >= 0.75),
+    );
+    const isPerishCount = /perish\s*count/i.test(text);
+    const isMultiTargetEvent = isStatChange || isHeal || isResidualDamage || isPerishCount;
     const resolvedSlots = isMultiTargetEvent ? this.resolveSlots(key) : [];
     const isDifferentTarget =
       isMultiTargetEvent &&
@@ -376,32 +502,45 @@ export class BattleLogParser {
       !resolvedSlots.every((s) => this.lastMultiTargetSlots.includes(s));
 
     const allowDuplicate =
-      ((abilityCount >= 2 && isStatChange) || isDifferentTarget) &&
-      timestampMs - this.lastMessageMs >= 800;
+      (abilityCount >= 2 && isStatChange && timestampMs - this.lastMessageMs >= 800) ||
+      isDifferentTarget;
 
     const sameDisplay =
       !allowDuplicate &&
       timestampMs - this.lastMessageMs <= REPEAT_WINDOW_MS &&
       similarity(key, this.lastMessageKey) >= REPEAT_SIMILARITY;
-    this.lastMessageMs = timestampMs;
     if (sameDisplay) return false;
-    this.lastMessageKey = key;
-    if (isMultiTargetEvent && resolvedSlots.length > 0) {
-      this.lastMultiTargetSlots = resolvedSlots;
-    }
 
-    if (this.onWithdrawn(text)) return true;
-    if (this.onSentOut(text, timestampMs)) return true;
-    if (this.onGo(text, timestampMs)) return true;
-    if (this.onMegaReaction(text, key, timestampMs)) return true;
-    if (this.onMegaEvolved(text, key, timestampMs)) return true;
-    if (this.onReadyToHelp(key, timestampMs)) return true;
-    if (this.onMoveUsed(text, timestampMs)) return true;
-    if (this.onProtected(key, timestampMs)) return true;
-    if (this.onFainted(key, timestampMs)) return true;
-    if (this.onFieldChange(key, timestampMs)) return true;
-    if (this.onHeal(text, key, timestampMs)) return true;
-    return this.onStatChange(key, timestampMs);
+    const handled =
+      this.onForfeit(text, key, timestampMs) ||
+      this.onPerishCount(text, timestampMs) ||
+      this.onPerishStart(text, key, timestampMs) ||
+      this.onWithdrawn(text) ||
+      this.onSentOut(text, timestampMs) ||
+      this.onGo(text, timestampMs) ||
+      this.onMegaReaction(text, key, timestampMs) ||
+      this.onMegaEvolved(text, key, timestampMs) ||
+      this.onReadyToHelp(key, timestampMs) ||
+      this.onMoveUsed(text, timestampMs) ||
+      this.onCantMove(key, timestampMs) ||
+      this.onCriticalHit(key, timestampMs) ||
+      this.onEffectiveness(key, timestampMs) ||
+      this.onItemMessage(key, timestampMs) ||
+      this.onResidualDamage(text, key, timestampMs) ||
+      this.onProtected(key, timestampMs) ||
+      this.onFainted(key, timestampMs) ||
+      this.onFieldChange(key, timestampMs) ||
+      this.onHeal(text, key, timestampMs) ||
+      this.onStatChange(key, timestampMs);
+
+    if (handled) {
+      this.lastMessageMs = timestampMs;
+      this.lastMessageKey = key;
+      if (isMultiTargetEvent && resolvedSlots.length > 0) {
+        this.lastMultiTargetSlots = resolvedSlots;
+      }
+    }
+    return handled;
   }
 
   /** PBN の `@lead` / `@turn` ブロック行を返す */
@@ -417,11 +556,169 @@ export class BattleLogParser {
       if (turn.fieldEffects.length > 0) {
         lines.push(`  @field ${turn.fieldEffects.join(" | ")}`);
       }
+      lines.push(...this.renderTurnState(turn.stateSnapshot));
       lines.push(
         `  @cmd p1a: ${this.renderChoice(turn, "p1a")} | p1b: ${this.renderChoice(turn, "p1b")}`,
       );
       lines.push(...this.renderTurnEvents(turn.events));
       lines.push("");
+    }
+    return lines;
+  }
+
+  private renderTurnState(snap: TurnStateSnapshot): string[] {
+    const formatMon = (
+      slug: string,
+      hpStr: string | null,
+      isFainted: boolean,
+      status?: string | null,
+      volatileStatus?: Record<string, number | boolean>,
+      boosts?: Record<string, number>,
+    ): string => {
+      let base: string;
+      if (isFainted || hpStr === "0%" || (hpStr !== null && hpStr.startsWith("0/"))) {
+        base = `${slug} fnt`;
+      } else if (!hpStr) {
+        base = `${slug} 100%`;
+      } else {
+        base = `${slug} ${hpStr}`;
+      }
+
+      // Status items sequence: [major_status, volatile_status...]
+      const statusItems: string[] = [];
+      if (status) {
+        statusItems.push(status);
+      }
+      if (volatileStatus) {
+        for (const [key, val] of Object.entries(volatileStatus)) {
+          if (typeof val === "number") {
+            statusItems.push(`${key}: ${val}`);
+          } else if (val) {
+            statusItems.push(key);
+          }
+        }
+      }
+      const statusSeqStr = statusItems.length > 0 ? ` [${statusItems.join(", ")}]` : "";
+
+      // Stat boosts scope: (atk +1, spe -1)
+      let boostStr = "";
+      if (boosts) {
+        const boostParts: string[] = [];
+        for (const [stat, stage] of Object.entries(boosts)) {
+          if (stage !== 0) {
+            const sign = stage > 0 ? `+${stage}` : `${stage}`;
+            boostParts.push(`${stat} ${sign}`);
+          }
+        }
+        if (boostParts.length > 0) {
+          boostStr = ` (${boostParts.join(", ")})`;
+        }
+      }
+
+      return `${base}${statusSeqStr}${boostStr}`;
+    };
+
+    // P1 Active
+    const p1aStr = snap.p1a.slug
+      ? formatMon(
+          snap.p1a.slug,
+          snap.p1a.hp,
+          snap.p1a.fainted,
+          snap.p1a.status,
+          snap.p1a.volatileStatus,
+          snap.p1a.boosts,
+        )
+      : "? 100%";
+    const p1bStr = snap.p1b.slug
+      ? formatMon(
+          snap.p1b.slug,
+          snap.p1b.hp,
+          snap.p1b.fainted,
+          snap.p1b.status,
+          snap.p1b.volatileStatus,
+          snap.p1b.boosts,
+        )
+      : "? 100%";
+
+    // P1 Bench
+    const p1Selected =
+      this.p1Selection.length > 0
+        ? this.p1Selection.slice(0, 4)
+        : this.observedOwnIndices.length > 0
+          ? this.observedOwnIndices.slice(0, 4)
+          : this.options.myTeam.slice(0, 4).map((_, i) => i);
+
+    const p1ActiveIndices = new Set<number>();
+    if (snap.p1a.teamIdx !== null) p1ActiveIndices.add(snap.p1a.teamIdx);
+    if (snap.p1b.teamIdx !== null) p1ActiveIndices.add(snap.p1b.teamIdx);
+
+    const p1BenchParts: string[] = [];
+    for (const idx of p1Selected) {
+      if (p1ActiveIndices.has(idx)) continue;
+      const member = this.options.myTeam[idx];
+      if (!member) continue;
+      const isFnt = snap.faintedOwnIndices.includes(idx);
+      const maxHp = this.options.p1MaxHp(idx);
+      const hp = snap.ownHpByTeamIdx[idx] ?? `${maxHp}/${maxHp}`;
+      p1BenchParts.push(formatMon(member.identifier, hp, isFnt));
+    }
+
+    // P2 Active
+    const p2aStr = snap.p2a.slug
+      ? formatMon(
+          snap.p2a.slug,
+          snap.p2a.hp,
+          snap.p2a.fainted,
+          snap.p2a.status,
+          snap.p2a.volatileStatus,
+          snap.p2a.boosts,
+        )
+      : "? 100%";
+    const p2bStr = snap.p2b.slug
+      ? formatMon(
+          snap.p2b.slug,
+          snap.p2b.hp,
+          snap.p2b.fainted,
+          snap.p2b.status,
+          snap.p2b.volatileStatus,
+          snap.p2b.boosts,
+        )
+      : "? 100%";
+
+    // P2 Bench
+    const p2ActiveSlugs = new Set<string>();
+    if (snap.p2a.slug) p2ActiveSlugs.add(snap.p2a.slug);
+    if (snap.p2b.slug) p2ActiveSlugs.add(snap.p2b.slug);
+
+    const p2BenchParts: string[] = [];
+    for (const slug of snap.observedOppSlugs) {
+      if (p2ActiveSlugs.has(slug)) continue;
+      const isFnt = snap.faintedOppSlugs.includes(slug);
+      const hp = snap.oppHpBySlug[slug] ?? "100%";
+      p2BenchParts.push(formatMon(slug, hp, isFnt));
+    }
+    const totalP2Accounted = p2ActiveSlugs.size + p2BenchParts.length;
+    const missing = Math.max(0, 4 - totalP2Accounted);
+    for (let k = 0; k < missing; k++) {
+      p2BenchParts.push("? 100%");
+    }
+
+    const lines = [
+      "  @state",
+      "  p1:",
+      "    | active:",
+      `        p1a: ${p1aStr}`,
+      `        p1b: ${p1bStr}`,
+    ];
+    if (p1BenchParts.length > 0) {
+      lines.push(`    | bench: ${p1BenchParts.join(", ")}`);
+    }
+    lines.push("  p2:");
+    lines.push("    | active:");
+    lines.push(`        p2a: ${p2aStr}`);
+    lines.push(`        p2b: ${p2bStr}`);
+    if (p2BenchParts.length > 0) {
+      lines.push(`    | bench: ${p2BenchParts.join(", ")}`);
     }
     return lines;
   }
@@ -526,16 +823,43 @@ export class BattleLogParser {
 
         const targetMap = new Map<
           string,
-          { hp?: string; boosts: string[]; crit?: boolean; reactions: LogEvent[] }
+          {
+            hp?: string;
+            boosts: string[];
+            crit?: boolean;
+            protected?: boolean;
+            reactions: LogEvent[];
+          }
         >();
         const targetOrder: string[] = [];
         const actorBoosts: LogEvent[] = [];
 
+        // 技に紐づく protectedSlots を targetMap に登録
+        if (ev.protectedSlots) {
+          for (const pSlot of ev.protectedSlots) {
+            if (!targetMap.has(pSlot)) {
+              targetMap.set(pSlot, { boosts: [], reactions: [], protected: true });
+              targetOrder.push(pSlot);
+            } else {
+              targetMap.get(pSlot)!.protected = true;
+            }
+          }
+        }
+
         while (i < events.length && !isDefensive) {
           const next = events[i]!;
 
-          // 1. 対象へのダメージ
+          // 1. 対象へのダメージ（すなあらし・いのちのたま等の定数/反動ダメージは技ブロックに含めない）
           if (next.verb === "damage") {
+            const isResidual =
+              next.bracket === "sandstorm" ||
+              next.bracket === "life-orb" ||
+              next.bracket === "burn" ||
+              next.bracket === "poison" ||
+              next.bracket === "recoil";
+            if (isResidual) {
+              break;
+            }
             const target = next.args[0]!;
             if (!targetMap.has(target)) {
               targetMap.set(target, { boosts: [], reactions: [] });
@@ -558,7 +882,7 @@ export class BattleLogParser {
             continue;
           }
 
-          // 2. 攻撃者自身の能力変化（エレクトロビームの特攻上昇等）
+          // 2. 攻撃者自身の能力変化（インファイトのBD低下、エレクトロビームの特攻上昇等）
           if (next.verb === "boost" && next.args[0] === actor) {
             actorBoosts.push(next);
             i++;
@@ -586,10 +910,12 @@ export class BattleLogParser {
             continue;
           }
 
-          // 4. 被弾リアクション（特性発動、持ち物、回復）
-          // ※ グラスフィールド・たべのこし等のターン終了時回復は技リアクションに吸い込まない
+          // 4. 被弾リアクション（被弾対象の特性発動、持ち物、回復）
+          // ※ 攻撃者自身のアイテム（いのちのたま等）やターン終了時回復は技リアクションに吸い込まない
           if (
             reactionTarget &&
+            reactionTarget !== actor &&
+            targetMap.has(reactionTarget) &&
             (next.verb === "ability" || next.verb === "item" || next.verb === "heal")
           ) {
             const isEndOfTurnHeal =
@@ -597,11 +923,8 @@ export class BattleLogParser {
               (next.bracket === "grassy-terrain" ||
                 next.bracket === "leftovers" ||
                 next.bracket === "black-sludge");
-            if (!isEndOfTurnHeal) {
-              if (!targetMap.has(reactionTarget)) {
-                targetMap.set(reactionTarget, { boosts: [], reactions: [] });
-                targetOrder.push(reactionTarget);
-              }
+            const isAttackerItem = next.verb === "item" && next.args[1] === "life-orb";
+            if (!isEndOfTurnHeal && !isAttackerItem) {
               targetMap.get(reactionTarget)!.reactions.push(next);
               i++;
               continue;
@@ -623,32 +946,31 @@ export class BattleLogParser {
         }
 
         const isWideGuard = ev.comment === "wide-guard";
-        const isProtected = ev.comment === "protected itself";
-        const hasProtection = isWideGuard || isProtected;
-        const hasBody =
-          targetOrder.length > 0 ||
-          actorBoosts.length > 0 ||
-          fieldSubEvents.length > 0 ||
-          hasProtection;
+        const isSpread = moveId ? isMultiTargetMove(moveId) : false;
+        const isSingleTargetProtected =
+          !isWideGuard &&
+          !isSpread &&
+          Boolean(ev.protectedSlots && ev.protectedSlots.length === 1) &&
+          targetOrder.length === 1 &&
+          !targetMap.get(targetOrder[0]!)?.hp &&
+          actorBoosts.length === 0 &&
+          fieldSubEvents.length === 0;
 
-        if (!hasBody) {
-          lines.push(`  ${formatEvent(ev)}`);
+        if (isSingleTargetProtected) {
+          const baseStr = formatEvent({ ...ev, comment: undefined });
+          lines.push(`  ${baseStr} { protected }`);
         } else if (
-          hasProtection &&
           targetOrder.length === 0 &&
           actorBoosts.length === 0 &&
-          fieldSubEvents.length === 0
+          fieldSubEvents.length === 0 &&
+          !isWideGuard
         ) {
-          const baseStr = formatEvent({ ...ev, comment: undefined });
-          lines.push(`  ${baseStr} { ${isWideGuard ? "wide-guard" : "protected"} }`);
+          lines.push(`  ${formatEvent(ev)}`);
         } else {
-          // 二重波括弧を防ぐため、コメント（wide-guard/protected itself）はブロック内部に展開し、ヘッダには出さない
           const baseStr = formatEvent({ ...ev, comment: undefined });
           lines.push(`  ${baseStr} {`);
           if (isWideGuard) {
             lines.push(`    wide-guard`);
-          } else if (isProtected) {
-            lines.push(`    protected`);
           }
           for (const b of actorBoosts) {
             lines.push(`    ${formatEvent(b)}`);
@@ -657,7 +979,15 @@ export class BattleLogParser {
             const sortedTargets = [...targetOrder].sort();
             for (const target of sortedTargets) {
               const entry = targetMap.get(target)!;
+              const hasSash = entry.reactions.some(
+                (r) => r.verb === "item" && r.args[1] === "focus-sash",
+              );
+              if (hasSash) {
+                const beforeHp = entry.hp?.split("->")[0]?.trim() || "100%";
+                entry.hp = `${beforeHp} -> 1%`;
+              }
               const parts: string[] = [];
+              if (entry.protected) parts.push("protected");
               if (entry.hp) parts.push(entry.hp);
               if (entry.boosts.length > 0) parts.push(entry.boosts.join(", "));
               const critTag = entry.crit ? " [crit]" : "";
@@ -682,6 +1012,39 @@ export class BattleLogParser {
           }
           lines.push(`  }`);
         }
+      } else if (ev.verb === "perish") {
+        const slot = ev.args[0]!;
+        const transition = ev.args[1] ?? "";
+        if (transition.endsWith("-> 0")) {
+          if (
+            i + 1 < events.length &&
+            events[i + 1]!.verb === "faint" &&
+            events[i + 1]!.args[0] === slot
+          ) {
+            const baseStr = formatEvent(ev);
+            lines.push(`  ${baseStr} {`);
+            lines.push(`    ${formatEvent(events[i + 1]!)}`);
+            lines.push(`  }`);
+            i += 2;
+            continue;
+          }
+        }
+        lines.push(`  ${formatEvent(ev)}`);
+        i++;
+      } else if (
+        ev.verb === "item" &&
+        ev.args[1] === "life-orb" &&
+        i + 1 < events.length &&
+        events[i + 1]!.verb === "damage" &&
+        events[i + 1]!.args[0] === ev.args[0]
+      ) {
+        const dmgEv = events[i + 1]!;
+        const slot = ev.args[0]!;
+        const baseStr = formatEvent(ev);
+        lines.push(`  ${baseStr} {`);
+        lines.push(`    ${slot}: ${dmgEv.args[1]}`);
+        lines.push(`  }`);
+        i += 2;
       } else {
         lines.push(`  ${formatEvent(ev)}`);
         i++;
@@ -784,6 +1147,7 @@ export class BattleLogParser {
     t: number,
     opts?: { crit?: boolean },
   ): void {
+    if (this.pendingPerishFaint.has(target)) return;
     if (hpBefore === "0%" || hpBefore.startsWith("0/")) return;
     if (!this.hasLead || !this.slots[target]) return;
 
@@ -808,16 +1172,34 @@ export class BattleLogParser {
     const valAfter = this.parseHpValue(resolvedAfter);
     if (valAfter >= valBefore) return;
 
+    const recentBracketed = this.recentBracketedDamage[target];
+    if (
+      recentBracketed &&
+      t - recentBracketed.t <= 3000 &&
+      Math.abs(valAfter - this.parseHpValue(recentBracketed.hpAfter)) <= 0.025
+    ) {
+      return;
+    }
+
     this.currentHp[target] = resolvedAfter;
+    const isZeroHp = resolvedAfter === "0%" || resolvedAfter.startsWith("0/");
     const mon = this.slots[target];
     if (mon) {
       if (target.startsWith("p1")) {
         this.lastKnownOwnHp[mon.teamIdx] = resolvedAfter;
+        if (isZeroHp) {
+          this.faintedOwnTeamIndices.add(mon.teamIdx);
+        }
       } else {
         this.lastKnownOppHp[mon.slug] = resolvedAfter;
+        if (isZeroHp) {
+          this.faintedOppSlugs.add(mon.slug);
+        }
       }
     }
-    const bracket = opts?.crit ? "crit" : undefined;
+    const isCrit = opts?.crit || this.pendingCrit;
+    this.pendingCrit = false;
+    const bracket = isCrit ? "crit" : undefined;
     const args = [target, `${resolvedBefore} -> ${resolvedAfter}`];
     this.emit("damage", args, t, 1, { review: false, bracket });
   }
@@ -884,18 +1266,8 @@ export class BattleLogParser {
           const curr = parseInt(currMatch[1]!, 10);
           calculatedAfter = `${Math.min(maxHp, curr + healAmt)}/${maxHp}`;
         }
-      } else {
-        const bMatch = /^(\d+)%$/.exec(resolvedBefore);
-        const aMatch = /^(\d+)%$/.exec(hpAfter);
-        if (bMatch && aMatch) {
-          const bPct = parseInt(bMatch[1]!, 10);
-          const aPct = parseInt(aMatch[1]!, 10);
-          const measuredDiff = aPct - bPct;
-          if (measuredDiff >= 4 && measuredDiff <= 11) {
-            calculatedAfter = `${Math.min(100, bPct + 6)}%`;
-          }
-        }
       }
+      // 相手（%表記）は実機HUDのサンプリング値（hpAfter）をそのまま信頼（最大HPや端数によって6%または7%）
     } else if (pendingBracket === "sitrus-berry") {
       if (isOwn) {
         // オボンのみ: 最大HPの 1/4（25%）
@@ -941,7 +1313,13 @@ export class BattleLogParser {
     if (!turn || (slot !== "p1a" && slot !== "p1b")) return;
     const idx = slotIndex(slot);
     const existing = turn.actions[idx];
-    if (!existing || existing.choice.startsWith("switch ")) {
+    if (choice.startsWith("switch ")) {
+      if (!turn.events.some((e) => e.verb === "move")) {
+        turn.actions[idx] = { choice };
+      } else if (!existing) {
+        turn.actions[idx] = { choice };
+      }
+    } else if (!existing || !existing.choice.startsWith("switch ")) {
       turn.actions[idx] = { choice };
     }
   }
@@ -1046,6 +1424,9 @@ export class BattleLogParser {
     if (slot) {
       this.pendingWithdrawSlot = slot;
       this.slots[slot] = null;
+      this.volatileStatus[slot] = {};
+      this.statStages[slot] = {};
+      this.pendingPerishFaint.delete(slot);
     }
     return true;
   }
@@ -1087,7 +1468,8 @@ export class BattleLogParser {
     return true;
   }
 
-  private placeOpponent(slot: SlotIdent, slug: string, t: number, confidence: number): void {
+  private placeOpponent(slot: SlotIdent, rawSlug: string, t: number, confidence: number): void {
+    const slug = rawSlug.replace(/-mega(-[xyz])?$/, "");
     const current = this.slots[slot];
     if (current?.slug === slug && !this.fainted[slot]) return;
     const other = OPP_SLOTS.find((s) => s !== slot);
@@ -1099,11 +1481,11 @@ export class BattleLogParser {
         // すでに6体存在する場合、まだ場に出ていない未選出枠を探して置換
         const activeSlugs = new Set<string>();
         for (const s of Object.values(this.slots)) {
-          if (s?.slug) activeSlugs.add(s.slug);
+          if (s?.slug) activeSlugs.add(s.slug.replace(/-mega(-[xyz])?$/, ""));
         }
         for (const e of [...this.leadEvents, ...this.turns.flatMap((t) => t.events)]) {
           if (e.verb === "switch" && e.args[0]?.startsWith("p2") && e.args[1]) {
-            activeSlugs.add(e.args[1]);
+            activeSlugs.add(e.args[1].replace(/-mega(-[xyz])?$/, ""));
           }
         }
         const replaceIdx = this.options.p2Roster.findIndex((s) => !activeSlugs.has(s));
@@ -1119,6 +1501,10 @@ export class BattleLogParser {
       }
     }
     this.slots[slot] = { slug, teamIdx: idx, names: this.speciesAliases(slug) };
+    this.volatileStatus[slot] = {};
+    this.statStages[slot] = {};
+    this.pendingPerishFaint.delete(slot);
+    this.observedOppSlugs.add(slug);
     this.fainted[slot] = false;
     const hpStr = this.lastKnownOppHp[slug] ?? "100%";
     this.currentHp[slot] = hpStr;
@@ -1173,7 +1559,11 @@ export class BattleLogParser {
     if (!seenBefore) this.observedOwnIndices.push(teamIdx);
 
     this.slots[slot] = { slug: member.slug, teamIdx, names: this.speciesAliases(member.slug) };
+    this.volatileStatus[slot] = {};
+    this.statStages[slot] = {};
+    this.pendingPerishFaint.delete(slot);
     this.fainted[slot] = false;
+    this.faintedOwnTeamIndices.delete(teamIdx);
 
     const maxHp = this.options.p1MaxHp(teamIdx);
     const initialHp = `${maxHp}/${maxHp}`;
@@ -1198,7 +1588,7 @@ export class BattleLogParser {
   // メガシンカ
   // ---------------------------------------------------------------------------
 
-  /** 「<X> の <メガストーン> が <Y> のメガリングに反応している!」 */
+  /** メガシンカ反応メッセージ・前兆演出 */
   private onMegaReaction(text: string, key: string, _t: number): boolean {
     let left: string | null = null;
     for (const p of this.patternSets) {
@@ -1211,14 +1601,15 @@ export class BattleLogParser {
     if (!left) return false;
     const item = this.resolveItem(left);
     const slot = this.resolveSlots(left)[0];
-    if (!item || !slot) return false;
-    this.megaStone[slot] = item;
+    if (item && slot) {
+      this.megaStone[slot] = item;
+    }
     return true;
   }
 
-  /** 「<X> は <メガ X> にメガシンカした!」 */
+  /** 「<X> は メガシンカした!」 */
   private onMegaEvolved(text: string, key: string, t: number): boolean {
-    let match: { headKey: string; speciesPart: string } | null = null;
+    let match: { headKey: string } | null = null;
     for (const p of this.patternSets) {
       const res = p.matchMegaEvolved(text, key);
       if (res) {
@@ -1232,17 +1623,18 @@ export class BattleLogParser {
     const mon = slot ? this.slots[slot] : null;
     if (!slot || !mon) return false;
 
-    const tail = match.speciesPart;
-    const matched = tail ? fuzzyMatchEntity(tail, this.options.dictionaries.species) : null;
-    let megaSlug = matched && matched.confidence >= 70 ? matched.slug : `${mon.slug}-mega`;
+    const baseSlug = mon.slug.replace(/-mega.*$/, "");
+    let megaSlug = `${baseSlug}-mega`;
 
     const stone =
       this.megaStone[slot] ??
       (slot === "p1a" || slot === "p1b" ? this.options.p1ItemSlug(mon.teamIdx) : null);
-    if ((stone && stone.endsWith("-z")) || /\b[zZ]\b|-z/i.test(text) || /\b[zZ]\b|-z/i.test(tail)) {
-      if (!megaSlug.endsWith("-z")) {
-        megaSlug = `${megaSlug}-z`;
-      }
+    if (stone?.endsWith("-y")) {
+      megaSlug = `${baseSlug}-mega-y`;
+    } else if (stone?.endsWith("-x")) {
+      megaSlug = `${baseSlug}-mega-x`;
+    } else if (stone?.endsWith("-z")) {
+      megaSlug = `${baseSlug}-mega-z`;
     }
 
     const ev = this.emit("mega", [slot, megaSlug], t, 0.98, { review: false, unique: true });
@@ -1265,7 +1657,7 @@ export class BattleLogParser {
   /** 「<X> は <技> を使った!」 */
   private onMoveUsed(text: string, t: number): boolean {
     const key = normalizeOcrToken(text);
-    let match: { actorPart: string; movePart: string } | null = null;
+    let match: { actorPart: string; movePart: string; isOpposing?: boolean } | null = null;
     for (const p of this.patternSets) {
       const res = p.matchMoveUsed(text, key);
       if (res) {
@@ -1275,25 +1667,247 @@ export class BattleLogParser {
     }
     if (!match) return false;
 
-    const move = fuzzyMatchEntity(match.movePart, this.options.dictionaries.moves);
+    const cleanMovePart = match.movePart.replace(/[!！|].*$/, "").trim() || match.movePart;
+    const move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
     if (!move) return false;
 
     const head = normalizeOcrToken(match.actorPart);
-    const matched = this.resolveSlots(head);
-    const isOpposing =
-      approxFind(head, "opposing").score >= 0.8 ||
-      head.includes("相手") ||
-      head.includes("お相手") ||
-      head.includes("アイテ");
-    const fallback = (isOpposing ? OPP_SLOTS : OWN_SLOTS).find((s) => this.slots[s] !== null);
+    const isOpposing = match.isOpposing ?? approxFind(head, "opposing").score >= 0.8;
+    const candidates = isOpposing ? OPP_SLOTS : OWN_SLOTS;
+    const matched = this.resolveSlots(head, candidates);
+    const fallback = candidates.find((s) => this.slots[s] !== null);
     const slot = matched[0] ?? fallback;
     if (!slot) return false;
 
+    this.pendingCrit = false;
     const ev = this.emit("move", [slot, move.slug], t, move.confidence / 100, {
-      review: matched.length === 0 || move.confidence < 85,
+      review: matched.length === 0 || move.confidence < 80,
       unique: true,
     });
     if (ev) this.setAction(slot, move.slug);
+    return true;
+  }
+
+  /** 「<X> flinched and couldn't move!」等の行動不能メッセージ */
+  private onCantMove(key: string, t: number): boolean {
+    let matchedPhrase = "";
+    let matchedReason = "";
+    let bestScore = 0;
+    let matchEnd = 0;
+
+    for (const p of this.patternSets) {
+      for (const def of p.cantPhrases) {
+        const found = approxFind(key, def.phrase);
+        if (found.score >= PHRASE_THRESHOLD && found.score > bestScore) {
+          bestScore = found.score;
+          matchedPhrase = def.phrase;
+          matchedReason = def.reason;
+          matchEnd = found.end;
+        }
+      }
+    }
+    if (!matchedReason) return false;
+
+    const headKey = key.slice(0, Math.max(0, matchEnd - matchedPhrase.length));
+    const slot = this.resolveSlots(headKey)[0] ?? this.resolveSlots(key)[0];
+    if (!slot) return false;
+
+    this.emit("cant", [slot, matchedReason], t, bestScore, {
+      review: false,
+      unique: true,
+    });
+    return true;
+  }
+
+  /** 「A critical hit!」 */
+  private onCriticalHit(key: string, _t: number): boolean {
+    let matched = false;
+    for (const p of this.patternSets) {
+      if (p.critPhrases.some((phrase) => approxFind(key, phrase).score >= PHRASE_THRESHOLD)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+
+    const events = this.currentEvents();
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i]!;
+      if (ev.verb === "move") break;
+      if (ev.verb === "damage") {
+        const isResidual =
+          ev.bracket === "sandstorm" ||
+          ev.bracket === "life-orb" ||
+          ev.bracket === "burn" ||
+          ev.bracket === "poison" ||
+          ev.bracket === "recoil";
+        if (!isResidual) {
+          ev.bracket = ev.bracket
+            ? ev.bracket.includes("crit")
+              ? ev.bracket
+              : `${ev.bracket}, crit`
+            : "crit";
+          this.pendingCrit = false;
+          return true;
+        }
+      }
+    }
+    this.pendingCrit = true;
+    return true;
+  }
+
+  /** 「It's super effective on <X>!」 / 「It's not very effective on <X>!」 */
+  private onEffectiveness(key: string, t: number): boolean {
+    let matched = false;
+    for (const p of this.patternSets) {
+      for (const def of p.effectivenessPhrases) {
+        const found = approxFind(key, def.phrase);
+        if (found.score >= PHRASE_THRESHOLD) {
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) return false;
+    // OCR が 2 行（例: "It's super effective!\nA critical hit!"）を同時取得していた場合は急所も反映
+    this.onCriticalHit(key, t);
+    return true;
+  }
+
+  /** 「<X> returned its stats to normal using its White Herb!」等のアイテム発動メッセージ */
+  private onItemMessage(key: string, t: number): boolean {
+    const found = approxFind(key, "returneditsstatstonormal");
+    if (found.score < PHRASE_THRESHOLD) return false;
+
+    const headKey = key.slice(0, Math.max(0, found.end - "returneditsstatstonormal".length));
+    const slot = this.resolveSlots(headKey)[0] ?? this.resolveSlots(key)[0];
+    if (!slot || !this.slots[slot]) return false;
+
+    const itemSlug = this.resolveItem(key) ?? "white-herb";
+    this.emit("item", [slot, itemSlug], t, found.score, {
+      review: false,
+      unique: true,
+    });
+    return true;
+  }
+
+  /** 「<X> is buffeted by the sandstorm!」 / 「<X> lost some of its HP!」等の定数・反動ダメージ */
+  private onResidualDamage(_text: string, key: string, t: number): boolean {
+    let matchedPhrase = "";
+    let matchedEffect = "";
+    let bestScore = 0;
+    let matchEnd = 0;
+
+    for (const p of this.patternSets) {
+      for (const def of p.residualDamagePhrases) {
+        const found = approxFind(key, def.phrase);
+        if (found.score >= PHRASE_THRESHOLD && found.score > bestScore) {
+          bestScore = found.score;
+          matchedPhrase = def.phrase;
+          matchedEffect = def.effect;
+          matchEnd = found.end;
+        }
+      }
+    }
+    if (!matchedEffect) return false;
+
+    const headKey = key.slice(0, Math.max(0, matchEnd - matchedPhrase.length));
+    const slot = this.resolveSlots(headKey)[0] ?? this.resolveSlots(key)[0];
+    if (!slot || !this.slots[slot]) return false;
+
+    const mon = this.slots[slot]!;
+    const isOwn = slot.startsWith("p1");
+    const maxHp = isOwn ? this.options.p1MaxHp(mon.teamIdx) : 100;
+
+    const calcResidualAfter = (bHp: string): string => {
+      if (isOwn) {
+        const m = /^(\d+)\/(\d+)$/.exec(bHp);
+        if (m) {
+          const curr = parseInt(m[1]!, 10);
+          const dmg =
+            matchedEffect === "life-orb"
+              ? Math.max(1, Math.floor(maxHp / 10))
+              : Math.max(1, Math.floor(maxHp / 16));
+          return `${Math.max(0, curr - dmg)}/${maxHp}`;
+        }
+      } else {
+        const m = /^(\d+)%$/.exec(bHp);
+        if (m) {
+          const currPct = parseInt(m[1]!, 10);
+          const dmgPct = matchedEffect === "life-orb" ? 10 : 6;
+          return `${Math.max(0, currPct - dmgPct)}%`;
+        }
+      }
+      return bHp;
+    };
+
+    // 同一ターン内に既に同じ定数ダメージ（sandstorm, burn, poison）または直近4秒以内の life-orb が記録済みなら重複出力しない
+    const events = this.currentEvents();
+    const alreadyRecorded = events.some(
+      (ev) =>
+        ev.verb === "damage" &&
+        ev.args[0] === slot &&
+        ev.bracket === matchedEffect &&
+        (matchedEffect !== "life-orb" || Math.abs(t - ev.t) <= 4000),
+    );
+    if (alreadyRecorded) {
+      return true;
+    }
+
+    // 直前に確定した未ブラケットの damage イベントがあればそれに bracket を付与し、定数ダメージ量で補正
+    const maxResidualDrop = matchedEffect === "life-orb" ? 0.14 : 0.1;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i]!;
+      if (ev.verb === "move") break;
+      if (
+        ev.verb === "damage" &&
+        ev.args[0] === slot &&
+        !ev.bracket &&
+        Math.abs(t - ev.t) <= 1000
+      ) {
+        const beforeToken = ev.args[1]?.split("->")[0]?.trim();
+        const rawAfterToken = ev.args[1]?.split("->")[1]?.trim();
+        const drop =
+          beforeToken && rawAfterToken
+            ? this.parseHpValue(beforeToken) - this.parseHpValue(rawAfterToken)
+            : 1;
+        if (drop > maxResidualDrop) {
+          break;
+        }
+        ev.bracket = matchedEffect;
+        const afterToken = beforeToken ? calcResidualAfter(beforeToken) : rawAfterToken;
+        if (beforeToken && afterToken) {
+          ev.args[1] = `${beforeToken} -> ${afterToken}`;
+          this.currentHp[slot] = afterToken;
+          if (isOwn) {
+            this.lastKnownOwnHp[mon.teamIdx] = afterToken;
+          } else {
+            this.lastKnownOppHp[mon.slug] = afterToken;
+          }
+          this.recentBracketedDamage[slot] = { hpAfter: afterToken, t };
+        }
+        return true;
+      }
+    }
+
+    // まだ HUD 側の HP 減少が確定していない場合は、ドメイン知識（1/16 または 1/10）から減少後の HP を算出して即時記録
+    const beforeHp = this.currentHp[slot] ?? (isOwn ? `${maxHp}/${maxHp}` : "100%");
+    const afterHp = calcResidualAfter(beforeHp);
+
+    if (afterHp !== beforeHp) {
+      this.currentHp[slot] = afterHp;
+      if (isOwn) {
+        this.lastKnownOwnHp[mon.teamIdx] = afterHp;
+      } else {
+        this.lastKnownOppHp[mon.slug] = afterHp;
+      }
+      this.recentBracketedDamage[slot] = { hpAfter: afterHp, t };
+      this.emit("damage", [slot, `${beforeHp} -> ${afterHp}`], t, bestScore, {
+        review: false,
+        bracket: matchedEffect,
+      });
+    }
     return true;
   }
 
@@ -1314,7 +1928,8 @@ export class BattleLogParser {
     if (!actor || !target) return false;
 
     const existing = this.currentEvents().find(
-      (ev) => ev.verb === "move" && ev.args[0] === actor && /help|てだすけ/.test(ev.args[1] ?? ""),
+      (ev) =>
+        ev.verb === "move" && ev.args[0] === actor && /helping-hand|help/.test(ev.args[1] ?? ""),
     );
     if (existing) {
       if (existing.args.length === 2) existing.args.push("->", target);
@@ -1355,7 +1970,7 @@ export class BattleLogParser {
     const slot = this.resolveSlots(key)[0];
 
     const events = this.currentEvents();
-    // 相手が使った直近の攻撃技を探す（その攻撃が防がれた）
+    // 守られた直近の攻撃技を探す（味方の地震等も含め、自分以外の技が防がれる）
     const incomingMove = [...events].reverse().find((ev) => {
       if (ev.verb !== "move") return false;
       const moveActor = ev.args[0];
@@ -1366,13 +1981,6 @@ export class BattleLogParser {
 
       // 守ったスロット自身の技は除外
       if (slot && moveActor === slot) return false;
-
-      // 陣営が指定されている場合、対面陣営からの技でなければ防がれない
-      if (slot && moveActor) {
-        const slotSide = slot.slice(0, 2);
-        const actorSide = moveActor.slice(0, 2);
-        if (slotSide === actorSide) return false;
-      }
 
       // ターゲットが既に指定されていて、かつそれが今回の slot と異なる単体技なら防がれた対象ではない
       const arrowIdx = ev.args.indexOf("->");
@@ -1391,10 +1999,22 @@ export class BattleLogParser {
         incomingMove.comment = "wide-guard";
         return true;
       }
-      if (slot && !incomingMove.args.includes("->")) {
+      const moveId = incomingMove.args[1] ?? "";
+      const isSpread = isMultiTargetMove(moveId);
+
+      if (slot) {
+        if (!incomingMove.protectedSlots) {
+          incomingMove.protectedSlots = [];
+        }
+        if (!incomingMove.protectedSlots.includes(slot)) {
+          incomingMove.protectedSlots.push(slot);
+        }
+      }
+
+      // 単体技の場合のみ、ターゲットがまだ付いていなければ -> slot を付与
+      if (!isSpread && slot && !incomingMove.args.includes("->")) {
         incomingMove.args.push("->", slot);
       }
-      incomingMove.comment = "protected itself";
       return true;
     }
 
@@ -1435,22 +2055,115 @@ export class BattleLogParser {
     for (const slot of slots) {
       if (this.fainted[slot]) continue;
       this.fainted[slot] = true;
-      const isZero = (s: string | null) => s === "0%" || (s !== null && s.startsWith("0/"));
-      if (this.currentHp[slot] && !isZero(this.currentHp[slot])) {
-        this.feedDamage(slot, this.currentHp[slot]!, "0%", this.currentHp[slot]!, t);
-      } else {
-        const zeroHp = this.formatHp(slot, "0%") ?? "0%";
-        this.currentHp[slot] = zeroHp;
-        const mon = this.slots[slot];
-        if (mon) {
-          if (slot.startsWith("p1")) {
-            this.lastKnownOwnHp[mon.teamIdx] = zeroHp;
-          } else {
-            this.lastKnownOppHp[mon.slug] = zeroHp;
-          }
+      const mon = this.slots[slot];
+      if (mon) {
+        if (slot.startsWith("p1")) {
+          this.faintedOwnTeamIndices.add(mon.teamIdx);
+        } else {
+          this.faintedOppSlugs.add(mon.slug);
         }
       }
+      this.volatileStatus[slot] = {};
+      this.statStages[slot] = {};
+
+      const zeroHp = this.formatHp(slot, "0%") ?? "0%";
+      const prevHp = this.currentHp[slot];
+      this.currentHp[slot] = zeroHp;
+      if (mon) {
+        if (slot.startsWith("p1")) {
+          this.lastKnownOwnHp[mon.teamIdx] = zeroHp;
+        } else {
+          this.lastKnownOppHp[mon.slug] = zeroHp;
+        }
+      }
+
+      if (this.pendingPerishFaint.has(slot)) {
+        this.pendingPerishFaint.delete(slot);
+        this.emit("faint", [slot], t, 0.98, { review: false });
+        continue;
+      }
+
+      const isZero = (s: string | null) => s === "0%" || (s !== null && s.startsWith("0/"));
+      if (prevHp && !isZero(prevHp)) {
+        this.feedDamage(slot, prevHp, "0%", prevHp, t);
+      }
       this.emit("faint", [slot], t, 0.98, { review: false });
+    }
+    return true;
+  }
+
+  /** 「<X>'s perish count fell to <N>!」 */
+  private onPerishCount(rawText: string, t: number): boolean {
+    let res: { mon: string; count: number; isOpposing: boolean } | null = null;
+    for (const p of this.patternSets) {
+      res = p.matchPerishCount(rawText);
+      if (res) break;
+    }
+    if (!res) return false;
+
+    const head = normalizeOcrToken(res.mon);
+    const candidates = res.isOpposing ? OPP_SLOTS : OWN_SLOTS;
+    const matched = this.resolveSlots(head, candidates);
+    const fallback = candidates.find((s) => this.slots[s] !== null);
+    const slot = matched[0] ?? fallback;
+    if (!slot) return false;
+
+    const prevCount =
+      typeof this.volatileStatus[slot]?.perish === "number"
+        ? (this.volatileStatus[slot]!.perish as number)
+        : res.count + 1;
+
+    this.volatileStatus[slot] = { ...this.volatileStatus[slot], perish: res.count };
+
+    if (res.count === 0) {
+      this.pendingPerishFaint.add(slot);
+      delete this.volatileStatus[slot].perish;
+    }
+
+    this.emit("perish", [slot, `${prevCount} -> ${res.count}`], t, 0.98, { review: false });
+    return true;
+  }
+
+  /** 「All Pokémon that hear the song will faint in three turns!」 */
+  private onPerishStart(text: string, key: string, _t: number): boolean {
+    let matched = false;
+    for (const p of this.patternSets) {
+      if (p.matchPerishStart(text, key)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+
+    for (const slot of SLOTS) {
+      if (this.slots[slot] !== null && !this.fainted[slot]) {
+        this.volatileStatus[slot] = { ...this.volatileStatus[slot], perish: 3 };
+      }
+    }
+    return true;
+  }
+
+  /** 「The battle has ended due to a forfeit」 */
+  private onForfeit(text: string, key: string, t: number): boolean {
+    let matched = false;
+    for (const p of this.patternSets) {
+      if (p.matchForfeit(text, key)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+
+    const events = this.currentEvents();
+    const alreadyEmitted = events.some((ev) => ev.verb === "#" && ev.args.includes("forfeit"));
+    if (!alreadyEmitted) {
+      this.currentEvents().push({
+        verb: "#",
+        args: ["The", "battle", "has", "ended", "due", "to", "a", "forfeit"],
+        t,
+        confidence: 1,
+        review: false,
+      });
     }
     return true;
   }
@@ -1521,7 +2234,7 @@ export class BattleLogParser {
   }
 
   /** 回復メッセージ */
-  private onHeal(text: string, key: string, _t: number): boolean {
+  private onHeal(_text: string, key: string, t: number): boolean {
     let matchedPhrase = "";
     let matchedEffect: string | undefined = undefined;
     let bestScore = 0;
@@ -1544,12 +2257,14 @@ export class BattleLogParser {
     // スロットの特定
     const slots = this.resolveSlots(key.slice(0, Math.max(0, matchEnd - matchedPhrase.length)));
     const slot = slots[0] ?? this.resolveSlots(key)[0];
-    if (!slot) return false;
+    if (!slot || !this.slots[slot]) return false;
 
     // 原因（effect）の判定: 定型文テンプレート (healPhrases.effect) または メッセージ内のアイテム名から特定
-    let effect = matchedEffect ?? this.resolveItem(key) ?? undefined;
-
+    const effect = matchedEffect ?? this.resolveItem(key) ?? undefined;
     const effectBracket = effect || undefined;
+    const mon = this.slots[slot]!;
+    const isOwn = slot.startsWith("p1");
+    const maxHp = isOwn ? this.options.p1MaxHp(mon.teamIdx) : 100;
 
     // 1. 直前に先行して発生した HP 回復（bracket 未確定）があれば、それに bracket を付与
     const recent = this.recentHealWithoutBracket[slot];
@@ -1560,12 +2275,15 @@ export class BattleLogParser {
         effectBracket === "leftovers" ||
         effectBracket === "black-sludge"
       ) {
-        const m = /^(\d+)%\s*->\s*(\d+)%$/.exec(recent.args[1] ?? "");
-        if (m) {
-          const bPct = parseInt(m[1]!, 10);
-          const aPct = parseInt(m[2]!, 10);
-          if (aPct - bPct >= 4 && aPct - bPct <= 11) {
-            recent.args[1] = `${bPct}% -> ${Math.min(100, bPct + 6)}%`;
+        if (isOwn) {
+          const mFrac = /^(\d+)\/(\d+)\s*->\s*(\d+)\/(\d+)$/.exec(recent.args[1] ?? "");
+          if (mFrac) {
+            const bCurr = parseInt(mFrac[1]!, 10);
+            const healAmt = Math.max(1, Math.floor(maxHp / 16));
+            const calibrated = `${Math.min(maxHp, bCurr + healAmt)}/${maxHp}`;
+            recent.args[1] = `${bCurr}/${maxHp} -> ${calibrated}`;
+            this.currentHp[slot] = calibrated;
+            this.lastKnownOwnHp[mon.teamIdx] = calibrated;
           }
         }
       }
@@ -1576,7 +2294,45 @@ export class BattleLogParser {
       return true;
     }
 
-    // 2. まだ HP 回復が来ていない場合は、直後の feedHeal 待ちとして pendingBracket をセット
+    // すでに直近（3秒以内）に同一 bracket の heal イベントが出力済み（Leftovers バナー先行時など）なら重複出力しない
+    if (effectBracket) {
+      const alreadyEmitted = this.currentEvents().some(
+        (ev) =>
+          ev.verb === "heal" &&
+          ev.args[0] === slot &&
+          ev.bracket === effectBracket &&
+          Math.abs(t - ev.t) <= 3000,
+      );
+      if (alreadyEmitted) {
+        return true;
+      }
+    }
+
+    // 2. HUD の回復完了よりもメッセージが先に到達した場合、自軍のみ正確な実数値（1/16 または 1/4）で即時 emit。
+    // ※ 相手（%表記）は最大HPや端数によって6%または7%と変動するため勝手に決め打ちせず、HUDのHPバー実測値（SoT）を待つ。
+    if (
+      isOwn &&
+      (effectBracket === "grassy-terrain" ||
+        effectBracket === "leftovers" ||
+        effectBracket === "black-sludge" ||
+        effectBracket === "sitrus-berry")
+    ) {
+      const beforeHp = this.currentHp[slot] ?? `${maxHp}/${maxHp}`;
+      const m = /^(\d+)\/(\d+)$/.exec(beforeHp);
+      if (m) {
+        const curr = parseInt(m[1]!, 10);
+        const healAmt =
+          effectBracket === "sitrus-berry"
+            ? Math.max(1, Math.floor(maxHp / 4))
+            : Math.max(1, Math.floor(maxHp / 16));
+        const afterHp = `${Math.min(maxHp, curr + healAmt)}/${maxHp}`;
+        if (afterHp !== beforeHp) {
+          this.feedHeal(slot, beforeHp, afterHp, `${healAmt}`, t, { effect: effectBracket });
+          return true;
+        }
+      }
+    }
+
     if (effectBracket) {
       this.pendingHealBracket[slot] = effectBracket;
     }
@@ -1618,6 +2374,10 @@ export class BattleLogParser {
     const deltaStr = bestSuffix.delta > 0 ? `+${bestSuffix.delta}` : `${bestSuffix.delta}`;
     for (const slot of slots) {
       for (const stat of statsFound) {
+        this.statStages[slot] = {
+          ...this.statStages[slot],
+          [stat]: Math.max(-6, Math.min(6, (this.statStages[slot][stat] ?? 0) + bestSuffix.delta)),
+        };
         this.emit("boost", [slot, stat, deltaStr], t, bestSuffix.score, { review: false });
       }
     }

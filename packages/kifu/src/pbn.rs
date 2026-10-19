@@ -1,11 +1,12 @@
 //! PBN (Pokémon Battle Notation, `.pbn`) のシリアライザ (`to_pbn`) およびパーサ (`from_pbn`)
 
-use crate::kifu::{
+use crate::types::{
+    Boosts, InputPokemonData, Nature, PlayerActionJs, PokemonEvs, PokemonIdent, SlotActionJs,
+};
+use crate::{
     ActionQuality, BattleKifu, EventProvenance, MatchOutcome, ObservedEvent, ObservedHp,
     OpponentPreviewSlot, TurnAnnotation, TurnRecord,
 };
-use crate::sim::pokemon::PokemonIdent;
-use crate::wasm_api::{Boosts, InputPokemonData, Nature, PlayerActionJs, PokemonEvs, SlotActionJs};
 use pkmn_meta::Regulation;
 use std::fmt::Write;
 
@@ -127,6 +128,52 @@ impl BattleKifu {
             if !turn.field_effects.is_empty() {
                 let _ = writeln!(out, "  @field {}", turn.field_effects.join(" | "));
             }
+            if !turn.state_effects.is_empty() {
+                let _ = writeln!(out, "  @state");
+                let mut current_side = "";
+                for s in &turn.state_effects {
+                    let s_trimmed = s.trim();
+                    if s_trimmed == "p1:" || s_trimmed == "p2:" {
+                        current_side = s_trimmed;
+                        let _ = writeln!(out, "  {}", s_trimmed);
+                    } else if let Some(rest) = s_trimmed.strip_prefix("p1:") {
+                        if current_side != "p1:" {
+                            current_side = "p1:";
+                            let _ = writeln!(out, "  p1:");
+                        }
+                        let item = rest.trim().trim_start_matches('|').trim();
+                        let _ = writeln!(out, "    | {}", item);
+                    } else if let Some(rest) = s_trimmed.strip_prefix("p2:") {
+                        if current_side != "p2:" {
+                            current_side = "p2:";
+                            let _ = writeln!(out, "  p2:");
+                        }
+                        let item = rest.trim().trim_start_matches('|').trim();
+                        let _ = writeln!(out, "    | {}", item);
+                    } else if let Some(rest) = s_trimmed.strip_prefix("p1 bench:") {
+                        if current_side != "p1:" {
+                            current_side = "p1:";
+                            let _ = writeln!(out, "  p1:");
+                        }
+                        let _ = writeln!(out, "    | bench: {}", rest.trim());
+                    } else if let Some(rest) = s_trimmed.strip_prefix("p2 bench:") {
+                        if current_side != "p2:" {
+                            current_side = "p2:";
+                            let _ = writeln!(out, "  p2:");
+                        }
+                        let _ = writeln!(out, "    | bench: {}", rest.trim());
+                    } else if s_trimmed.starts_with("p1a:")
+                        || s_trimmed.starts_with("p1b:")
+                        || s_trimmed.starts_with("p2a:")
+                        || s_trimmed.starts_with("p2b:")
+                    {
+                        let _ = writeln!(out, "        {}", s_trimmed);
+                    } else {
+                        let item = s_trimmed.trim_start_matches('|').trim();
+                        let _ = writeln!(out, "    | {}", item);
+                    }
+                }
+            }
 
             let _ = writeln!(
                 out,
@@ -171,6 +218,13 @@ impl BattleKifu {
             Turn,
         }
         let mut section = Section::Top;
+        #[derive(PartialEq, Eq)]
+        enum DirectiveSubmode {
+            None,
+            Field,
+            State,
+        }
+        let mut submode = DirectiveSubmode::None;
 
         for (line_idx, raw_line) in input.lines().enumerate() {
             let line_num = line_idx + 1;
@@ -214,17 +268,43 @@ impl BattleKifu {
                 continue;
             }
             if trimmed.starts_with('{') && trimmed.ends_with('}') {
-                let comment_text = trimmed[1..trimmed.len() - 1].trim().to_string();
-                if comment_text == "protected" {
-                    if let Some(cur_turn) = turns.last_mut()
-                        && let Some(prov) = cur_turn.event_provenance.last_mut()
-                    {
-                        prov.comment = Some("protected itself".to_string());
+                let inner = trimmed[1..trimmed.len() - 1].trim();
+                if inner == "protected"
+                    || inner == "missed"
+                    || inner == "failed"
+                    || inner == "immune"
+                {
+                    let last_evs = match section {
+                        Section::Lead | Section::Top => &lead_events,
+                        Section::Turn => turns.last().map(|t| &t.events).unwrap_or(&lead_events),
+                    };
+                    let last_target = last_evs.iter().rev().find_map(|ev| {
+                        if let ObservedEvent::MoveUsed { target, .. } = ev {
+                            *target
+                        } else {
+                            None
+                        }
+                    });
+                    let ev = ObservedEvent::MoveOutcome {
+                        target: last_target,
+                        outcome: inner.to_string(),
+                    };
+                    match section {
+                        Section::Lead | Section::Top => {
+                            lead_events.push(ev);
+                            lead_provenance.push(EventProvenance::default());
+                        }
+                        Section::Turn => {
+                            if let Some(cur_turn) = turns.last_mut() {
+                                cur_turn.events.push(ev);
+                                cur_turn.event_provenance.push(EventProvenance::default());
+                            }
+                        }
                     }
                 } else if section == Section::Turn
                     && let Some(cur_turn) = turns.last_mut()
                 {
-                    cur_turn.annotation.comment = Some(comment_text);
+                    cur_turn.annotation.comment = Some(inner.to_string());
                 }
                 continue;
             }
@@ -254,6 +334,7 @@ impl BattleKifu {
             }
             if trimmed == "@lead" || trimmed.starts_with("@lead ") {
                 section = Section::Lead;
+                submode = DirectiveSubmode::None;
                 let rest = trimmed.strip_prefix("@lead").unwrap_or("").trim();
                 for tok in rest.split_whitespace() {
                     if let Some(ms_str) = tok.strip_prefix("@t=") {
@@ -264,22 +345,120 @@ impl BattleKifu {
             }
             if let Some(rest) = trimmed.strip_prefix("@turn ") {
                 section = Section::Turn;
+                submode = DirectiveSubmode::None;
                 let turn_rec =
                     parse_turn_header(rest).map_err(|e| format!("Line {line_num}: {e}"))?;
                 turns.push(turn_rec);
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix("@field ") {
-                let effects: Vec<String> = rest
-                    .split(['|', ','])
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if let Some(cur_turn) = turns.last_mut() {
-                    cur_turn.field_effects = effects;
+            let is_field_line = trimmed == "@field"
+                || trimmed.starts_with("@field ")
+                || (section == Section::Turn
+                    && ((submode == DirectiveSubmode::Field && trimmed.starts_with('|'))
+                        || (submode == DirectiveSubmode::Field
+                            && (trimmed.starts_with("entire:")
+                                || trimmed.starts_with("p1:")
+                                || trimmed.starts_with("p2:")))
+                        || (submode != DirectiveSubmode::State
+                            && ((trimmed.starts_with('|')
+                                && (trimmed.contains("entire:")
+                                    || (!trimmed.contains("bench:")
+                                        && !trimmed.contains("p1a:")
+                                        && !trimmed.contains("p1b:")
+                                        && (trimmed.contains("p1:")
+                                            || trimmed.contains("p2:")))))
+                                || trimmed.starts_with("entire:")))));
+
+            if is_field_line {
+                submode = DirectiveSubmode::Field;
+                let content = if let Some(rest) = trimmed.strip_prefix("@field") {
+                    rest.trim()
+                } else {
+                    trimmed
+                };
+                let content = content.trim_start_matches('|').trim();
+                if !content.is_empty() {
+                    for part in content.split('|') {
+                        let item = part.trim();
+                        if !item.is_empty()
+                            && let Some(cur_turn) = turns.last_mut()
+                        {
+                            cur_turn.field_effects.push(item.to_string());
+                        }
+                    }
                 }
                 continue;
             }
+
+            let is_state_line = trimmed == "@state"
+                || trimmed.starts_with("@state ")
+                || (section == Section::Turn
+                    && ((submode == DirectiveSubmode::State
+                        && (trimmed == "p1:"
+                            || trimmed == "p2:"
+                            || trimmed.starts_with('|')
+                            || trimmed.starts_with("p1a:")
+                            || trimmed.starts_with("p1b:")
+                            || trimmed.starts_with("p2a:")
+                            || trimmed.starts_with("p2b:")))
+                        || (submode != DirectiveSubmode::Field
+                            && (trimmed == "p1:"
+                                || trimmed == "p2:"
+                                || trimmed.starts_with('|'))
+                            && (trimmed.contains("active:")
+                                || trimmed.contains("bench:")
+                                || trimmed.contains("p1:")
+                                || trimmed.contains("p2:")
+                                || trimmed.contains("p1a:")
+                                || trimmed.contains("p1b:")
+                                || trimmed.contains("p2a:")
+                                || trimmed.contains("p2b:")))));
+
+            if is_state_line {
+                submode = DirectiveSubmode::State;
+                let content = if let Some(rest) = trimmed.strip_prefix("@state") {
+                    rest.trim()
+                } else {
+                    trimmed
+                };
+                if content.is_empty() {
+                    continue;
+                }
+                if content == "p1:" || content == "p2:" {
+                    if let Some(cur_turn) = turns.last_mut() {
+                        cur_turn.state_effects.push(content.to_string());
+                    }
+                    continue;
+                }
+                let item = content.trim_start_matches('|').trim();
+                if !item.is_empty() {
+                    let segs: Vec<&str> = if item.contains('|') {
+                        item.split('|')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .collect()
+                    } else {
+                        vec![item]
+                    };
+                    if let Some(cur_turn) = turns.last_mut() {
+                        for seg in segs {
+                            cur_turn.state_effects.push(seg.to_string());
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (trimmed.starts_with("@poke ") || trimmed.starts_with("@bench "))
+                && section == Section::Turn
+                && let Some(cur_turn) = turns.last_mut()
+            {
+                cur_turn.state_effects.push(trimmed.to_string());
+                continue;
+            }
+
+            submode = DirectiveSubmode::None;
+
             if let Some(rest) = trimmed.strip_prefix("@cmd ") {
                 let act = parse_player_action_cmd(rest, "p1a", "p1b")
                     .map_err(|e| format!("Line {line_num}: {e}"))?;
@@ -297,7 +476,52 @@ impl BattleKifu {
                 continue;
             }
 
-            // 3.5. Inline move outcome lines: `move <attacker> <move_id> -> <target>: <outcomes> [| <target2>: <outcomes>]`
+            // 3.5. 1-line block: `move ... { protected }` or `move ... { missed }`
+            if trimmed.starts_with("move ")
+                && trimmed.ends_with('}')
+                && let Some(open_idx) = trimmed.rfind('{')
+            {
+                let inside = trimmed[open_idx + 1..trimmed.len() - 1].trim();
+                if inside == "protected"
+                    || inside == "missed"
+                    || inside == "failed"
+                    || inside == "immune"
+                {
+                    let move_part = trimmed[..open_idx].trim();
+                    let (ev, prov) =
+                        parse_event_line(move_part).map_err(|e| format!("Line {line_num}: {e}"))?;
+                    let target_opt = if let ObservedEvent::MoveUsed { target, .. } = ev {
+                        target
+                    } else {
+                        None
+                    };
+                    match section {
+                        Section::Lead | Section::Top => {
+                            lead_events.push(ev);
+                            lead_provenance.push(prov);
+                            lead_events.push(ObservedEvent::MoveOutcome {
+                                target: target_opt,
+                                outcome: inside.to_string(),
+                            });
+                            lead_provenance.push(EventProvenance::default());
+                        }
+                        Section::Turn => {
+                            if let Some(cur_turn) = turns.last_mut() {
+                                cur_turn.events.push(ev);
+                                cur_turn.event_provenance.push(prov);
+                                cur_turn.events.push(ObservedEvent::MoveOutcome {
+                                    target: target_opt,
+                                    outcome: inside.to_string(),
+                                });
+                                cur_turn.event_provenance.push(EventProvenance::default());
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            // 3.6. Inline move outcome lines: `move <attacker> <move_id> -> <target>: <outcomes> [| <target2>: <outcomes>]`
             if trimmed.starts_with("move ")
                 && trimmed.contains("->")
                 && let Some((move_part, targets_part)) = trimmed.split_once("->")
@@ -341,57 +565,55 @@ impl BattleKifu {
                             (block, "")
                         };
                         let target = PokemonIdent::from(target_str.trim());
-
-                        for outcome_raw in outcomes_str.split(',') {
-                            let outcome = outcome_raw.trim();
-                            if outcome.is_empty() {
-                                continue;
+                        let mut parsed_events = parse_target_outcomes_for_slot(
+                            target,
+                            outcomes_str,
+                            last_attacker,
+                            last_move_id.clone(),
+                            is_spread,
+                        );
+                        if let Some(cur_turn) = turns.last() {
+                            let mut item_eff = None;
+                            for ev in cur_turn.events.iter().rev() {
+                                match ev {
+                                    ObservedEvent::ItemTriggered { source, item, .. }
+                                        if *source == target && item == "life-orb" =>
+                                    {
+                                        item_eff = Some(item.clone());
+                                        break;
+                                    }
+                                    ObservedEvent::MoveUsed { .. } => break,
+                                    _ => {}
+                                }
                             }
-                            if outcome.contains("->")
-                                || outcome.contains('%')
-                                || outcome.contains('/')
-                            {
-                                let tokens: Vec<&str> = outcome.split_whitespace().collect();
-                                let hp_after_str =
-                                    if let Some(arr_idx) = tokens.iter().position(|&t| t == "->") {
-                                        tokens.get(arr_idx + 1).copied().unwrap_or("?")
-                                    } else {
-                                        tokens.first().copied().unwrap_or("?")
-                                    };
-                                let hp_after = parse_hp(hp_after_str);
-                                let mut damage_exact = None;
-                                for tok in &tokens {
-                                    if tok.starts_with("(-") && tok.ends_with(')') {
-                                        let num_str = tok[2..tok.len() - 1].trim_end_matches('%');
-                                        damage_exact = num_str.parse::<u16>().ok();
+                            if let Some(eff) = item_eff {
+                                for ev in &mut parsed_events {
+                                    if let ObservedEvent::Damage {
+                                        from_effect,
+                                        attacker,
+                                        move_id,
+                                        ..
+                                    } = ev
+                                        && from_effect.is_none()
+                                    {
+                                        *from_effect = Some(eff.clone());
+                                        *attacker = None;
+                                        *move_id = None;
                                     }
                                 }
-                                let ev = ObservedEvent::Damage {
-                                    target,
-                                    hp_after,
-                                    damage_exact,
-                                    is_crit: outcome.contains("[crit]"),
-                                    effectiveness: None,
-                                    from_effect: None,
-                                    attacker: last_attacker,
-                                    move_id: last_move_id.clone(),
-                                    is_spread,
-                                };
-                                if let Some(cur_turn) = turns.last_mut() {
-                                    cur_turn.events.push(ev);
-                                    cur_turn.event_provenance.push(EventProvenance::default());
+                            }
+                        }
+                        for ev in parsed_events {
+                            match section {
+                                Section::Lead | Section::Top => {
+                                    lead_events.push(ev);
+                                    lead_provenance.push(EventProvenance::default());
                                 }
-                            } else if let Some((stat, delta_str)) = outcome.split_once(' ') {
-                                let delta =
-                                    delta_str.trim_start_matches('+').parse::<i8>().unwrap_or(0);
-                                let ev = ObservedEvent::StatStageChanged {
-                                    target,
-                                    stat: stat.trim().to_string(),
-                                    delta,
-                                };
-                                if let Some(cur_turn) = turns.last_mut() {
-                                    cur_turn.events.push(ev);
-                                    cur_turn.event_provenance.push(EventProvenance::default());
+                                Section::Turn => {
+                                    if let Some(cur_turn) = turns.last_mut() {
+                                        cur_turn.events.push(ev);
+                                        cur_turn.event_provenance.push(EventProvenance::default());
+                                    }
                                 }
                             }
                         }
@@ -400,16 +622,26 @@ impl BattleKifu {
                 }
             }
 
-            // 4. Target outcome lines: `target <target>: <outcomes>` or `-> <target>: <outcomes>`
-            let target_line = trimmed
-                .strip_prefix("target ")
-                .or_else(|| trimmed.strip_prefix("->"))
-                .map(|rest| rest.trim_end_matches('{').trim());
-            if let Some(rest) = target_line {
-                let (target_str, outcomes_str) = if let Some(colon_pos) = rest.find(':') {
-                    (&rest[..colon_pos], rest[colon_pos + 1..].trim())
+            // 4. Target outcome lines: `target <target>: <outcomes>`, `-> <target>: <outcomes>`, or `<slot>: <outcomes>`
+            let line_no_open_brace = trimmed.trim_end_matches('{').trim();
+            let is_slot_outcome = (line_no_open_brace.len() >= 4
+                && (line_no_open_brace.starts_with("p1a:")
+                    || line_no_open_brace.starts_with("p1b:")
+                    || line_no_open_brace.starts_with("p2a:")
+                    || line_no_open_brace.starts_with("p2b:")))
+                || line_no_open_brace.starts_with("target ")
+                || line_no_open_brace.starts_with("->");
+
+            if is_slot_outcome {
+                let stripped = line_no_open_brace
+                    .strip_prefix("target ")
+                    .or_else(|| line_no_open_brace.strip_prefix("->"))
+                    .unwrap_or(line_no_open_brace);
+
+                let (target_str, outcomes_str) = if let Some(colon_pos) = stripped.find(':') {
+                    (&stripped[..colon_pos], stripped[colon_pos + 1..].trim())
                 } else {
-                    (rest, "")
+                    (stripped, "")
                 };
                 let target = PokemonIdent::from(target_str.trim());
 
@@ -429,88 +661,54 @@ impl BattleKifu {
                     (None, None)
                 };
 
-                for outcome_raw in outcomes_str.split(',') {
-                    let outcome = outcome_raw.trim();
-                    if outcome.is_empty() {
-                        continue;
+                let mut parsed_events = parse_target_outcomes_for_slot(
+                    target,
+                    outcomes_str,
+                    last_attacker,
+                    last_move_id,
+                    true,
+                );
+                if let Some(cur_turn) = turns.last() {
+                    let mut item_eff = None;
+                    for ev in cur_turn.events.iter().rev() {
+                        match ev {
+                            ObservedEvent::ItemTriggered { source, item, .. }
+                                if *source == target && item == "life-orb" =>
+                            {
+                                item_eff = Some(item.clone());
+                                break;
+                            }
+                            ObservedEvent::MoveUsed { .. } => break,
+                            _ => {}
+                        }
                     }
-                    if outcome.contains("->") || outcome.contains('%') || outcome.contains('/') {
-                        let tokens: Vec<&str> = outcome.split_whitespace().collect();
-                        let hp_after_str =
-                            if let Some(arr_idx) = tokens.iter().position(|&t| t == "->") {
-                                tokens.get(arr_idx + 1).copied().unwrap_or("?")
-                            } else {
-                                tokens.first().copied().unwrap_or("?")
-                            };
-                        let hp_after = parse_hp(hp_after_str);
-                        let mut damage_exact = None;
-                        for tok in &tokens {
-                            if tok.starts_with("(-") && tok.ends_with(')') {
-                                let num_str = tok[2..tok.len() - 1].trim_end_matches('%');
-                                damage_exact = num_str.parse::<u16>().ok();
+                    if let Some(eff) = item_eff {
+                        for ev in &mut parsed_events {
+                            if let ObservedEvent::Damage {
+                                from_effect,
+                                attacker,
+                                move_id,
+                                ..
+                            } = ev
+                                && from_effect.is_none()
+                            {
+                                *from_effect = Some(eff.clone());
+                                *attacker = None;
+                                *move_id = None;
                             }
                         }
-                        if damage_exact.is_none()
-                            && let Some(arr_idx) = tokens.iter().position(|&t| t == "->")
-                            && arr_idx > 0
-                        {
-                            let before_hp = parse_hp(tokens[arr_idx - 1]);
-                            match (before_hp, hp_after) {
-                                (
-                                    ObservedHp::Percent { percent: b },
-                                    ObservedHp::Percent { percent: a },
-                                ) if b >= a => {
-                                    damage_exact = Some((b - a) as u16);
-                                }
-                                (
-                                    ObservedHp::Exact { current: b, .. },
-                                    ObservedHp::Exact { current: a, .. },
-                                ) if b >= a => {
-                                    damage_exact = Some(b - a);
-                                }
-                                _ => {}
-                            }
+                    }
+                }
+                for ev in parsed_events {
+                    match section {
+                        Section::Lead | Section::Top => {
+                            lead_events.push(ev);
+                            lead_provenance.push(EventProvenance::default());
                         }
-                        let ev = ObservedEvent::Damage {
-                            target,
-                            hp_after,
-                            damage_exact,
-                            is_crit: outcome.contains("[crit]"),
-                            effectiveness: None,
-                            from_effect: None,
-                            attacker: last_attacker,
-                            move_id: last_move_id.clone(),
-                            is_spread: true,
-                        };
-                        match section {
-                            Section::Lead | Section::Top => {
-                                lead_events.push(ev);
-                                lead_provenance.push(EventProvenance::default());
-                            }
-                            Section::Turn => {
-                                if let Some(cur_turn) = turns.last_mut() {
-                                    cur_turn.events.push(ev);
-                                    cur_turn.event_provenance.push(EventProvenance::default());
-                                }
-                            }
-                        }
-                    } else if let Some((stat, delta_str)) = outcome.split_once(' ') {
-                        let delta = delta_str.trim_start_matches('+').parse::<i8>().unwrap_or(0);
-                        let ev = ObservedEvent::StatStageChanged {
-                            target,
-                            stat: stat.trim().to_string(),
-                            delta,
-                        };
-                        match section {
-                            Section::Lead | Section::Top => {
-                                lead_events.push(ev);
-                                lead_provenance.push(EventProvenance::default());
-                            }
-                            Section::Turn => {
-                                if let Some(cur_turn) = turns.last_mut() {
-                                    cur_turn.events.push(ev);
-                                    cur_turn.event_provenance.push(EventProvenance::default());
-                                }
+                        Section::Turn => {
+                            if let Some(cur_turn) = turns.last_mut() {
+                                cur_turn.events.push(ev);
+                                cur_turn.event_provenance.push(EventProvenance::default());
                             }
                         }
                     }
@@ -518,7 +716,7 @@ impl BattleKifu {
                 continue;
             }
 
-            // 5. Event lines inside `@lead` or `@turn`
+            // 5. Event lines inside `@lead` or `@turn` (strip trailing `{` if present)
             let line_to_parse = trimmed.trim_end_matches('{').trim();
             if line_to_parse.is_empty() {
                 continue;
@@ -623,6 +821,98 @@ fn format_champions_spread(nature: Option<Nature>, evs: Option<&PokemonEvs>) -> 
         }
     }
     parts.join(" ")
+}
+
+fn parse_target_outcomes_for_slot(
+    target: PokemonIdent,
+    outcomes_str: &str,
+    last_attacker: Option<PokemonIdent>,
+    last_move_id: Option<String>,
+    is_spread: bool,
+) -> Vec<ObservedEvent> {
+    let mut events = Vec::new();
+    for outcome_raw in outcomes_str.split(',') {
+        let outcome = outcome_raw.trim();
+        if outcome.is_empty() {
+            continue;
+        }
+        if outcome == "protected"
+            || outcome == "missed"
+            || outcome == "failed"
+            || outcome == "immune"
+        {
+            events.push(ObservedEvent::MoveOutcome {
+                target: Some(target),
+                outcome: outcome.to_string(),
+            });
+            continue;
+        }
+        if outcome == "fainted" {
+            events.push(ObservedEvent::Faint { target });
+            continue;
+        }
+        if outcome.contains("->") || outcome.contains('%') || outcome.contains('/') {
+            let tokens: Vec<&str> = outcome.split_whitespace().collect();
+            let hp_after_str = if let Some(arr_idx) = tokens.iter().position(|&t| t == "->") {
+                tokens.get(arr_idx + 1).copied().unwrap_or("?")
+            } else {
+                tokens.first().copied().unwrap_or("?")
+            };
+            let hp_after = parse_hp(hp_after_str);
+            let mut damage_exact = None;
+            for tok in &tokens {
+                if tok.starts_with("(-") && tok.ends_with(')') {
+                    let num_str = tok[2..tok.len() - 1].trim_end_matches('%');
+                    damage_exact = num_str.parse::<u16>().ok();
+                }
+            }
+            if damage_exact.is_none()
+                && let Some(arr_idx) = tokens.iter().position(|&t| t == "->")
+                && arr_idx > 0
+            {
+                let before_hp = parse_hp(tokens[arr_idx - 1]);
+                match (before_hp, hp_after) {
+                    (ObservedHp::Percent { percent: b }, ObservedHp::Percent { percent: a })
+                        if b >= a =>
+                    {
+                        damage_exact = Some((b - a) as u16);
+                    }
+                    (
+                        ObservedHp::Exact { current: b, .. },
+                        ObservedHp::Exact { current: a, .. },
+                    ) if b >= a => {
+                        damage_exact = Some(b - a);
+                    }
+                    _ => {}
+                }
+            }
+            events.push(ObservedEvent::Damage {
+                target,
+                hp_after,
+                damage_exact,
+                is_crit: outcome.contains("[crit]") || outcome.contains("crit"),
+                effectiveness: if outcome.contains("super-effective") {
+                    Some(1)
+                } else if outcome.contains("resisted") {
+                    Some(-1)
+                } else {
+                    None
+                },
+                from_effect: None,
+                attacker: last_attacker,
+                move_id: last_move_id.clone(),
+                is_spread,
+            });
+        } else if let Some((stat, delta_str)) = outcome.split_once(' ') {
+            let delta = delta_str.trim_start_matches('+').parse::<i8>().unwrap_or(0);
+            events.push(ObservedEvent::StatStageChanged {
+                target,
+                stat: stat.trim().to_string(),
+                delta,
+            });
+        }
+    }
+    events
 }
 
 pub(crate) fn parse_nature(s: &str) -> Option<Nature> {
@@ -955,6 +1245,16 @@ fn parse_turn_header(rest: &str) -> Result<TurnRecord, String> {
         }
     }
 
+    // Extract `@note="..."` if present
+    if let Some(start) = cleaned.find("@note=\"") {
+        let after = &cleaned[start + 7..];
+        if let Some(end) = after.find('"') {
+            let note_str = &after[..end];
+            annotation.comment = Some(note_str.to_string());
+            cleaned.replace_range(start..start + 7 + end + 1, "");
+        }
+    }
+
     for (idx, tok) in cleaned.split_whitespace().enumerate() {
         if idx == 0
             && let Ok(n) = tok.parse::<u16>()
@@ -965,7 +1265,8 @@ fn parse_turn_header(rest: &str) -> Result<TurnRecord, String> {
         if let Some(ts_s) = tok.strip_prefix("@t=") {
             annotation.timestamp_ms = ts_s.trim_end_matches("ms").parse::<u32>().ok();
         } else if let Some(eval_s) = tok.strip_prefix("@eval=") {
-            if let Ok(pct) = eval_s.trim_end_matches('%').parse::<f64>() {
+            let clean_eval = eval_s.trim_start_matches('+').trim_end_matches('%');
+            if let Ok(pct) = clean_eval.parse::<f64>() {
                 annotation.eval_win_rate = Some((pct / 100.0).clamp(0.0, 1.0));
             }
         } else if let Some(q_s) = tok.strip_prefix("@quality=") {
@@ -1252,8 +1553,37 @@ fn format_event_line(ev: &ObservedEvent, prov: Option<&EventProvenance>) -> Stri
                 format!("boost {} {} {}", target, stat, delta)
             }
         }
-        ObservedEvent::StatusChanged { target, status } => {
-            format!("status {} {}", target, status.as_deref().unwrap_or("none"))
+        ObservedEvent::StatusChanged {
+            target,
+            status,
+            is_cure,
+            from_effect,
+        } => {
+            let prefix = if *is_cure { "-" } else { "+" };
+            let st = status.as_deref().unwrap_or("none");
+            let mut s = format!("status {} {}{}", target, prefix, st);
+            if let Some(eff) = from_effect {
+                let _ = write!(s, " [{eff}]");
+            }
+            s
+        }
+        ObservedEvent::CantMove {
+            target,
+            reason,
+            move_id,
+        } => {
+            let mut s = format!("cant {} {}", target, reason);
+            if let Some(mv) = move_id {
+                let _ = write!(s, " {}", mv);
+            }
+            s
+        }
+        ObservedEvent::MoveOutcome { target, outcome } => {
+            if let Some(t) = target {
+                format!("target {}: {}", t, outcome)
+            } else {
+                outcome.clone()
+            }
         }
         ObservedEvent::WeatherChanged { weather } => {
             format!("weather {}", weather.as_deref().unwrap_or("None"))
@@ -1284,8 +1614,17 @@ fn format_event_line(ev: &ObservedEvent, prov: Option<&EventProvenance>) -> Stri
         if p.needs_review {
             line.push_str(" @review");
         }
+        if let Some(ts) = p.timestamp_ms {
+            let _ = write!(line, " @t={}ms", ts);
+        }
+        if let Some(conf) = p.confidence {
+            let _ = write!(line, " @conf={}%", conf);
+        }
+        if let Some(ref note) = p.note {
+            let _ = write!(line, " @note=\"{}\"", note.trim());
+        }
         if let Some(ref c) = p.comment {
-            let _ = write!(line, " {{ {} }}", c.trim());
+            let _ = write!(line, " [{}]", c.trim());
         }
     }
 
@@ -1306,21 +1645,45 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
         s = s.trim().to_string();
     }
 
-    // 2. Extract `@t=`, `@conf=`, `@review` tokens
-    let mut remaining_tokens = Vec::new();
-    // Preserve `[...]` bracket block intact
-    let (main_part, bracket_part) = if let Some(b_start) = s.find('[')
-        && let Some(b_end) = s[b_start..].find(']')
-    {
-        let b_content = s[b_start + 1..b_start + b_end].trim().to_string();
-        let mut without_bracket = s[..b_start].to_string();
-        without_bracket.push_str(&s[b_start + b_end + 1..]);
-        (without_bracket, Some(b_content))
-    } else {
-        (s, None)
-    };
+    // 1.5. Extract `@note="..."` if present
+    if let Some(start) = s.find("@note=\"") {
+        let after = &s[start + 7..];
+        if let Some(end) = after.find('"') {
+            let note_str = &after[..end];
+            prov.note = Some(note_str.to_string());
+            let mut without_note = s[..start].to_string();
+            without_note.push_str(&after[end + 1..]);
+            s = without_note;
+        }
+    }
 
-    for tok in main_part.split_whitespace() {
+    // 2. Extract all `[...]` bracket blocks, distinguishing event modifiers from comments
+    let mut bracket_part: Option<String> = None;
+    while let Some(b_start) = s.find('[') {
+        if let Some(b_len) = s[b_start..].find(']') {
+            let b_end = b_start + b_len;
+            let b_content = s[b_start + 1..b_end].trim().to_string();
+            s = format!("{}{}", &s[..b_start], &s[b_end + 1..]);
+
+            let is_modifier = b_content.contains('=')
+                || b_content == "crit"
+                || b_content == "spread"
+                || b_content == "super-effective"
+                || b_content == "resisted";
+
+            if is_modifier {
+                bracket_part = Some(b_content);
+            } else if prov.comment.is_none() {
+                prov.comment = Some(b_content);
+            }
+        } else {
+            break;
+        }
+    }
+
+    // 3. Extract `@t=`, `@conf=`, `@review` tokens
+    let mut remaining_tokens = Vec::new();
+    for tok in s.split_whitespace() {
         if let Some(ts_s) = tok.strip_prefix("@t=") {
             prov.timestamp_ms = ts_s.trim_end_matches("ms").parse::<u32>().ok();
         } else if let Some(c_s) = tok.strip_prefix("@conf=") {
@@ -1385,6 +1748,19 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
                 attacker,
                 move_id,
                 target,
+            }
+        }
+        "cant" => {
+            if args.len() < 2 {
+                return Err("cant requires `<target> <reason>`".to_string());
+            }
+            let target = PokemonIdent::from(args[0]);
+            let reason = args[1].to_string();
+            let move_id = args.get(2).map(|s| s.to_string());
+            ObservedEvent::CantMove {
+                target,
+                reason,
+                move_id,
             }
         }
         "damage" => {
@@ -1452,10 +1828,22 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
                         from_effect = Some(v.to_string());
                     } else if let Some(v) = item.strip_prefix("eff=") {
                         effectiveness = v.parse::<i8>().ok();
+                    } else if !item.is_empty() && from_effect.is_none() {
+                        from_effect = Some(item.to_string());
                     }
                 }
             }
+            if from_effect.is_none() && args.len() > damage_token_idx {
+                from_effect = Some(args[damage_token_idx].trim_matches(['[', ']']).to_string());
+            }
 
+            if from_effect.is_none()
+                && let Some(ref c) = prov.comment
+                && !c.is_empty()
+                && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+            {
+                from_effect = prov.comment.take();
+            }
             ObservedEvent::Damage {
                 target,
                 hp_after,
@@ -1494,6 +1882,13 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
                         from_effect = Some(item.to_string());
                     }
                 }
+            }
+            if from_effect.is_none()
+                && let Some(ref c) = prov.comment
+                && !c.is_empty()
+                && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+            {
+                from_effect = prov.comment.take();
             }
             ObservedEvent::Heal {
                 target,
@@ -1536,14 +1931,34 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
             if args.len() < 2 {
                 return Err("status requires `<target> <status>`".to_string());
             }
-            let status = if args[1].eq_ignore_ascii_case("none") {
+            let target = PokemonIdent::from(args[0]);
+            let raw_st = args[1];
+            let (is_cure, st_name) = if let Some(stripped) = raw_st.strip_prefix('+') {
+                (false, stripped)
+            } else if let Some(stripped) = raw_st.strip_prefix('-') {
+                (true, stripped)
+            } else if raw_st.eq_ignore_ascii_case("none") {
+                (true, "none")
+            } else {
+                (false, raw_st)
+            };
+            let status = if st_name.eq_ignore_ascii_case("none") {
                 None
             } else {
-                Some(args[1].to_string())
+                Some(st_name.to_string())
+            };
+            let from_effect = if let Some(ref b) = bracket_part {
+                Some(b.clone())
+            } else if args.len() >= 3 {
+                Some(args[2].trim_matches(['[', ']']).to_string())
+            } else {
+                None
             };
             ObservedEvent::StatusChanged {
-                target: PokemonIdent::from(args[0]),
+                target,
                 status,
+                is_cure,
+                from_effect,
             }
         }
         "weather" => {
@@ -1594,6 +2009,23 @@ fn parse_event_line(raw: &str) -> Result<(ObservedEvent, EventProvenance), Strin
             }
             ObservedEvent::Faint {
                 target: PokemonIdent::from(args[0]),
+            }
+        }
+        "perish" => {
+            let (target, after_count) = if args.len() >= 4 && args[2] == "->" {
+                (PokemonIdent::from(args[0]), args[3])
+            } else if args.len() >= 3 && args[1] == "->" {
+                (PokemonIdent::from(args[0]), args[2])
+            } else if args.len() >= 2 {
+                (PokemonIdent::from(args[0]), args[1])
+            } else {
+                return Err("perish requires `<target> <from> -> <to>`".to_string());
+            };
+            ObservedEvent::StatusChanged {
+                target,
+                status: Some(format!("perish{after_count}")),
+                is_cure: after_count == "0",
+                from_effect: Some("perish-song".to_string()),
             }
         }
         other => return Err(format!("Unknown PBN event command: '{other}'")),
