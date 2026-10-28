@@ -1,6 +1,6 @@
 {
   "name": "@poketistix/damage-calc",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Pokémon damage calculator — powered by Rust/WebAssembly",
   "license": "MIT",
   "repository": {
@@ -25,8 +25,8 @@
     "build": "wasm-pack build --scope poketistix --target bundler --out-dir pkg --out-name damage_calc && wasm-pack build --scope poketistix --target nodejs --out-dir pkg-node --out-name damage_calc",
     "pack": "wasm-pack pack pkg",
     "test": "wasm-pack test --node",
-    "publish": "pnpm publish --access public --no-git-checks --ignore-scripts",
-    "release": "pnpm run build && pnpm run pack && pnpm run publish",
+    "pkg:publish": "pnpm publish --access public --no-git-checks --ignore-scripts",
+    "release": "pnpm run build && pnpm run pack && pnpm run pkg:publish",
     "renovate": "cargo upgrade -i",
     "check": "cargo check"
   }

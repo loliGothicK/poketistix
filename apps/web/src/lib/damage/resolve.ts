@@ -332,6 +332,17 @@ export function resolveDamageInput(ctx: ResolveContext): DamageInput | null {
   const defenseModifiers: number[] = [];
   if (dc.flowerGift && !isPhysical) defenseModifiers.push(M.FLOWER_GIFT);
 
+  if (weather === "snow" && defPokemon.types.includes("ice") && mechanics.defensiveStat === "def") {
+    defenseModifiers.push(6144); // 1.5x Snow boost to Ice-type Defense
+  }
+  if (
+    weather === "sandstorm" &&
+    defPokemon.types.includes("rock") &&
+    mechanics.defensiveStat === "spd"
+  ) {
+    defenseModifiers.push(6144); // 1.5x Sandstorm boost to Rock-type Sp. Def
+  }
+
   if (defender.item === "eviolite") defenseModifiers.push(6144); // 1.5x for NFE
   if (defender.item === "assault-vest" && !isPhysical) defenseModifiers.push(6144); // 1.5x
   if (

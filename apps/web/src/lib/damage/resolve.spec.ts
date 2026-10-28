@@ -380,6 +380,66 @@ describe("resolveDamageInput", () => {
       });
       expect(res?.defenseModifiers).toContain(6144);
     });
+
+    it("applies Snow defense boost (1.5x) for Ice-type defender against physical moves", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "snow",
+        attacker: { ...defaultContext.attacker, identifier: "charizard", move: "flare-blitz" }, // Physical move
+        defender: { ...defaultContext.defender, identifier: "abomasnow" }, // Ice/Grass
+      });
+      expect(res?.defenseModifiers).toContain(6144);
+    });
+
+    it("applies Snow defense boost (1.5x) for Ice-type defender against Psyshock (defensiveStat: def)", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "snow",
+        attacker: { ...defaultContext.attacker, identifier: "starmie", move: "psyshock" }, // Special move with def target
+        defender: { ...defaultContext.defender, identifier: "abomasnow" },
+      });
+      expect(res?.defenseModifiers).toContain(6144);
+    });
+
+    it("does not apply Snow defense boost for Ice-type defender against special moves (defensiveStat: spd)", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "snow",
+        attacker: { ...defaultContext.attacker, identifier: "charizard", move: "flamethrower" }, // Special move
+        defender: { ...defaultContext.defender, identifier: "abomasnow" },
+      });
+      expect(res?.defenseModifiers ?? []).not.toContain(6144);
+    });
+
+    it("does not apply Snow defense boost for non-Ice defender against physical moves", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "snow",
+        attacker: { ...defaultContext.attacker, identifier: "charizard", move: "flare-blitz" },
+        defender: { ...defaultContext.defender, identifier: "venusaur" }, // Grass/Poison
+      });
+      expect(res?.defenseModifiers ?? []).not.toContain(6144);
+    });
+
+    it("applies Sandstorm special defense boost (1.5x) for Rock-type defender against special moves", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "sandstorm",
+        attacker: { ...defaultContext.attacker, identifier: "charizard", move: "flamethrower" }, // Special move
+        defender: { ...defaultContext.defender, identifier: "tyranitar" }, // Rock/Dark
+      });
+      expect(res?.defenseModifiers).toContain(6144);
+    });
+
+    it("does not apply Sandstorm special defense boost for Rock-type defender against physical moves", () => {
+      const res = resolveDamageInput({
+        ...defaultContext,
+        weather: "sandstorm",
+        attacker: { ...defaultContext.attacker, identifier: "charizard", move: "flare-blitz" }, // Physical move
+        defender: { ...defaultContext.defender, identifier: "tyranitar" },
+      });
+      expect(res?.defenseModifiers ?? []).not.toContain(6144);
+    });
   });
 
   describe("Final Modifiers", () => {

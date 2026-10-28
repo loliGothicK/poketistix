@@ -49,7 +49,7 @@
     "@pkmn/dex": "0.10.11",
     "@pkmn/sets": "5.2.0",
     "@pkmn/sim": "catalog:",
-    "@poketistix/damage-calc": "0.1.1",
+    "@poketistix/damage-calc": "0.1.3",
     "@poketistix/data": "workspace:*",
     "@sentry/nextjs": "11.9.0",
     "@supabase/ssr": "0.12.7",

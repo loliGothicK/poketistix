@@ -222,6 +222,32 @@ pub fn resolve_damage_input(ctx: &ResolveContext) -> Option<DamageInput> {
         }
     }
 
+    let weather_str = ctx.weather.as_deref().unwrap_or("none").to_lowercase();
+    let mut weather_modifier = 4096;
+    if weather_str == "sun" {
+        if move_type == Type::Fire {
+            weather_modifier = 6144;
+        } else if move_type == Type::Water {
+            weather_modifier = 2048;
+        }
+    } else if weather_str == "rain" {
+        if move_type == Type::Water {
+            weather_modifier = 6144;
+        } else if move_type == Type::Fire {
+            weather_modifier = 2048;
+        }
+    }
+
+    let mut defense_modifiers = vec![];
+    let def_has_ice = def_type1 == Type::Ice || def_type2 == Some(Type::Ice);
+    let def_has_rock = def_type1 == Type::Rock || def_type2 == Some(Type::Rock);
+    if weather_str == "snow" && def_has_ice && is_physical {
+        defense_modifiers.push(6144);
+    }
+    if weather_str == "sandstorm" && def_has_rock && !is_physical {
+        defense_modifiers.push(6144);
+    }
+
     Some(DamageInput {
         level: 50,
         base_power,
@@ -231,7 +257,7 @@ pub fn resolve_damage_input(ctx: &ResolveContext) -> Option<DamageInput> {
         attack_modifiers: vec![],
         defense: defense_stat as u16,
         defense_boost: 0,
-        defense_modifiers: vec![],
+        defense_modifiers,
         is_physical,
         move_type,
         defender_type1: def_type1,
@@ -241,7 +267,7 @@ pub fn resolve_damage_input(ctx: &ResolveContext) -> Option<DamageInput> {
         immune_override: None,
         spread_modifier: 4096,
         parental_bond_modifier: 4096,
-        weather_modifier: 4096,
+        weather_modifier,
         is_crit: ctx.is_crit,
         crit_modifier: 6144,
         stab_modifier,
