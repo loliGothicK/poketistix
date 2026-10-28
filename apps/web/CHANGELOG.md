@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+### Patch Changes
+
+- Fixes:
+    - damage-calc: Fixed a bug where the 1.5x Defense boost in Snow for Ice-types and the 1.5x Sp. Def boost in Sandstorm for Rock-types were not applied
+
 ## 0.7.0
 
 ### Minor Changes
