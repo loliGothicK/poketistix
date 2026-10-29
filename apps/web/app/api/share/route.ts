@@ -17,6 +17,7 @@ const snapshotSchema = v.pipe(
     description: v.optional(v.pipe(v.string(), v.maxLength(2000))),
     members: v.pipe(v.array(v.nullable(trainedPokemonSchema)), v.length(6)),
     showStats: v.boolean(),
+    showNotes: v.optional(v.boolean()),
   }),
   v.rawCheck(({ dataset, addIssue }) => {
     if (!dataset.typed) return;

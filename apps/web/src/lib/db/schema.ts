@@ -32,6 +32,8 @@ export interface SharedTeamSnapshot {
   readonly members: readonly (TrainedPokemon | null)[];
   /** true = 実数値・努力値を公開する。false = オープンチームシート（構成のみ公開） */
   readonly showStats: boolean;
+  /** true = 戦略ノート（構築経緯・基本選出など）を公開する */
+  readonly showNotes?: boolean;
 }
 
 export const boxPokemon = pgTable(

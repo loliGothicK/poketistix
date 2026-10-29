@@ -584,6 +584,8 @@
     "dialogDescription": "シェアリンクに含める情報を選んでください。",
     "showStatsLabel": "ステータスを含める",
     "showStatsDescription": "実数値・努力値を公開します。オフにするとオープンチームシートになります。",
+    "showNotesLabel": "戦略ノートを含める",
+    "showNotesDescription": "構築経緯・基本選出・相手別プランなどのノートを公開します。",
     "createLink": "リンクを作成",
     "abilityLabel": "特性",
     "natureLabel": "性格",

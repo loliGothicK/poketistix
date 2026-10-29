@@ -513,6 +513,8 @@
     "dialogDescription": "Choose what to include in your share link.",
     "showStatsLabel": "Include stats",
     "showStatsDescription": "Share actual values and EVs. Leave off for an open team sheet.",
+    "showNotesLabel": "Include strategy notes",
+    "showNotesDescription": "Share your build process, core gameplans, and matchup notes.",
     "createLink": "Create Link",
     "abilityLabel": "Ability",
     "natureLabel": "Nature",

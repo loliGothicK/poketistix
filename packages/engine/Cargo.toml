@@ -2,6 +2,9 @@
 name = "engine"
 version = "0.1.0"
 edition = "2024"
+description = "Pokémon battle engine compiled to WebAssembly"
+license = "MIT"
+repository = "https://github.com/loliGothicK/poketistix"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -25,4 +28,3 @@ serde_json.workspace = true
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
-

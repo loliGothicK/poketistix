@@ -210,6 +210,14 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
                 sx={{ height: 20, fontSize: "0.65rem", fontWeight: 600 }}
               />
             )}
+            {snapshot.showNotes && (
+              <Chip
+                label={t("share.showNotesLabel")}
+                size="small"
+                icon={<EditNoteIcon sx={{ fontSize: "0.85rem !important" }} />}
+                sx={{ height: 20, fontSize: "0.65rem", fontWeight: 600 }}
+              />
+            )}
           </Stack>
 
           {/* ボタン群 */}
@@ -243,6 +251,7 @@ export function PartySharePage({ shareId, snapshot, createdAt }: PartySharePageP
           </Stack>
         </Stack>
         {(() => {
+          if (snapshot.showNotes === false) return null;
           const notes = parseTeamNotes(snapshot.description);
           const hasAny = hasTeamNotes(notes);
           if (!hasAny) return null;

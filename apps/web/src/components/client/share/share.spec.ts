@@ -17,12 +17,16 @@ import jaTranslation from "@locales/ja/translation.json";
 
 const snapshotSchema = v.object({
   teamName: v.pipe(v.string(), v.minLength(1), v.maxLength(100)),
+  description: v.optional(v.pipe(v.string(), v.maxLength(2000))),
   members: v.pipe(v.array(v.nullable(v.looseObject({}))), v.length(6)),
+  showStats: v.boolean(),
+  showNotes: v.optional(v.boolean()),
 });
 
 const validSnapshot = {
   teamName: "My Team",
   members: [null, null, null, null, null, null],
+  showStats: false,
 };
 
 describe("snapshotSchema — バリデーション", () => {
@@ -85,6 +89,11 @@ describe("snapshotSchema — バリデーション", () => {
       members: [member, null, null, null, null, null],
     });
     expect(result.success).toBe(true);
+  });
+
+  it("showNotes が true / false どちらでも成功する", () => {
+    expect(v.safeParse(snapshotSchema, { ...validSnapshot, showNotes: true }).success).toBe(true);
+    expect(v.safeParse(snapshotSchema, { ...validSnapshot, showNotes: false }).success).toBe(true);
   });
 });
 
@@ -175,6 +184,8 @@ const SHARE_KEYS = [
   "shareSuccess",
   "shareError",
   "draftReasonTitle",
+  "showNotesLabel",
+  "showNotesDescription",
 ] as const;
 
 describe("翻訳キー — share.* が EN/JA 両方に存在し空でない", () => {

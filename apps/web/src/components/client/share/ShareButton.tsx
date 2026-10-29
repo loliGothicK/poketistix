@@ -20,6 +20,8 @@ import {
 import IosShareIcon from "@mui/icons-material/IosShare";
 import CheckIcon from "@mui/icons-material/Check";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import EditNoteIcon from "@mui/icons-material/EditNote";
+import { parseTeamNotes, hasTeamNotes } from "@/lib/team-notes";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
@@ -42,14 +44,21 @@ export function ShareButton() {
   const [dialogOpen, setDialogOpen] = useState(false);
   // オプション
   const [showStats, setShowStats] = useState(false);
+  const [showNotes, setShowNotes] = useState(true);
   // シェア実行状態
   const [shareState, setShareState] = useState<ShareState>("idle");
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState("");
   const [snackSeverity, setSnackSeverity] = useState<"success" | "error">("success");
 
+  const hasNotes = activeTeam?.description
+    ? hasTeamNotes(parseTeamNotes(activeTeam.description))
+    : false;
+  const includeNotes = hasNotes && showNotes;
+
   const handleOpenDialog = () => {
     if (!activeTeam) return;
+    setShowNotes(true);
     setDialogOpen(true);
   };
 
@@ -60,9 +69,10 @@ export function ShareButton() {
 
     const snapshot = {
       teamName: activeTeam.name,
-      description: activeTeam.description,
+      description: includeNotes ? activeTeam.description : undefined,
       members: activeTeam.members,
       showStats,
+      showNotes: includeNotes,
     };
 
     try {
@@ -104,7 +114,7 @@ export function ShareButton() {
       setSnackOpen(true);
       setTimeout(() => setShareState("idle"), 2000);
     }
-  }, [activeTeam, showStats, t, router]);
+  }, [activeTeam, showStats, includeNotes, t, router]);
 
   const isLoading = shareState === "loading";
   const isSuccess = shareState === "success";
@@ -228,6 +238,54 @@ export function ShareButton() {
               sx={{ mr: 0 }}
             />
           </Box>
+
+          {/* showNotes トグル */}
+          {hasNotes && (
+            <Box
+              sx={{
+                mt: 1.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+                border: "1px solid",
+                borderColor: showNotes ? alpha(theme.palette.primary.main, 0.35) : "divider",
+                bgcolor: showNotes ? alpha(theme.palette.primary.main, 0.05) : "transparent",
+                transition: "all 0.2s",
+                cursor: "pointer",
+                borderRadius: 2,
+                py: 2,
+                px: 4,
+              }}
+              onClick={() => setShowNotes((v) => !v)}
+            >
+              <EditNoteIcon
+                fontSize="small"
+                sx={{ color: showNotes ? "primary.main" : "text.disabled", flexShrink: 0 }}
+              />
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+                  {t("share.showNotesLabel")}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {t("share.showNotesDescription")}
+                </Typography>
+              </Box>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showNotes}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setShowNotes(e.target.checked);
+                    }}
+                    size="small"
+                  />
+                }
+                label=""
+                sx={{ mr: 0 }}
+              />
+            </Box>
+          )}
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
