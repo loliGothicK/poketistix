@@ -544,8 +544,8 @@ importers:
         version: 0.0.4
     devDependencies:
       '@pkmn/mods':
-        specifier: 0.10.11
-        version: 0.10.11
+        specifier: 0.10.12
+        version: 0.10.12
       '@pkmn/sim':
         specifier: 'catalog:'
         version: 0.10.11
@@ -2780,11 +2780,14 @@ packages:
   '@pkmn/dex-types@0.10.11':
     resolution: {integrity: sha512-6hvvi/iHCdBbUGK7RmWPCKuZGujEC+1elvxcLK2BpL/j7Q0roSuC33xrodDsyg2EuyJ5szGunzRtFztyrtb7aQ==}
 
+  '@pkmn/dex-types@0.10.12':
+    resolution: {integrity: sha512-guBF4TVIGCi00oLUczsIHydBZ02goiGu/oW1fC5jOjeJJglG+pevpMejW1IZEZ7+yw4vECxGCm+HxiploEqviw==}
+
   '@pkmn/dex@0.10.11':
     resolution: {integrity: sha512-htR2Etf3WCiu4k4ukmyYD94do97sTm9LfmxJ8tg2uuPGJsZ98ZZGlJFUZNltfXU0pO61ItiU6obRXTw05qipDQ==}
 
-  '@pkmn/mods@0.10.11':
-    resolution: {integrity: sha512-Ub1ND9Fz24PZySkCFSns5cU4bZKeMk+6B6zcg2F4FViOJLB+qtU5zv65zD7bfoe/cBIclki4vj5YZ+u0s04rIg==}
+  '@pkmn/mods@0.10.12':
+    resolution: {integrity: sha512-/anzFYTMQA0ZlG8+Utn3csLrJl4ioHRDPhMP/Jfq0y3Q0qlCTpiDDkoHb4INrgJe8t23p3wXqbpxovsq9vJXXQ==}
 
   '@pkmn/sets@5.2.0':
     resolution: {integrity: sha512-WHAW6bZu0WCo/3b+LTW7BE0fBhYZnWH1lCXIu2an8/wTiZ/+s1eTcQYj7W/YQKxWT5dm/La03AZ6CeqdJip9CQ==}
@@ -2797,6 +2800,9 @@ packages:
 
   '@pkmn/types@4.0.0':
     resolution: {integrity: sha512-gR2s/pxJYEegek1TtsYCQupNR3d5hMlcJFsiD+2LyfKr4tc+gETTql47tWLX5mFSbPcbXh7f4+7txlMIDoZx/g==}
+
+  '@pkmn/types@5.0.0':
+    resolution: {integrity: sha512-kO/o0SfNBwFrsS3IkWJUlTpCBD+2ydVlvGeARbJ5pzZ3YABVXhDbqJCQUX5gRUp9uaWWQoa4gUqQT4LAqCE8Ng==}
 
   '@pnpm/deps.graph-sequencer@1100.0.1':
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
@@ -7702,13 +7708,17 @@ snapshots:
     dependencies:
       '@pkmn/types': 4.0.0
 
+  '@pkmn/dex-types@0.10.12':
+    dependencies:
+      '@pkmn/types': 5.0.0
+
   '@pkmn/dex@0.10.11':
     dependencies:
       '@pkmn/dex-types': 0.10.11
 
-  '@pkmn/mods@0.10.11':
+  '@pkmn/mods@0.10.12':
     dependencies:
-      '@pkmn/dex-types': 0.10.11
+      '@pkmn/dex-types': 0.10.12
 
   '@pkmn/sets@5.2.0':
     dependencies:
@@ -7723,6 +7733,8 @@ snapshots:
   '@pkmn/streams@1.1.0': {}
 
   '@pkmn/types@4.0.0': {}
+
+  '@pkmn/types@5.0.0': {}
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
 

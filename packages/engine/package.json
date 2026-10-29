@@ -36,7 +36,7 @@
     "rand": "0.0.4"
   },
   "devDependencies": {
-    "@pkmn/mods": "0.10.11",
+    "@pkmn/mods": "0.10.12",
     "@pkmn/sim": "catalog:",
     "@poketistix/data": "workspace:*",
     "@types/node": "catalog:",
