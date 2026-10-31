@@ -342,6 +342,24 @@
         "role": "役割・アーキタイプ"
       }
     },
+    "videoImport": {
+      "button": "動画から棋譜解析",
+      "title": "動画から棋譜・戦績を自動解析",
+      "dropPrompt": "対戦動画ファイル（MP4 / WebM / MOV）をドラッグ＆ドロップ、またはクリックして選択",
+      "selectFile": "動画ファイルを選択",
+      "changeFile": "別の動画を選択",
+      "startAnalysis": "棋譜を自動抽出する",
+      "initializing": "動画デコーダーおよび解析エンジンを初期化中...",
+      "analyzing": "動画を走査中... ({{current}}秒 / {{total}}秒・{{turns}}ターン検出)",
+      "pbnLabel": "PBN (Pokémon Battle Notation) 棋譜テキスト",
+      "reviewListTitle": "タイムスタンプ付きイベント・要確認箇所",
+      "reviewEmpty": "動画を解析するか PBN を入力すると、ここにタイムスタンプ付きイベントが表示されます。",
+      "needsReviewBadge": "要確認",
+      "jumpToTime": "動画の該当箇所へシーク",
+      "jumpToTurn": "ターンへジャンプ",
+      "applyToForm": "戦績フォームへ反映して確認",
+      "analysisFailed": "動画の解析中にエラーが発生しました。"
+    },
     "analytics": {
       "title": "勝率インサイト",
       "backToRecords": "記録一覧",

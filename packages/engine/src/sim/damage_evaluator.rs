@@ -23,6 +23,34 @@ impl<'a> DamageEvaluator<'a> {
         is_spread: bool,
         hit_index: u32,
     ) -> (i32, Option<String>, bool) {
+        let (dmg, _, absorbed, is_crit) = self.evaluate_internal(
+            move_id,
+            player,
+            slot,
+            target_player,
+            target_slot,
+            is_spread,
+            hit_index,
+            false,
+        );
+        (dmg, absorbed, is_crit)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_internal(
+        &self,
+        raw_move_id: &str,
+        player: u8,
+        slot: u8,
+        target_player: u8,
+        target_slot: u8,
+        is_spread: bool,
+        hit_index: u32,
+        deterministic_range: bool,
+    ) -> (i32, i32, Option<String>, bool) {
+        let norm_move_id = raw_move_id.replace('-', "").to_lowercase();
+        let move_id = norm_move_id.as_str();
+
         let attacker = if player == 1 {
             self.battle.p1.active.get(slot as usize)
         } else {
@@ -34,25 +62,26 @@ impl<'a> DamageEvaluator<'a> {
             self.battle.p2.active.get(target_slot as usize)
         };
         if attacker.is_none() || defender.is_none() {
-            return (0, None, false);
+            return (0, 0, None, false);
         }
         let (attacker, defender) = (attacker.unwrap(), defender.unwrap());
 
         if move_id == "splash" || move_id == "teleport" {
-            return (0, None, false);
+            return (0, 0, None, false);
         }
 
         if ["fissure", "guillotine", "horndrill", "sheercold"].contains(&move_id) {
-            return (defender.maxhp.into_inner(), None, false);
+            let mhp = defender.maxhp.into_inner();
+            return (mhp, mhp, None, false);
         }
 
         if move_id == "seismictoss" || move_id == "nightshade" {
-            return (50, None, false);
+            return (50, 50, None, false);
         }
 
         if move_id == "superfang" {
             let dmg = std::cmp::max(1, defender.hp.into_inner() / 2);
-            return (dmg, None, false);
+            return (dmg, dmg, None, false);
         }
 
         if move_id == "counter"
@@ -83,13 +112,10 @@ impl<'a> DamageEvaluator<'a> {
                 } else {
                     2.0
                 };
-                return (
-                    (last_damage as f64 * multiplier).floor() as i32,
-                    None,
-                    false,
-                );
+                let d = (last_damage as f64 * multiplier).floor() as i32;
+                return (d, d, None, false);
             }
-            return (0, None, false); // Fail if no valid damage taken
+            return (0, 0, None, false); // Fail if no valid damage taken
         }
 
         let mut base_power = 0;
@@ -582,19 +608,23 @@ impl<'a> DamageEvaluator<'a> {
             _ => 1,
         };
 
-        let mut rng = rand::rng();
-        let mut is_crit = if let Some(config) = &self.battle.rng_config {
-            if let Some(crits) = &config.crits {
-                match crits.as_str() {
-                    "always" => true,
-                    "never" => false,
-                    _ => rng.random_range(0..crit_prob) == 0,
+        let mut is_crit = if deterministic_range {
+            crit_prob == 1
+        } else {
+            let mut rng = rand::rng();
+            if let Some(config) = &self.battle.rng_config {
+                if let Some(crits) = &config.crits {
+                    match crits.as_str() {
+                        "always" => true,
+                        "never" => false,
+                        _ => rng.random_range(0..crit_prob) == 0,
+                    }
+                } else {
+                    rng.random_range(0..crit_prob) == 0
                 }
             } else {
                 rng.random_range(0..crit_prob) == 0
             }
-        } else {
-            rng.random_range(0..crit_prob) == 0
         };
 
         if [
@@ -1447,6 +1477,20 @@ impl<'a> DamageEvaluator<'a> {
 
         let output = calculate_input(&input);
 
+        let mut absorbed_by = None;
+        if input.immune_override == Some(true) {
+            absorbed_by = defender.ability.as_ref().map(|a| a.to_string());
+        }
+
+        if deterministic_range {
+            return (
+                output.min as i32,
+                output.max as i32,
+                absorbed_by,
+                input.is_crit,
+            );
+        }
+
         let mut rng = rand::rng();
         let roll_index = if let Some(config) = &self.battle.rng_config {
             if let Some(damage_roll) = &config.damage_roll {
@@ -1462,13 +1506,9 @@ impl<'a> DamageEvaluator<'a> {
             rng.random_range(0..16)
         };
 
-        let roll = output.rolls.get(roll_index as usize).unwrap_or(&0);
-        let mut absorbed_by = None;
-        if input.immune_override == Some(true) {
-            absorbed_by = defender.ability.as_ref().map(|a| a.to_string());
-        }
+        let roll = *output.rolls.get(roll_index as usize).unwrap_or(&0) as i32;
 
-        (*roll as i32, absorbed_by, input.is_crit)
+        (roll, roll, absorbed_by, input.is_crit)
     }
 
     /// Evaluates minimum and maximum damage rolls directly without PRNG sampling.
@@ -1483,7 +1523,7 @@ impl<'a> DamageEvaluator<'a> {
         target_slot: u8,
         is_spread: bool,
     ) -> (i32, i32) {
-        let (dmg, _, _) = self.evaluate(
+        let (min_dmg, max_dmg, _, _) = self.evaluate_internal(
             move_id,
             player,
             slot,
@@ -1491,9 +1531,8 @@ impl<'a> DamageEvaluator<'a> {
             target_slot,
             is_spread,
             0,
+            true,
         );
-        let min_dmg = (dmg as f64 * 0.85).floor() as i32;
-        let max_dmg = dmg;
         (min_dmg, max_dmg)
     }
 

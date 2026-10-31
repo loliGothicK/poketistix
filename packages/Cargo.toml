@@ -1,5 +1,5 @@
 [workspace]
-members = ["damage-calc", "data", "engine", "pkmn-meta"]
+members = ["damage-calc", "data", "engine", "kifu", "pkmn-meta"]
 resolver = "2"
 
 [profile.release]
