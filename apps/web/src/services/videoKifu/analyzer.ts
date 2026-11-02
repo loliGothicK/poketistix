@@ -4,7 +4,7 @@ import { abilityById } from "@/data/abilities";
 import { itemById } from "@/data/items";
 import { moveById } from "@/data/moves";
 import { BattleLogParser } from "@/services/battleLogParser";
-import { approxFind, fuzzyMatchEntity } from "@/services/ocrText";
+import { approxFind, fuzzyMatchEntity, normalizeOcrToken } from "@/services/ocrText";
 import type {
   AnalyzeBattleVideoOptions,
   NormalizedRect,
@@ -518,7 +518,7 @@ export class VideoKifuAnalyzer {
           "message",
         );
         if (panelText) {
-          const key = panelText.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const key = normalizeOcrToken(panelText);
           const activeSlot = currentActiveSlot ?? lastActiveP1Slot;
           const slotsToCheck =
             activeSlot === "p1b" ? (["p1b", "p1a"] as const) : (["p1a", "p1b"] as const);
@@ -534,11 +534,20 @@ export class VideoKifuAnalyzer {
               if (moveId === null) continue;
               const move = moveById.get(moveId);
               if (!move) continue;
-              const moveToken = move.identifier.toLowerCase().replace(/[^a-z0-9]/g, "");
-              if (
-                moveToken.length >= 4 &&
-                (key.includes(moveToken) || approxFind(key, moveToken).score >= 0.75)
-              ) {
+              const candidateTokens = [
+                normalizeOcrToken(move.identifier),
+                ...dictionaries.moves
+                  .filter((e) => e.slug === move.identifier)
+                  .map((e) => normalizeOcrToken(e.alias)),
+              ].filter((t) => t.length >= 2);
+              const hit = candidateTokens.some((moveToken) => {
+                const minLen = /^[a-z0-9]+$/.test(moveToken) ? 4 : 2;
+                return (
+                  moveToken.length >= minLen &&
+                  (key.includes(moveToken) || approxFind(key, moveToken).score >= 0.75)
+                );
+              });
+              if (hit) {
                 logParser.setDeclaredMove(slot, move.identifier);
                 matched = true;
                 break;
@@ -719,20 +728,27 @@ export class VideoKifuAnalyzer {
 
         if (rawMsg) {
           const lower = rawMsg.toLowerCase();
+          const normMsg = normalizeOcrToken(rawMsg);
+          const isActionMessage =
+            /\b(used|sent out|go!|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
+              rawMsg,
+            ) ||
+            /使った|繰り出した|ゆけっ|戻れ|引っこめた|たおれた|反応した|メガシンカした/u.test(
+              normMsg,
+            );
           const isMenuPrompt =
             /what will|select a move|select a target|fight|pokémon|run|bag|move info/i.test(
               rawMsg,
             ) ||
+            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(normMsg) ||
             (!logParser.currentTurnHasMove() &&
               (frame.commandTimerVisible ||
                 frame.phase === "MoveSelect" ||
                 frame.phase === "CommandSelect" ||
                 frame.activeP1Slot !== null) &&
-              !/\b(used|sent out|go!|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
-                rawMsg,
-              ));
+              !isActionMessage);
 
-          const ratingMatch = /rating[:\s]*([0-9,]+\.[0-9]+)/i.exec(rawMsg);
+          const ratingMatch = /(?:rating|レート)[:\s：]*([0-9,]+\.[0-9]+|[0-9]{4})/iu.exec(rawMsg);
           if (ratingMatch?.[1]) {
             const parsed = Number.parseFloat(ratingMatch[1].replace(/,/g, ""));
             if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 3000) {
@@ -740,14 +756,22 @@ export class VideoKifuAnalyzer {
             }
           }
 
-          if (lower.includes("you defeated") || lower.includes("forfeit")) {
+          if (
+            lower.includes("you defeated") ||
+            lower.includes("forfeit") ||
+            normMsg.includes("勝負に勝った") ||
+            normMsg.includes("降参が選ばれました")
+          ) {
             matchResult = "WIN";
-          } else if (lower.includes("you lost")) {
+          } else if (lower.includes("you lost") || normMsg.includes("勝負に負けた")) {
             matchResult = "LOSS";
           }
 
           if (!isMenuPrompt) {
-            if (/\b(used|sent out|go!|withdrew|come back|fainted)\b/i.test(rawMsg)) {
+            if (
+              /\b(used|sent out|go!|withdrew|come back|fainted)\b/i.test(rawMsg) ||
+              /使った|繰り出した|ゆけっ|戻れ|引っこめた|たおれた/u.test(normMsg)
+            ) {
               flushPendingDamages(timestampMs);
             }
             if (logParser.feedMessage(rawMsg, timestampMs)) {
