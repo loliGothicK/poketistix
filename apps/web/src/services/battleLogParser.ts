@@ -94,6 +94,7 @@ interface TurnStateSnapshot {
   readonly p2b: SlotStateSnapshot;
   readonly ownHpByTeamIdx: Record<number, string>;
   readonly oppHpBySlug: Record<string, string>;
+  readonly ownMegaSlugByTeamIdx: Record<number, string>;
   readonly faintedOwnIndices: number[];
   readonly faintedOppSlugs: string[];
   readonly observedOppSlugs: string[];
@@ -143,9 +144,14 @@ export function isMultiTargetMove(moveSlug: string): boolean {
 const reverse = (s: string): string => Array.from(s).reverse().join("");
 
 const nameVariants = (name: string): string[] => {
+  const cleanForm = name
+    .replace(/[（(].*?[)）]/g, "")
+    .replace(/^メガ/u, "")
+    .replace(/^Mega\s+/i, "")
+    .trim();
   const full = normalizeOcrToken(name);
-  const base = normalizeOcrToken(name.split("-")[0] ?? name);
-  const res = base.length >= 4 && base !== full ? [full, base] : [full];
+  const base = normalizeOcrToken((cleanForm.split("-")[0] ?? cleanForm) || name);
+  const res = base.length >= 2 && base !== full ? [full, base] : [full];
   if (full.length >= 7) res.push(full.slice(1));
   if (base.length >= 7 && base !== full) res.push(base.slice(1));
   return res;
@@ -201,6 +207,9 @@ export class BattleLogParser {
   /** 相手ポケモンごとの最新状態異常（キー: slug, "slp", "par" 等） */
   private readonly lastKnownOppStatus: Record<string, string | null> = {};
   private readonly megaStone: Partial<Record<SlotIdent, string>> = {};
+  private readonly ownMegaSlugByTeamIdx = new Map<number, string>();
+  private readonly oppMegaSlugByBase = new Map<string, string>();
+  private pendingCompoundSlots: { slots: SlotIdent[]; t: number } | null = null;
   private readonly leadEvents: LogEvent[] = [];
   private readonly turns: TurnRecord[] = [];
   private weather = "None";
@@ -354,6 +363,7 @@ export class BattleLogParser {
       p2b: snapshotSlot("p2b"),
       ownHpByTeamIdx: { ...this.lastKnownOwnHp },
       oppHpBySlug: { ...this.lastKnownOppHp },
+      ownMegaSlugByTeamIdx: Object.fromEntries(this.ownMegaSlugByTeamIdx),
       faintedOwnIndices: Array.from(this.faintedOwnTeamIndices),
       faintedOppSlugs: Array.from(this.faintedOppSlugs),
       observedOppSlugs: Array.from(this.observedOppSlugs),
@@ -465,7 +475,11 @@ export class BattleLogParser {
     const partsJa = /^(?:相手の\s*)?(.*?)(?:の)\s*(\S.*)$/u.exec(text);
     const parts = partsEn ?? partsJa;
     const ownerPart = parts?.[1] ?? lines[0] ?? text;
-    const bannerPart = parts?.[2] ?? (lines.length >= 2 ? lines[lines.length - 1] : null) ?? "";
+    const bannerPart =
+      (parts?.[2] && normalizeOcrToken(parts[2]).length >= 3 ? parts[2] : null) ??
+      (lines.length >= 2 ? lines[lines.length - 1] : null) ??
+      parts?.[2] ??
+      "";
 
     // 1. 特性（ability）との照合
     let ability = bannerPart
@@ -541,6 +555,21 @@ export class BattleLogParser {
     }
     this.lastMessageKey = "";
     return true;
+  }
+
+  /** 次のメッセージ処理前に保留中のHUDダメージを確定すべきかを判定する */
+  shouldFlushPendingDamages(raw: string): boolean {
+    const text = raw.replace(/\s+/g, " ").trim();
+    const key = normalizeOcrToken(text);
+    if (key.length < 4) return false;
+    return this.patternSets.some(
+      (p) =>
+        p.matchMoveUsed(text, key) !== null ||
+        p.matchWithdraw(text, key) ||
+        p.matchSentOut(text, key) !== null ||
+        p.matchGo(text, key) !== null ||
+        p.faintedPhrases.some((ph) => approxFind(key, ph).score >= 0.85),
+    );
   }
 
   /** メッセージ枠の OCR 結果を投入する */
@@ -643,6 +672,12 @@ export class BattleLogParser {
       }
       if (isStatChange) {
         this.lastStatChanged = statsKey;
+      }
+      this.pendingCompoundSlots = null;
+    } else if (/と|and/i.test(text)) {
+      const compSlots = this.resolveSlots(key);
+      if (compSlots.length >= 2) {
+        this.pendingCompoundSlots = { slots: compSlots, t: timestampMs };
       }
     }
     return handled;
@@ -766,7 +801,8 @@ export class BattleLogParser {
       const maxHp = this.options.p1MaxHp(idx);
       const hp = snap.ownHpByTeamIdx[idx] ?? `${maxHp}/${maxHp}`;
       const bStatus = this.lastKnownOwnStatus[idx] ?? null;
-      p1BenchParts.push(formatMon(member.identifier, hp, isFnt, bStatus));
+      const displaySlug = snap.ownMegaSlugByTeamIdx[idx] ?? member.identifier;
+      p1BenchParts.push(formatMon(displaySlug, hp, isFnt, bStatus));
     }
 
     // P2 Active
@@ -842,6 +878,7 @@ export class BattleLogParser {
           i++;
         }
 
+        const switchSlots = new Set(switchEvents.map((e) => e.args[0] ?? ""));
         const abilityEvents: LogEvent[] = [];
         const boostEvents: LogEvent[] = [];
         const fieldEventsBySlot = new Map<string, LogEvent[]>();
@@ -850,8 +887,12 @@ export class BattleLogParser {
         while (i < events.length) {
           const next = events[i]!;
           if (next.verb === "ability") {
+            const abSlot = next.args[0] ?? "";
+            if (!switchSlots.has(abSlot)) {
+              break;
+            }
             abilityEvents.push(next);
-            lastAbilitySlot = next.args[0] ?? null;
+            lastAbilitySlot = abSlot;
             i++;
           } else if (next.verb === "boost") {
             boostEvents.push(next);
@@ -1045,7 +1086,11 @@ export class BattleLogParser {
             events[i]!.verb === "weather" ||
             events[i]!.verb === "side")
         ) {
-          fieldSubEvents.push(events[i]!);
+          const fEv = events[i]!;
+          if ((fEv.verb === "weather" || fEv.verb === "terrain") && fEv.args[0] === "None") {
+            break;
+          }
+          fieldSubEvents.push(fEv);
           i++;
         }
 
@@ -1435,15 +1480,66 @@ export class BattleLogParser {
 
   /** 正規化済みテキスト中に名前が現れる場内ポケモンのスロット（出現位置順） */
   private resolveSlots(textKey: string, candidates: readonly SlotIdent[] = SLOTS): SlotIdent[] {
+    const hasP1 = candidates.some((s) => s.startsWith("p1"));
+    const hasP2 = candidates.some((s) => s.startsWith("p2"));
+    const hasBothSides = hasP1 && hasP2;
+    const keyChars = Array.from(textKey);
+
+    const isPrecededByOpposing = (endIdx: number, nameLen: number): boolean => {
+      const startIdx = Math.max(0, endIdx - nameLen);
+      const prefix = keyChars.slice(Math.max(0, startIdx - 14), startIdx + 1).join("");
+      return (
+        prefix.includes("相手") ||
+        this.patternSets.some((p) =>
+          p.opposingPrefixes.some((op) => approxFind(prefix, op).score >= 0.8),
+        )
+      );
+    };
+
     const found: { slot: SlotIdent; end: number }[] = [];
     for (const slot of candidates) {
       const mon = this.slots[slot];
       if (!mon) continue;
+      const isSlotOpposing = slot.startsWith("p2");
+      const baseSlug = mon.slug.replace(/-mega.*$|-eternal$/, "").split("-")[0] ?? mon.slug;
+      const mirrorOnOtherSide =
+        hasBothSides &&
+        (isSlotOpposing ? OWN_SLOTS : OPP_SLOTS).some((other) => {
+          const otherMon = this.slots[other];
+          if (!otherMon) return false;
+          const otherBase =
+            otherMon.slug.replace(/-mega.*$|-eternal$/, "").split("-")[0] ?? otherMon.slug;
+          return otherBase === baseSlug;
+        });
+
       let best: { score: number; end: number } | null = null;
       for (const name of mon.names) {
-        const m = approxFind(textKey, name);
-        const needed = name.length <= 4 ? 1 : NAME_THRESHOLD;
-        if (m.score >= needed && (!best || m.score > best.score)) best = m;
+        const isAscii = /^[a-z0-9]+$/.test(name);
+        const nameLen = Array.from(name).length;
+        const needed = isAscii
+          ? name.length <= 4
+            ? 1
+            : NAME_THRESHOLD
+          : nameLen <= 2
+            ? 1
+            : NAME_THRESHOLD;
+
+        let offset = 0;
+        while (offset < keyChars.length) {
+          const subKey = keyChars.slice(offset).join("");
+          const m = approxFind(subKey, name);
+          if (m.score < needed || m.end <= 0) break;
+          const globalEnd = offset + m.end;
+          const oppPrefixed = hasBothSides && isPrecededByOpposing(globalEnd, nameLen);
+          const sideMismatch =
+            hasBothSides &&
+            ((!isSlotOpposing && oppPrefixed) ||
+              (isSlotOpposing && !oppPrefixed && mirrorOnOtherSide));
+          if (!sideMismatch && (!best || m.score > best.score)) {
+            best = { score: m.score, end: globalEnd };
+          }
+          offset = globalEnd;
+        }
       }
       if (best) found.push({ slot, end: best.end });
     }
@@ -1499,7 +1595,8 @@ export class BattleLogParser {
     for (const entry of this.options.dictionaries.items) {
       for (const candidate of [entry.alias, entry.slug]) {
         const name = normalizeOcrToken(candidate);
-        if (name.length < 5) continue;
+        const minLen = /^[a-z0-9]+$/.test(name) ? 5 : 4;
+        if (Array.from(name).length < minLen) continue;
         const { score } = approxFind(textKey, name);
         if (score < 0.85) continue;
         if (!best || score > best.score || (score === best.score && name.length > best.length)) {
@@ -1524,7 +1621,14 @@ export class BattleLogParser {
     const matched = this.patternSets.some((p) => p.matchWithdraw(text, key));
     if (!matched) return false;
 
-    const slots = this.resolveSlots(key);
+    const isOppWithdraw =
+      approxFind(key, normalizeOcrToken("引っこめた")).score >= 0.8 ||
+      approxFind(key, "withdrew").score >= 0.8;
+    const isOwnWithdraw =
+      approxFind(key, normalizeOcrToken("戻れ")).score >= 0.8 ||
+      approxFind(key, "comeback").score >= 0.8;
+    const candidates = isOppWithdraw ? OPP_SLOTS : isOwnWithdraw ? OWN_SLOTS : SLOTS;
+    const slots = this.resolveSlots(key, candidates);
     const slot = slots[0];
     if (slot) {
       this.pendingWithdrawSlot = slot;
@@ -1583,13 +1687,16 @@ export class BattleLogParser {
   }
 
   private placeOpponent(slot: SlotIdent, rawSlug: string, t: number, confidence: number): void {
-    const slug = rawSlug.replace(/-mega(-[xyz])?$/, "");
+    const baseSlug = rawSlug.replace(/-mega(-[xyz])?$/, "");
+    const slug =
+      this.oppMegaSlugByBase.get(baseSlug) ?? this.oppMegaSlugByBase.get(rawSlug) ?? baseSlug;
     const current = this.slots[slot];
     if (current?.slug === slug && !this.fainted[slot]) return;
     const other = OPP_SLOTS.find((s) => s !== slot);
     if (other && this.slots[other]?.slug === slug && !this.fainted[other]) return;
 
-    let idx = this.options.p2Roster.indexOf(slug);
+    let idx = this.options.p2Roster.indexOf(baseSlug);
+    if (idx < 0) idx = this.options.p2Roster.indexOf(slug);
     if (idx < 0) {
       if (this.options.p2Roster.length >= 6) {
         // すでに6体存在する場合、まだ場に出ていない未選出枠を探して置換
@@ -1604,24 +1711,32 @@ export class BattleLogParser {
         }
         const replaceIdx = this.options.p2Roster.findIndex((s) => !activeSlugs.has(s));
         if (replaceIdx >= 0) {
-          this.options.p2Roster[replaceIdx] = slug;
+          this.options.p2Roster[replaceIdx] = baseSlug;
           idx = replaceIdx;
         } else {
           idx = 0;
         }
       } else {
-        this.options.p2Roster.push(slug);
+        this.options.p2Roster.push(baseSlug);
         idx = this.options.p2Roster.length - 1;
       }
     }
-    this.slots[slot] = { slug, teamIdx: idx, names: this.speciesAliases(slug) };
-    this.statusCondition[slot] = this.lastKnownOppStatus[slug] ?? null;
+    this.slots[slot] = {
+      slug,
+      teamIdx: idx,
+      names: Array.from(new Set([...this.speciesAliases(baseSlug), ...this.speciesAliases(slug)])),
+    };
+    this.statusCondition[slot] =
+      this.lastKnownOppStatus[slug] ?? this.lastKnownOppStatus[baseSlug] ?? null;
     this.volatileStatus[slot] = {};
     this.statStages[slot] = {};
     this.pendingPerishFaint.delete(slot);
+    if (slug !== baseSlug) {
+      this.observedOppSlugs.delete(baseSlug);
+    }
     this.observedOppSlugs.add(slug);
     this.fainted[slot] = false;
-    const hpStr = this.lastKnownOppHp[slug] ?? "100%";
+    const hpStr = this.lastKnownOppHp[slug] ?? this.lastKnownOppHp[baseSlug] ?? "100%";
     this.currentHp[slot] = hpStr;
     this.lastKnownOppHp[slug] = hpStr;
     this.emit("switch", [slot, slug, hpStr], t, confidence, {
@@ -1673,7 +1788,14 @@ export class BattleLogParser {
     const seenBefore = this.observedOwnIndices.includes(teamIdx);
     if (!seenBefore) this.observedOwnIndices.push(teamIdx);
 
-    this.slots[slot] = { slug: member.slug, teamIdx, names: this.speciesAliases(member.slug) };
+    const activeSlug = this.ownMegaSlugByTeamIdx.get(teamIdx) ?? member.slug;
+    this.slots[slot] = {
+      slug: activeSlug,
+      teamIdx,
+      names: Array.from(
+        new Set([...this.speciesAliases(member.slug), ...this.speciesAliases(activeSlug)]),
+      ),
+    };
     this.statusCondition[slot] = this.lastKnownOwnStatus[teamIdx] ?? null;
     this.volatileStatus[slot] = {};
     this.statStages[slot] = {};
@@ -1694,10 +1816,10 @@ export class BattleLogParser {
 
     this.currentHp[slot] = hpStr;
     this.lastKnownOwnHp[teamIdx] = hpStr;
-    this.emit("switch", [slot, member.slug, hpStr], t, 1, {
+    this.emit("switch", [slot, activeSlug, hpStr], t, 1, {
       review: guessedSlot,
     });
-    if (!wasFainted && this.currentTurn()) this.setAction(slot, `switch ${member.slug}`);
+    if (!wasFainted && this.currentTurn()) this.setAction(slot, `switch ${activeSlug}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -1739,7 +1861,7 @@ export class BattleLogParser {
     const mon = slot ? this.slots[slot] : null;
     if (!slot || !mon) return false;
 
-    const baseSlug = mon.slug.replace(/-mega.*$/, "");
+    const baseSlug = mon.slug.replace(/-mega.*$|-eternal$/, "");
     let megaSlug = `${baseSlug}-mega`;
 
     const stone =
@@ -1754,12 +1876,29 @@ export class BattleLogParser {
     }
 
     const ev = this.emit("mega", [slot, megaSlug], t, 0.98, { review: false, unique: true });
+    const prevSlug = mon.slug;
     if (this.slots[slot]) {
       this.slots[slot] = {
         ...this.slots[slot]!,
         slug: megaSlug,
-        names: this.speciesAliases(megaSlug),
+        names: Array.from(new Set([...this.slots[slot]!.names, ...this.speciesAliases(megaSlug)])),
       };
+    }
+    if (slot === "p1a" || slot === "p1b") {
+      this.ownMegaSlugByTeamIdx.set(mon.teamIdx, megaSlug);
+    } else {
+      this.oppMegaSlugByBase.set(prevSlug, megaSlug);
+      this.oppMegaSlugByBase.set(baseSlug, megaSlug);
+      if (this.observedOppSlugs.has(prevSlug)) {
+        this.observedOppSlugs.delete(prevSlug);
+        this.observedOppSlugs.add(megaSlug);
+      }
+      if (this.lastKnownOppHp[prevSlug] !== undefined) {
+        this.lastKnownOppHp[megaSlug] = this.lastKnownOppHp[prevSlug]!;
+      }
+      if (this.lastKnownOppStatus[prevSlug] !== undefined) {
+        this.lastKnownOppStatus[megaSlug] = this.lastKnownOppStatus[prevSlug]!;
+      }
     }
     const turn = this.currentTurn();
     if (ev && turn && (slot === "p1a" || slot === "p1b")) turn.mega[slot] = true;
@@ -1783,13 +1922,11 @@ export class BattleLogParser {
     }
     if (!match) return false;
 
-    const cleanMovePart = match.movePart.replace(/[!！|].*$/, "").trim() || match.movePart;
-    const move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
-    if (!move || move.confidence < 72) return false;
-
     const head = normalizeOcrToken(match.actorPart);
+    const actorKey = head.replace(/^(?:相手の|相手|theopposing)/i, "");
+    if (!actorKey) return false;
     const isOpposing =
-      match.isOpposing ??
+      Boolean(match.isOpposing) ||
       this.patternSets.some((p) =>
         p.opposingPrefixes.some((prefix) => approxFind(head, prefix).score >= 0.8),
       );
@@ -1798,6 +1935,10 @@ export class BattleLogParser {
     const fallback = candidates.find((s) => this.slots[s] !== null);
     const slot = matched[0] ?? fallback;
     if (!slot) return false;
+
+    const cleanMovePart = match.movePart.replace(/[!！/7|"'”’].*$/, "").trim() || match.movePart;
+    const move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
+    if (!move || move.confidence < 72) return false;
 
     this.pendingCrit = false;
     const ev = this.emit("move", [slot, move.slug], t, move.confidence / 100, {
@@ -2437,7 +2578,10 @@ export class BattleLogParser {
           beforeToken && rawAfterToken
             ? this.parseHpValue(beforeToken) - this.parseHpValue(rawAfterToken)
             : 1;
-        if (drop > maxResidualDrop) {
+        const prevEv = i > 0 ? events[i - 1] : undefined;
+        const precededByMatchingItem =
+          prevEv?.verb === "item" && prevEv.args[0] === slot && prevEv.args[1] === matchedEffect;
+        if (drop > maxResidualDrop && !precededByMatchingItem) {
           break;
         }
         ev.bracket = matchedEffect;
@@ -2665,6 +2809,25 @@ export class BattleLogParser {
 
       const zeroHp = this.formatHp(slot, "0%") ?? "0%";
       const prevHp = this.currentHp[slot];
+      const isZero = (s: string | null) => s === "0%" || (s !== null && s.startsWith("0/"));
+
+      if (this.pendingPerishFaint.has(slot)) {
+        this.pendingPerishFaint.delete(slot);
+        this.currentHp[slot] = zeroHp;
+        if (mon) {
+          if (slot.startsWith("p1")) {
+            this.lastKnownOwnHp[mon.teamIdx] = zeroHp;
+          } else {
+            this.lastKnownOppHp[mon.slug] = zeroHp;
+          }
+        }
+        this.emit("faint", [slot], t, 0.98, { review: false });
+        continue;
+      }
+
+      if (prevHp && !isZero(prevHp)) {
+        this.feedDamage(slot, prevHp, "0%", prevHp, t);
+      }
       this.currentHp[slot] = zeroHp;
       if (mon) {
         if (slot.startsWith("p1")) {
@@ -2672,17 +2835,6 @@ export class BattleLogParser {
         } else {
           this.lastKnownOppHp[mon.slug] = zeroHp;
         }
-      }
-
-      if (this.pendingPerishFaint.has(slot)) {
-        this.pendingPerishFaint.delete(slot);
-        this.emit("faint", [slot], t, 0.98, { review: false });
-        continue;
-      }
-
-      const isZero = (s: string | null) => s === "0%" || (s !== null && s.startsWith("0/"));
-      if (prevHp && !isZero(prevHp)) {
-        this.feedDamage(slot, prevHp, "0%", prevHp, t);
       }
       this.emit("faint", [slot], t, 0.98, { review: false });
     }
@@ -2863,7 +3015,10 @@ export class BattleLogParser {
 
     // スロットの特定
     const slots = this.resolveSlots(key.slice(0, Math.max(0, matchEnd - matchedPhrase.length)));
-    const slot = slots[0] ?? this.resolveSlots(key)[0];
+    const slot =
+      slots[0] ??
+      this.resolveSlots(key)[0] ??
+      SLOTS.find((s) => Boolean(this.recentHealWithoutBracket[s]));
     if (!slot || !this.slots[slot]) return false;
 
     const mon = this.slots[slot]!;
@@ -2894,8 +3049,14 @@ export class BattleLogParser {
     }
 
     // 原因（effect）の判定: 先行する持ち物バナー (pendingHealBracket) > 定型文テンプレート > メッセージ内アイテム名
+    const resolvedTemplateEffect =
+      matchedEffect === "grassy-terrain"
+        ? this.terrain === "Grassy" && !this.healedFromTerrainThisTurn[slot]
+          ? "grassy-terrain"
+          : undefined
+        : matchedEffect;
     const effect =
-      this.pendingHealBracket[slot] ?? matchedEffect ?? this.resolveItem(key) ?? undefined;
+      this.pendingHealBracket[slot] ?? resolvedTemplateEffect ?? this.resolveItem(key) ?? undefined;
     const effectBracket = effect || undefined;
 
     // 1. 直前に先行して発生した HP 回復（bracket 未確定）があれば、それに bracket を付与
@@ -2961,6 +3122,9 @@ export class BattleLogParser {
             : Math.max(1, Math.floor(maxHp / 16));
         const afterHp = `${Math.min(maxHp, curr + healAmt)}/${maxHp}`;
         if (afterHp !== beforeHp) {
+          if (effectBracket === "grassy-terrain") {
+            this.healedFromTerrainThisTurn[slot] = true;
+          }
           this.feedHeal(slot, beforeHp, afterHp, `${healAmt}`, t, { effect: effectBracket });
           return true;
         }
@@ -2982,12 +3146,21 @@ export class BattleLogParser {
     )
       return true;
 
-    let bestSuffix: { suffix: string; delta: number; end: number; score: number } | null = null;
+    let bestSuffix: {
+      suffix: string;
+      delta: number;
+      end: number;
+      score: number;
+      effectiveScore: number;
+    } | null = null;
     for (const p of this.patternSets) {
       for (const { suffix, delta } of p.statChanges) {
         const { score, end } = approxFind(reverse(key), reverse(suffix), true);
-        if (score >= 0.75 && (!bestSuffix || score > bestSuffix.score)) {
-          bestSuffix = { suffix, delta, end, score };
+        if (score < 0.75) continue;
+        const suffixLen = Array.from(suffix).length;
+        const effectiveScore = suffixLen >= 6 && score >= 0.84 ? score + 0.2 : score;
+        if (!bestSuffix || effectiveScore > bestSuffix.effectiveScore) {
+          bestSuffix = { suffix, delta, end, score, effectiveScore };
         }
       }
     }
@@ -3007,7 +3180,15 @@ export class BattleLogParser {
     if (statsFound.length === 0) return false;
 
     const head = key.slice(0, Math.max(0, key.length - bestSuffix.end));
-    const slots = this.resolveSlots(head);
+    let slots = this.resolveSlots(head);
+    if (
+      this.pendingCompoundSlots &&
+      t - this.pendingCompoundSlots.t <= 3000 &&
+      slots.some((s) => this.pendingCompoundSlots!.slots.includes(s))
+    ) {
+      slots = Array.from(new Set([...this.pendingCompoundSlots.slots, ...slots]));
+      this.pendingCompoundSlots = null;
+    }
     if (slots.length === 0) return false;
 
     const deltaStr = bestSuffix.delta > 0 ? `+${bestSuffix.delta}` : `${bestSuffix.delta}`;
@@ -3048,7 +3229,8 @@ function renderAbilityBlocks(
 
     while (
       currentAbilityIdx < abilityEvents.length - 1 &&
-      abilityTargetMaps[currentAbilityIdx]!.targetMap.get(target)?.includes(effect)
+      (abilityEvents[currentAbilityIdx + 1]!.t <= boost.t ||
+        abilityTargetMaps[currentAbilityIdx]!.targetMap.get(target)?.includes(effect))
     ) {
       currentAbilityIdx++;
     }

@@ -49,7 +49,7 @@ export const DEFAULT_CHAMPIONS_ROI_LAYOUT: ChampionsRoiLayout = {
     from1080p(1621, 119, 220, 4),
   ],
   p1HpNumbers: [from1080p(250, 1014, 88, 28), from1080p(646, 1014, 88, 28)],
-  messageBox: from1080p(295, 785, 1195, 80),
+  messageBox: from1080p(295, 780, 1195, 140),
   p1AbilityBanner: from1080p(145, 385, 265, 115),
   p2AbilityBanner: from1080p(1510, 385, 265, 115),
   weatherFieldBadge: from1080p(320, 45, 540, 50),

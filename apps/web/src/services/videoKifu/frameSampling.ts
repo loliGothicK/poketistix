@@ -28,11 +28,17 @@ export const sampleRgba = (
 export const isP1BlueHeader = (r: number, g: number, b: number): boolean =>
   b >= 190 && b > r + 40 && b > g + 50 && r >= 80 && g >= 75;
 
+export const isDimmedP1BlueHeader = (r: number, g: number, b: number): boolean =>
+  b >= 120 && b > r + 60 && b > g + 80;
+
 export const isP2MagentaHeader = (r: number, g: number, b: number): boolean =>
   r >= 165 && g <= 95 && b >= 90 && b <= 180 && r > g + 80;
 
 export const isLimeHighlight = (r: number, g: number, b: number): boolean =>
   g >= 225 && r >= 135 && b <= 105;
+
+export const isDimmedLimeHighlight = (r: number, g: number, b: number): boolean =>
+  g >= 185 && r >= 130 && b <= 90 && g > b + 100;
 
 export const measureHpBar = (
   rgba: Uint8ClampedArray | Uint8Array,
@@ -169,18 +175,25 @@ export function analyzeVideoFrameRgba(
     const ySample = (200 + i * 126) / 1080;
     const yPrepSample = (219 + i * 126) / 1080;
     const [lr, lg, lb] = sampleRgba(rgba, width, height, 200 / 1920, ySample);
+    const [ldr, ldg, ldb] = sampleRgba(rgba, width, height, 480 / 1920, ySample);
     const [lpr, lpg, lpb] = sampleRgba(rgba, width, height, 430 / 1920, yPrepSample);
     const [rr, rg, rb] = sampleRgba(rgba, width, height, 1700 / 1920, ySample);
     const [rpr, rpg, rpb] = sampleRgba(rgba, width, height, 1470 / 1920, yPrepSample);
     if (
       isP1BlueHeader(lr, lg, lb) ||
       isLimeHighlight(lr, lg, lb) ||
+      isDimmedP1BlueHeader(ldr, ldg, ldb) ||
+      isDimmedLimeHighlight(ldr, ldg, ldb) ||
       isP1BlueHeader(lpr, lpg, lpb) ||
       isLimeHighlight(lpr, lpg, lpb)
     ) {
       previewP1Cards += 1;
       const [tabR, tabG, tabB] = sampleRgba(rgba, width, height, 96 / 1920, ySample);
-      if ((tabR > 215 && tabG > 215 && tabB > 215) || isLimeHighlight(lr, lg, lb)) {
+      if (
+        (tabR > 215 && tabG > 215 && tabB > 215) ||
+        isLimeHighlight(lr, lg, lb) ||
+        isDimmedLimeHighlight(ldr, ldg, ldb)
+      ) {
         previewSelectedP1Indices.push(i);
       }
     }
@@ -347,9 +360,10 @@ export function analyzeVideoFrameRgba(
   const isSelectingUi =
     commandTimerVisible || isCommandMenu || activeP1Slot !== null || selectedMoveIndex !== null;
 
+  const canShowMessageOrBanner = !isSelectingUi && visibleHudCount < 3;
   const [msgX0, msgY0, msgX1, msgY1] = toPixelBounds(roi.messageBox, width, height);
   let whiteMsgPixels = 0;
-  if (!isSelectingUi) {
+  if (canShowMessageOrBanner) {
     for (let y = msgY0; y < msgY1; y += 2) {
       for (let x = msgX0; x < msgX1; x += 4) {
         const idx = (y * width + x) * 4;
@@ -363,7 +377,7 @@ export function analyzeVideoFrameRgba(
       }
     }
   }
-  const messageBoxVisible = !isSelectingUi && whiteMsgPixels >= 6;
+  const messageBoxVisible = canShowMessageOrBanner && whiteMsgPixels >= 6;
   const messageRoiHash = messageBoxVisible
     ? computeRoiLumaHash(rgba, width, height, roi.messageBox)
     : 0;
@@ -395,7 +409,7 @@ export function analyzeVideoFrameRgba(
     return whiteRatio >= 0.03 && whiteRatio <= 0.35 && darkRatio >= 0.25;
   };
 
-  const canShowBanner = !isSelectingUi && previewP1Cards < 4 && previewP2Cards < 4;
+  const canShowBanner = canShowMessageOrBanner && previewP1Cards < 4 && previewP2Cards < 4;
   const [ab1R, ab1G, ab1B] = sampleRgba(rgba, width, height, 200 / 1920, 395 / 1080);
   const p1AbilityBannerVisible =
     canShowBanner &&
