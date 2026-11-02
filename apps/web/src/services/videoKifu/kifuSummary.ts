@@ -36,9 +36,17 @@ export function buildChampionsDictionaries(
     species.push({ slug: p.identifier, alias: p.identifier });
     if (enName && !enName.startsWith("pokemon.")) {
       species.push({ slug: p.identifier, alias: enName });
+      const enBase = enName.replace(/[（(].*$/, "").trim();
+      if (enBase && enBase !== enName) {
+        species.push({ slug: p.identifier, alias: enBase });
+      }
     }
     if (jaName && !jaName.startsWith("pokemon.")) {
       species.push({ slug: p.identifier, alias: jaName });
+      const jaBase = jaName.replace(/[（(].*$/, "").trim();
+      if (jaBase && jaBase !== jaName) {
+        species.push({ slug: p.identifier, alias: jaBase });
+      }
     }
   }
 

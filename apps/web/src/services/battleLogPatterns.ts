@@ -191,6 +191,48 @@ export interface BattleLogPatternSet {
   readonly matchForfeit: (rawText: string, textKey: string) => boolean;
 }
 
+function escapeTemplateLiteral(part: string): string {
+  let out = "";
+  let i = 0;
+  while (i < part.length) {
+    const ch = part[i]!;
+    if (ch === "!" || ch === "！") {
+      while (i < part.length && (part[i] === "!" || part[i] === "！" || /\s/.test(part[i]!))) {
+        i++;
+      }
+      out += "(?:[!！/7|\"'”’]+[_\\sーニ.。、・]*)";
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      while (i < part.length && /\s/.test(part[i]!)) {
+        i++;
+      }
+      out += "[\\s_ーニ.。、・]*";
+      continue;
+    }
+    const code = ch.codePointAt(0) ?? 0;
+    const isCjkOrKana = code >= 0x3040;
+    if (ch === "っ" || ch === "つ") {
+      out += "[っつッ]+";
+    } else if (ch === "た" || ch === "だ") {
+      out += "[ただ]+";
+    } else {
+      out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    if (isCjkOrKana) {
+      if (ch === "は" || ch === "を" || ch === "と" || ch === "の") {
+        out += "[\\s_ーニ.。、・]*";
+      } else {
+        out += "[\\s_。、・]*";
+      }
+    } else if (ch === " ") {
+      out += "[\\s_ーニ.。、・]*";
+    }
+    i++;
+  }
+  return out;
+}
+
 /** テンプレート文字列を名前抽出用キャプチャグループ付き正規表現にコンパイルする */
 function compileTemplateRegex(template: string): RegExp {
   const clean = template.trim().replace(/[!！.。]+$/, "");
@@ -205,20 +247,20 @@ function compileTemplateRegex(template: string): RegExp {
     else if (part === "{move}") pattern += "(?<move>.+?)";
     else if (part === "{item}") pattern += "(?<item>.+?)";
     else if (part === "{ring}") pattern += "(?<ring>.+?)";
-    else {
-      const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      pattern += escaped.replace(/\s+/g, "\\s*");
+    else if (part) {
+      pattern += escapeTemplateLiteral(part);
     }
   }
 
-  return new RegExp(`^.*?${pattern}(?:[!！|].*|[!！.\\s。]*)$`, "is");
+  return new RegExp(`^.*?${pattern}(?:[!！/7|"'”’].*|[!！.\\s。_ーニ]*)$`, "is");
 }
 
 const cleanName = (s: string): string =>
   s
-    .replace(/[!！|].*$/, "")
+    .replace(/[!！/7|"'”’].*$/, "")
     .replace(/\s+the\s+.*$/i, "")
-    .replace(/[!！.。\s]+$/, "")
+    .replace(/^[\s_ーニ.。、・,]+/u, "")
+    .replace(/[!！.。\s_ーニ、・,]+$/u, "")
     .trim();
 
 /** テンプレート定義から BattleLogPatternSet を全自動コンパイルする（データ駆動） */
@@ -228,7 +270,10 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
   const sentOutOneRegexes = (templates.sentOutOne ?? []).map((t) => compileTemplateRegex(t));
   const goTwoRegexes = (templates.goTwo ?? []).map((t) => compileTemplateRegex(t));
   const goOneRegexes = (templates.goOne ?? []).map((t) => compileTemplateRegex(t));
-  const moveUsedRegexes = (templates.moveUsed ?? []).map((t) => compileTemplateRegex(t));
+  const moveUsedRegexes = (templates.moveUsed ?? []).map((t) => ({
+    rx: compileTemplateRegex(t),
+    isOpposing: /opposing|相手/i.test(t),
+  }));
   const readyToHelpRegexes = (templates.readyToHelp ?? []).map((t) => compileTemplateRegex(t));
   const megaEvolvedRegexes = (templates.megaEvolved ?? []).map((t) => compileTemplateRegex(t));
 
@@ -373,14 +418,15 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
       return null;
     },
     matchMoveUsed: (rawText) => {
-      for (const rx of moveUsedRegexes) {
+      for (const { rx, isOpposing } of moveUsedRegexes) {
         const m = rx.exec(rawText);
         if (m?.groups?.mon && m?.groups?.move) {
-          const isOpposing = /opposing|相手/i.test(rx.source);
+          const actorPart = m.groups.mon.trim();
+          const actorHasOpposing = /opposing|相手/i.test(actorPart);
           return {
-            actorPart: m.groups.mon.trim(),
+            actorPart: actorPart.replace(/^(?:the\s+opposing|相手の)\s*/iu, "").trim() || actorPart,
             movePart: m.groups.move.trim(),
-            isOpposing,
+            isOpposing: isOpposing || actorHasOpposing,
           };
         }
       }
@@ -406,8 +452,8 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
     },
     matchMegaReaction: (rawText, textKey) => {
       if (!megaReactionToken || approxFind(textKey, megaReactionToken).score < 0.75) return null;
-      const m = /^(.*?)\s*(?:'s|is\s+reacting|の|が)/i.exec(rawText);
-      return m?.[1] ? { leftPart: m[1] } : null;
+      const m = /^(.*?)\s*(?:is\s+reacting|が\s*反応)/iu.exec(rawText);
+      return { leftPart: m?.[1] ?? rawText };
     },
     matchMegaEvolved: (rawText, textKey) => {
       if (!megaEvolvedToken) return null;
@@ -1012,12 +1058,14 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     "攻撃から身を守った",
     "攻撃をこらえた",
     "守りの体勢に入った",
+    "りの体勢に入った",
     "こらえる体勢に入った",
   ],
   protectGeneral: [
     "攻撃から身を守った",
     "攻撃をこらえた",
     "守りの体勢に入った",
+    "りの体勢に入った",
     "こらえる体勢に入った",
   ],
   statWords: [
@@ -1254,6 +1302,7 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "にはうまく決まらなかった", outcome: "failed", targetSpecific: true },
     { phrase: "にはうまくきまらなかった", outcome: "failed", targetSpecific: true },
     { phrase: "しかしうまく決まらなかった", outcome: "failed", targetSpecific: false },
+    { phrase: "決まらなかった", outcome: "failed", targetSpecific: false },
     { phrase: "しかし何も起こらなかった", outcome: "failed", targetSpecific: false },
     { phrase: "身代わりをだすには体力が足りなかった", outcome: "failed", targetSpecific: false },
     { phrase: "身代わりはすでにでていた", outcome: "failed", targetSpecific: true },
@@ -1381,7 +1430,7 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "には効果がないようだ", eff: 0 },
   ],
   residualDamagePhrases: [
-    { phrase: "砂あらしが", mustInclude: "を襲う", effect: "sandstorm" },
+    { phrase: "砂あらしが", mustInclude: "襲う", effect: "sandstorm" },
     { phrase: "やけどのダメージを受けた", effect: "burn" },
     { phrase: "毒のダメージを受けた", effect: "poison" },
     { phrase: "命が少し削られた", effect: "life-orb" },

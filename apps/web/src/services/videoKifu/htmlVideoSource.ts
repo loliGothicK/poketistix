@@ -27,12 +27,17 @@ export async function recognizeRoiText(
   const h = Math.max(1, y1 - y0);
 
   const cropCanvas = document.createElement("canvas");
-  cropCanvas.width = w * 2;
-  cropCanvas.height = h * 2;
+  const pad = 12;
+  cropCanvas.width = w * 2 + pad * 2;
+  cropCanvas.height = h * 2 + pad * 2;
   const ctx = cropCanvas.getContext("2d");
   if (!ctx) return null;
 
-  ctx.drawImage(sourceCanvas, x0, y0, w, h, 0, 0, cropCanvas.width, cropCanvas.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sourceCanvas, x0, y0, w, h, pad, pad, w * 2, h * 2);
 
   if (ocrProvider) {
     return ocrProvider(cropCanvas, hint);
@@ -40,23 +45,29 @@ export async function recognizeRoiText(
 
   if (tesseractWorker) {
     try {
-      const imgData = ctx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
-      const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i] ?? 0;
-        const g = data[i + 1] ?? 0;
-        const b = data[i + 2] ?? 0;
-        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-        const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
-        const val =
-          luma >= 120 && maxDiff <= 55
-            ? Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)))
-            : 255;
-        data[i] = val;
-        data[i + 1] = val;
-        data[i + 2] = val;
+      if (hint === "message" || hint === "ability") {
+        const imgData = ctx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
+        const data = imgData.data;
+        const len = data.length;
+        for (let i = 0; i < len; i += 4) {
+          const r = data[i] ?? 0;
+          const g = data[i + 1] ?? 0;
+          const b = data[i + 2] ?? 0;
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+          let val: number;
+          if (luma <= 60) {
+            val = 255;
+          } else if (luma >= 180) {
+            val = 0;
+          } else {
+            val = Math.round((1 - (luma - 60) / 120) * 255);
+          }
+          data[i] = val;
+          data[i + 1] = val;
+          data[i + 2] = val;
+        }
+        ctx.putImageData(imgData, 0, 0);
       }
-      ctx.putImageData(imgData, 0, 0);
 
       const ocrPromise = tesseractWorker.recognize(cropCanvas);
       const timeoutPromise = new Promise<{ data: { text: string } }>((_, reject) =>
@@ -203,11 +214,15 @@ export class HtmlVideoFrameSource implements VideoFrameSource {
       !this.ocrProvider && typeof window !== "undefined"
         ? (async () => {
             try {
-              const workerPromises = Array.from({ length: OCR_WORKER_POOL_SIZE }, () =>
-                createWorker("eng"),
-              );
-              const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 6000));
-              return await Promise.race([Promise.all(workerPromises), timeoutPromise]);
+              const initAll = (async () => {
+                const first = await createWorker("jpn");
+                const rest = await Promise.all(
+                  Array.from({ length: OCR_WORKER_POOL_SIZE - 1 }, () => createWorker("jpn")),
+                );
+                return [first, ...rest];
+              })();
+              const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 20000));
+              return await Promise.race([initAll, timeoutPromise]);
             } catch (err) {
               console.warn("Could not start Tesseract workers:", err);
               return null;

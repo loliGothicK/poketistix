@@ -8,10 +8,43 @@ export interface LocalizedEntityAlias {
   readonly alias: string;
 }
 
-/** OCR トークンの正規化（小文字化、ひらがな→カタカナ統一、記号除去） */
-export function normalizeOcrToken(raw: string): string {
+const SMALL_TO_LARGE_KANA: Record<string, string> = {
+  ァ: "ア",
+  ィ: "イ",
+  ゥ: "ウ",
+  ェ: "エ",
+  ォ: "オ",
+  ッ: "ツ",
+  ャ: "ヤ",
+  ュ: "ユ",
+  ョ: "ヨ",
+  ヮ: "ワ",
+  ヵ: "カ",
+  ヶ: "ケ",
+};
+
+/**
+ * ゲーム内フォントの字形（独立した4画の平仮名など）を
+ * Tesseract 日本語モデルが特定の漢字として誤認する典型的な字形対応テーブル
+ */
+const KANA_GLYPH_CONFUSIONS: Record<string, string> = {
+  尺: "フ",
+  及: "フ",
+  必: "フ",
+  記: "フ",
+  避: "フ",
+  選: "フ",
+  富: "フ",
+  入: "フ",
+};
+
+/** 濁点・半濁点を保持した基本正規化（完全一致優先判定用） */
+function normalizeExactKanaToken(raw: string): string {
   let out = "";
-  for (const ch of raw) {
+  for (const rawCh of raw) {
+    const rawCode = rawCh.codePointAt(0) ?? 0;
+    const ch =
+      rawCode >= 0xff01 && rawCode <= 0xff5e ? String.fromCodePoint(rawCode - 0xfee0) : rawCh;
     const code = ch.codePointAt(0) ?? 0;
     if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
       out += ch.toLowerCase();
@@ -22,6 +55,30 @@ export function normalizeOcrToken(raw: string): string {
     }
   }
   return out;
+}
+
+/** OCR トークンの正規化（小文字化、ひらがな→カタカナ統一、濁点・半濁点正規化、小書き文字統一、OCR重複文字圧縮、記号除去） */
+export function normalizeOcrToken(raw: string): string {
+  let out = "";
+  for (const rawCh of raw) {
+    const rawCode = rawCh.codePointAt(0) ?? 0;
+    const ch =
+      rawCode >= 0xff01 && rawCode <= 0xff5e ? String.fromCodePoint(rawCode - 0xfee0) : rawCh;
+    const code = ch.codePointAt(0) ?? 0;
+    if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+      out += ch.toLowerCase();
+    } else if (code >= 0x3041 && code <= 0x3096) {
+      const kata = String.fromCodePoint(code + 0x60);
+      const base = kata.normalize("NFD").replace(/[\u3099\u309a]/g, "");
+      out += SMALL_TO_LARGE_KANA[base] ?? base;
+    } else if (code >= 0x30a1 && code <= 0x30fc) {
+      const base = ch.normalize("NFD").replace(/[\u3099\u309a]/g, "");
+      out += SMALL_TO_LARGE_KANA[base] ?? base;
+    } else if (code >= 0x4e00 && code <= 0x9fff) {
+      out += KANA_GLYPH_CONFUSIONS[ch] ?? ch;
+    }
+  }
+  return out.replace(/([アイウエオツヤユヨワター])\1+/gu, "$1");
 }
 
 /** レーベンシュタイン編集距離 */
@@ -56,21 +113,35 @@ export function fuzzyMatchEntity(
 ): { readonly slug: string; readonly confidence: number } | null {
   const normQ = normalizeOcrToken(query);
   if (!normQ) return null;
+  const exactQ = normalizeExactKanaToken(query);
+  const normQLen = Array.from(normQ).length;
 
   let bestSlug: string | null = null;
   let bestScore = 0;
 
   for (const entry of dictionary) {
     for (const rawCandidate of [entry.alias, entry.slug]) {
+      if (exactQ && exactQ === normalizeExactKanaToken(rawCandidate)) {
+        return { slug: entry.slug, confidence: 100 };
+      }
       const candidate = normalizeOcrToken(rawCandidate);
       if (!candidate) continue;
       if (normQ === candidate) {
-        return { slug: entry.slug, confidence: 100 };
+        bestSlug = entry.slug;
+        bestScore = 100;
+        continue;
       }
+      const candLen = Array.from(candidate).length;
       const dist = charLevenshtein(normQ, candidate);
-      const maxLen = Math.max(Array.from(normQ).length, Array.from(candidate).length);
+      const maxLen = Math.max(normQLen, candLen);
       if (maxLen === 0) continue;
-      const similarity = Math.round(((maxLen - dist) / maxLen) * 100);
+      let similarity = Math.round(((maxLen - dist) / maxLen) * 100);
+      if (candLen >= 4 && normQLen > candLen && normQLen <= candLen + 4) {
+        const subScore = Math.round(approxFindMyers(normQ, candidate).score * 95);
+        if (subScore > similarity) {
+          similarity = subScore;
+        }
+      }
       if (similarity > bestScore && similarity >= 55) {
         bestScore = similarity;
         bestSlug = entry.slug;

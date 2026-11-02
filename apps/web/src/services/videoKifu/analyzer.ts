@@ -467,12 +467,19 @@ export class VideoKifuAnalyzer {
         // (c) P1 選出確定番号（1..4）のテンプレートマッチング検出
         for (let cardI = 0; cardI < 6; cardI++) {
           const y0 = yBase + cardI * 126;
-          const digit = detectSelectionDigitFromRgba(
-            captured.rgba,
-            captured.width,
-            captured.height,
-            from1080p(p1DigitX, y0 + p1DigitYOffset, 75, 75),
-          );
+          const digit =
+            detectSelectionDigitFromRgba(
+              captured.rgba,
+              captured.width,
+              captured.height,
+              from1080p(p1DigitX, y0 + p1DigitYOffset, 75, 75),
+            ) ??
+            detectSelectionDigitFromRgba(
+              captured.rgba,
+              captured.width,
+              captured.height,
+              from1080p(285, y0 + p1DigitYOffset, 75, 75),
+            );
           if (digit !== null && digit >= 1 && digit <= 4) {
             const p1Idx = resolveCardToP1Idx(cardI);
             p1SelectionDigits[digit - 1] = p1Idx;
@@ -730,17 +737,18 @@ export class VideoKifuAnalyzer {
           const lower = rawMsg.toLowerCase();
           const normMsg = normalizeOcrToken(rawMsg);
           const isActionMessage =
+            logParser.shouldFlushPendingDamages(rawMsg) ||
             /\b(used|sent out|go!|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
               rawMsg,
             ) ||
             /使った|繰り出した|ゆけっ|戻れ|引っこめた|たおれた|反応した|メガシンカした/u.test(
-              normMsg,
+              rawMsg,
             );
           const isMenuPrompt =
             /what will|select a move|select a target|fight|pokémon|run|bag|move info/i.test(
               rawMsg,
             ) ||
-            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(normMsg) ||
+            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(rawMsg) ||
             (!logParser.currentTurnHasMove() &&
               (frame.commandTimerVisible ||
                 frame.phase === "MoveSelect" ||
@@ -759,19 +767,20 @@ export class VideoKifuAnalyzer {
           if (
             lower.includes("you defeated") ||
             lower.includes("forfeit") ||
-            normMsg.includes("勝負に勝った") ||
-            normMsg.includes("降参が選ばれました")
+            approxFind(normMsg, normalizeOcrToken("勝負に勝った")).score >= 0.75 ||
+            approxFind(normMsg, normalizeOcrToken("降参が選ばれました")).score >= 0.75
           ) {
             matchResult = "WIN";
-          } else if (lower.includes("you lost") || normMsg.includes("勝負に負けた")) {
+          } else if (
+            lower.includes("you lost") ||
+            approxFind(normMsg, normalizeOcrToken("勝負に負けた")).score >= 0.75 ||
+            approxFind(normMsg, normalizeOcrToken("目の前が真っ暗になった")).score >= 0.75
+          ) {
             matchResult = "LOSS";
           }
 
           if (!isMenuPrompt) {
-            if (
-              /\b(used|sent out|go!|withdrew|come back|fainted)\b/i.test(rawMsg) ||
-              /使った|繰り出した|ゆけっ|戻れ|引っこめた|たおれた/u.test(normMsg)
-            ) {
+            if (isActionMessage) {
               flushPendingDamages(timestampMs);
             }
             if (logParser.feedMessage(rawMsg, timestampMs)) {
