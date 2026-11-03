@@ -2747,7 +2747,7 @@ export class BattleLogParser {
   }
 
   /** 「まもりきった」「ワイドガードがまもった」「ファストガードがまもった」相当の防御メッセージ */
-  private onProtected(key: string, t: number): boolean {
+  private onProtected(key: string, _t: number): boolean {
     let isWideGuard = false;
     let isQuickGuard = false;
     let isProtectedItself = false;
