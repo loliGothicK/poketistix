@@ -514,12 +514,14 @@ export class VideoKifuAnalyzer {
         flushPendingDamages(timestampMs);
 
         // Turn 1 開始時点で選出が未確定の場合、判明している選出番号または見せ合いスプライト照合から確定させる
-        if (logParser.turnCount === 0 && p1Selection.length < 2) {
-          const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
-          const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
-          const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
-          p1Selection.length = 0;
-          p1Selection.push(...uniqueSelection);
+        if (logParser.turnCount === 0) {
+          if (p1Selection.length < 2) {
+            const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
+            const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
+            const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
+            p1Selection.length = 0;
+            p1Selection.push(...uniqueSelection);
+          }
           logParser.setP1Selection(p1Selection);
         }
 
@@ -825,13 +827,16 @@ export class VideoKifuAnalyzer {
     flushPendingDamages(durationSec * 1000);
 
     // P1選出: 見せ合い画面の選択番号 (1..4) が揃っていればそれを採用する。
-    // 揃わない場合は実際に場に出た順を使い、登録パーティの先頭からの穴埋めはしない。
+    // 揃わない場合でも判明している選出番号や観察済みインデックスから4体を確実に構成する。
     if (p1SelectionDigits.every((d) => d !== null)) {
       p1Selection.length = 0;
       p1Selection.push(...(p1SelectionDigits as number[]));
     } else {
+      const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
+      const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
+      const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
       p1Selection.length = 0;
-      p1Selection.push(...logParser.observedOwnIndices.slice(0, 4));
+      p1Selection.push(...uniqueSelection);
     }
     logParser.setP1Selection(p1Selection);
     logParser.finalizeLeadAndSlots(p1Selection, p2PreviewSlugs);
@@ -884,11 +889,14 @@ export class VideoKifuAnalyzer {
       logParser.getTurns(),
       logParser.getLeadEvents(),
     );
-    const validationErrors = isLeft(sanitizedResult)
-      ? sanitizedResult.left.map((e) => e.message)
-      : undefined;
 
-    pbnLines.push(...logParser.render());
+    if (isLeft(sanitizedResult)) {
+      const errorMsg = sanitizedResult.left.map((e) => e.message).join("\n");
+      throw new Error(`Battle analysis validation failed:\n${errorMsg}`);
+    }
+
+    const sanitizedTurns = sanitizedResult.right;
+    pbnLines.push(...logParser.render(sanitizedTurns));
 
     const pbnText = pbnLines.join("\n").trim();
     const summary = parsePbnToAnalysisSummary(pbnText);
@@ -896,7 +904,6 @@ export class VideoKifuAnalyzer {
     return {
       ...summary,
       totalSampledFrames: sampledFrames,
-      validationErrors,
     };
   }
 }

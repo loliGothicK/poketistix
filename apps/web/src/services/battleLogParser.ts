@@ -727,14 +727,15 @@ export class BattleLogParser {
   }
 
   /** PBN の `@lead` / `@turn` ブロック行を返す */
-  render(): string[] {
+  render(customTurns?: readonly TurnRecord[]): string[] {
     const lines: string[] = [];
     if (this.leadEvents.length > 0) {
       lines.push(`@lead @t=${this.leadMs ?? this.leadEvents[0]?.t ?? 0}ms`);
       lines.push(...this.renderTurnEvents(this.leadEvents));
       lines.push("");
     }
-    for (const turn of this.turns) {
+    const turnsToRender = customTurns ?? this.turns;
+    for (const turn of turnsToRender) {
       lines.push(`@turn ${turn.turnNumber} @t=${turn.timestampMs}ms`);
       if (turn.fieldEffects.length > 0) {
         lines.push(`  @field ${turn.fieldEffects.join(" | ")}`);
@@ -2845,21 +2846,6 @@ export class BattleLogParser {
       if (!isSpread && slot && !incomingMove.args.includes("->")) {
         incomingMove.args.push("->", slot);
       }
-      return true;
-    }
-
-    if (slot) {
-      const protectMove = [...events]
-        .reverse()
-        .find(
-          (ev) => ev.verb === "move" && ev.args[0] === slot && PROTECT_MOVE.test(ev.args[1] ?? ""),
-        );
-      if (protectMove) {
-        return true;
-      }
-      const moveName = isWideGuard ? "wide-guard" : isQuickGuard ? "quick-guard" : "protect";
-      this.emit("move", [slot, moveName], t, 0.85, { review: true });
-      this.setAction(slot, moveName);
       return true;
     }
 

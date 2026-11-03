@@ -54,13 +54,10 @@ export async function recognizeRoiText(
           const g = data[i + 1] ?? 0;
           const b = data[i + 2] ?? 0;
           const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-          let val: number;
-          if (luma <= 60) {
-            val = 255;
-          } else if (luma >= 180) {
-            val = 0;
-          } else {
-            val = Math.round((1 - (luma - 60) / 120) * 255);
+          const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
+          let val = 255;
+          if (luma >= 120 && maxDiff <= 65) {
+            val = Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)));
           }
           data[i] = val;
           data[i + 1] = val;
@@ -71,7 +68,7 @@ export async function recognizeRoiText(
 
       const ocrPromise = tesseractWorker.recognize(cropCanvas);
       const timeoutPromise = new Promise<{ data: { text: string } }>((_, reject) =>
-        setTimeout(() => reject(new Error("OCR timeout")), 2000),
+        setTimeout(() => reject(new Error("OCR timeout")), 8000),
       );
       const ret = await Promise.race([ocrPromise, timeoutPromise]);
       const text = ret.data.text.trim();
