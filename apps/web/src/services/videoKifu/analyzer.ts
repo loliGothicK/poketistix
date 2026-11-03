@@ -27,6 +27,8 @@ import {
   parsePbnToAnalysisSummary,
 } from "./kifuSummary";
 import { HtmlVideoFrameSource } from "./htmlVideoSource";
+import { isLeft } from "fp-ts/lib/Either";
+import { sanitizeAndValidateBattleLog } from "./pbnSanitizer";
 
 export class VideoKifuAnalyzer {
   constructor(private readonly options: VideoKifuAnalyzerOptions) {}
@@ -127,6 +129,14 @@ export class VideoKifuAnalyzer {
       return calcTrainedPokemonStatsLv50(member)[5] ?? 100;
     };
 
+    const getP1MoveSlugs = (teamIdx: number): readonly string[] => {
+      const member = myTeam[teamIdx];
+      if (!member) return [];
+      return member.moves
+        .map((m) => (m !== null ? moveById.get(m)?.identifier : null))
+        .filter((s): s is string => Boolean(s));
+    };
+
     const logParser = new BattleLogParser({
       myTeam,
       dictionaries,
@@ -134,6 +144,7 @@ export class VideoKifuAnalyzer {
       p1MaxHp: getP1MaxHp,
       p1ItemSlug: getP1ItemSlug,
       p1AbilitySlug: getP1AbilitySlug,
+      p1Moves: getP1MoveSlugs,
       p1Speed: getP1Speed,
     });
 
@@ -488,6 +499,7 @@ export class VideoKifuAnalyzer {
         if (p1SelectionDigits.every((d) => d !== null)) {
           p1Selection.length = 0;
           p1Selection.push(...(p1SelectionDigits as number[]));
+          logParser.setP1Selection(p1Selection);
         }
       }
 
@@ -500,6 +512,17 @@ export class VideoKifuAnalyzer {
       if (canStartTurn) {
         lastTurnStartMs = timestampMs;
         flushPendingDamages(timestampMs);
+
+        // Turn 1 開始時点で選出が未確定の場合、判明している選出番号または見せ合いスプライト照合から確定させる
+        if (logParser.turnCount === 0 && p1Selection.length < 2) {
+          const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
+          const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
+          const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
+          p1Selection.length = 0;
+          p1Selection.push(...uniqueSelection);
+          logParser.setP1Selection(p1Selection);
+        }
+
         logParser.beginTurn(timestampMs);
       }
 
@@ -741,14 +764,14 @@ export class VideoKifuAnalyzer {
             /\b(used|sent out|go!|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
               rawMsg,
             ) ||
-            /使った|繰り出した|ゆけっ|戻れ|引っこめた|たおれた|反応した|メガシンカした/u.test(
-              rawMsg,
+            /使[つっ]|繰り?出|くり出|くりだ|ゆけ|行け|戻れ|引っこめ|ひっこめ|たおれ|反応|メガシンカ|すなおこし|グラスメイカー/u.test(
+              normMsg,
             );
           const isMenuPrompt =
             /what will|select a move|select a target|fight|pokémon|run|bag|move info/i.test(
               rawMsg,
             ) ||
-            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(rawMsg) ||
+            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(normMsg) ||
             (!logParser.currentTurnHasMove() &&
               (frame.commandTimerVisible ||
                 frame.phase === "MoveSelect" ||
@@ -811,6 +834,7 @@ export class VideoKifuAnalyzer {
       p1Selection.push(...logParser.observedOwnIndices.slice(0, 4));
     }
     logParser.setP1Selection(p1Selection);
+    logParser.finalizeLeadAndSlots(p1Selection, p2PreviewSlugs);
 
     // 最終 HP 残量から勝敗が未確定の場合の推定
     if (matchResult === "UNKNOWN") {
@@ -855,6 +879,15 @@ export class VideoKifuAnalyzer {
       pbnLines.push("");
     }
 
+    // PBN 文字列にレンダリングする前に、構造化データに対して fp-ts Validated でサニタイズ・検証を実行
+    const sanitizedResult = sanitizeAndValidateBattleLog(
+      logParser.getTurns(),
+      logParser.getLeadEvents(),
+    );
+    const validationErrors = isLeft(sanitizedResult)
+      ? sanitizedResult.left.map((e) => e.message)
+      : undefined;
+
     pbnLines.push(...logParser.render());
 
     const pbnText = pbnLines.join("\n").trim();
@@ -863,6 +896,7 @@ export class VideoKifuAnalyzer {
     return {
       ...summary,
       totalSampledFrames: sampledFrames,
+      validationErrors,
     };
   }
 }

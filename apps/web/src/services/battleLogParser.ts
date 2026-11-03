@@ -51,6 +51,7 @@ export interface BattleLogParserOptions {
   readonly p1MaxHp: (teamIdx: number) => number;
   readonly p1ItemSlug: (teamIdx: number) => string | null;
   readonly p1AbilitySlug?: (teamIdx: number) => string | null;
+  readonly p1Moves?: (teamIdx: number) => readonly string[];
   readonly p1Speed?: (teamIdx: number) => number;
   readonly patternSets?: readonly BattleLogPatternSet[];
 }
@@ -62,7 +63,7 @@ interface ActiveMon {
   readonly names: readonly string[];
 }
 
-interface LogEvent {
+export interface LogEvent {
   readonly verb: string;
   args: string[];
   readonly t: number;
@@ -73,11 +74,11 @@ interface LogEvent {
   protectedSlots?: string[];
 }
 
-interface SlotAction {
+export interface SlotAction {
   readonly choice: string;
 }
 
-interface SlotStateSnapshot {
+export interface SlotStateSnapshot {
   readonly slug: string | null;
   readonly teamIdx: number | null;
   readonly hp: string | null;
@@ -87,7 +88,7 @@ interface SlotStateSnapshot {
   readonly boosts: Record<string, number>;
 }
 
-interface TurnStateSnapshot {
+export interface TurnStateSnapshot {
   readonly p1a: SlotStateSnapshot;
   readonly p1b: SlotStateSnapshot;
   readonly p2a: SlotStateSnapshot;
@@ -100,7 +101,7 @@ interface TurnStateSnapshot {
   readonly observedOppSlugs: string[];
 }
 
-interface TurnRecord {
+export interface TurnRecord {
   readonly turnNumber: number;
   readonly timestampMs: number;
   readonly fieldEffects: readonly string[];
@@ -270,6 +271,14 @@ export class BattleLogParser {
     return this.turns.length;
   }
 
+  getTurns(): readonly TurnRecord[] {
+    return this.turns;
+  }
+
+  getLeadEvents(): readonly LogEvent[] {
+    return this.leadEvents;
+  }
+
   private computeActiveFieldEffects(turnNumber: number): string[] {
     const effects: string[] = [];
 
@@ -336,9 +345,43 @@ export class BattleLogParser {
 
   /** コマンド選択画面に入った（= 新しいターンが始まった）ことを通知する */
   beginTurn(timestampMs: number): void {
+    const turnNumber = this.turns.length + 1;
+
+    // Turn 1 開始時点で先発繰り出しが OCR 欠落等で未着地の場合、
+    // 選出データ (p1Selection) の先頭2体をダブルバトルの先発として確実に着地させる
+    if (turnNumber === 1) {
+      if (this.leadMs === null) {
+        this.leadMs = Math.max(0, timestampMs - 5000);
+      }
+      if (
+        this.slots.p1a === null &&
+        this.p1Selection.length > 0 &&
+        this.p1Selection[0] !== undefined
+      ) {
+        this.placeOwn("p1a", this.p1Selection[0], timestampMs, false);
+      }
+      if (
+        this.slots.p1b === null &&
+        this.p1Selection.length > 1 &&
+        this.p1Selection[1] !== undefined
+      ) {
+        this.placeOwn("p1b", this.p1Selection[1], timestampMs, false);
+      }
+
+      // 相手側の先発着地 (p2a, p2b): 見せ合い・観察済みから未確定スロットを確実に解決
+      const oppCandidates = Array.from(
+        new Set([...this.observedOppSlugs, ...this.options.p2Roster]),
+      );
+      if (this.slots.p2a === null && oppCandidates[0]) {
+        this.placeOpponent("p2a", oppCandidates[0], timestampMs, 0.9);
+      }
+      if (this.slots.p2b === null && oppCandidates[1]) {
+        this.placeOpponent("p2b", oppCandidates[1], timestampMs, 0.9);
+      }
+    }
+
     const alive = (slot: "p1a" | "p1b"): boolean =>
       this.slots[slot] !== null && !this.fainted[slot];
-    const turnNumber = this.turns.length + 1;
     delete this.sideConditions.p1["wide-guard"];
     delete this.sideConditions.p2["wide-guard"];
     delete this.sideConditions.p1["quick-guard"];
@@ -1004,6 +1047,12 @@ export class BattleLogParser {
               break;
             }
             const target = next.args[0]!;
+            const isSelfDamageMove = Boolean(
+              moveId && /curse|belly-drum|substitute|pain-split/i.test(moveId),
+            );
+            if (target === actor && !isSelfDamageMove) {
+              break;
+            }
             if (!targetMap.has(target)) {
               targetMap.set(target, { boosts: [], reactions: [] });
               targetOrder.push(target);
@@ -1930,15 +1979,55 @@ export class BattleLogParser {
       this.patternSets.some((p) =>
         p.opposingPrefixes.some((prefix) => approxFind(head, prefix).score >= 0.8),
       );
-    const candidates = isOpposing ? OPP_SLOTS : OWN_SLOTS;
-    const matched = this.resolveSlots(head, candidates);
-    const fallback = candidates.find((s) => this.slots[s] !== null);
-    const slot = matched[0] ?? fallback;
-    if (!slot) return false;
-
     const cleanMovePart = match.movePart.replace(/[!！/7|"'”’].*$/, "").trim() || match.movePart;
     const move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
     if (!move || move.confidence < 72) return false;
+
+    const candidates = isOpposing ? OPP_SLOTS : OWN_SLOTS;
+    const matched = this.resolveSlots(head, candidates);
+
+    let slot: SlotIdent | undefined = matched[0];
+
+    // 自軍スロットの場合、技スラッグを実際に覚えているポケモンがいるスロットを優先して特定する
+    if (!isOpposing && (!slot || matched.length === 0)) {
+      const slotWithMove = OWN_SLOTS.find((s) => {
+        const mon = this.slots[s];
+        if (!mon || this.fainted[s]) return false;
+        const moves = this.options.p1Moves?.(mon.teamIdx) ?? [];
+        return moves.includes(move.slug);
+      });
+      if (slotWithMove) {
+        slot = slotWithMove;
+      }
+    }
+
+    // 候補スロットの中で今ターン未行動のスロットを優先する
+    const currentTurnEvents = this.currentEvents();
+    const actedSlots = new Set(
+      currentTurnEvents.filter((e) => e.verb === "move").map((e) => e.args[0]),
+    );
+
+    if (slot && actedSlots.has(slot)) {
+      // 既に今ターン技を使用済みのスロットの場合、未行動の味方スロットへ移譲する
+      const otherSlot = candidates.find(
+        (s) => s !== slot && !actedSlots.has(s) && !this.fainted[s],
+      );
+      if (otherSlot) {
+        slot = otherSlot;
+      } else {
+        // 両スロット行動済み、または同一技の連続フレーム重複の場合は二重行動を阻止して無視
+        return false;
+      }
+    }
+
+    if (!slot) {
+      const unactedSlot = candidates.find(
+        (s) => this.slots[s] !== null && !this.fainted[s] && !actedSlots.has(s),
+      );
+      slot = unactedSlot ?? candidates.find((s) => this.slots[s] !== null);
+    }
+
+    if (!slot) return false;
 
     this.pendingCrit = false;
     const ev = this.emit("move", [slot, move.slug], t, move.confidence / 100, {
@@ -3202,6 +3291,140 @@ export class BattleLogParser {
       }
     }
     return true;
+  }
+
+  /**
+   * 選出データ (p1Selection) および相手見せ合い (p2Roster) を基に、
+   * 先発スロットの未確定 (? 100%) やスロット誤判定の連鎖を事後的に確定・補正する。
+   */
+  finalizeLeadAndSlots(p1Selection: readonly number[], p2Roster?: readonly string[]): void {
+    if (this.turns.length === 0) return;
+
+    // 1. P1 先発 (p1a, p1b) の確定
+    const lead0 = p1Selection[0] !== undefined ? this.options.myTeam[p1Selection[0]] : undefined;
+    const lead1 = p1Selection[1] !== undefined ? this.options.myTeam[p1Selection[1]] : undefined;
+
+    // 2. P2 先発の推論 (observedOppSlugs または p2Roster から未確定スロットを埋める)
+    const oppCandidates = Array.from(
+      new Set([...this.observedOppSlugs, ...(p2Roster ?? this.options.p2Roster)]),
+    );
+    const oppLead0 = oppCandidates[0];
+    const oppLead1 = oppCandidates[1];
+
+    let currentP1a: { slug: string; teamIdx: number; hp: string } | null =
+      lead0 && p1Selection[0] !== undefined
+        ? {
+            slug: lead0.slug,
+            teamIdx: p1Selection[0],
+            hp: `${this.options.p1MaxHp(p1Selection[0])}/${this.options.p1MaxHp(p1Selection[0])}`,
+          }
+        : null;
+    let currentP1b: { slug: string; teamIdx: number; hp: string } | null =
+      lead1 && p1Selection[1] !== undefined
+        ? {
+            slug: lead1.slug,
+            teamIdx: p1Selection[1],
+            hp: `${this.options.p1MaxHp(p1Selection[1])}/${this.options.p1MaxHp(p1Selection[1])}`,
+          }
+        : null;
+    let currentP2a: { slug: string; hp: string } | null = oppLead0
+      ? { slug: oppLead0, hp: "100%" }
+      : null;
+    let currentP2b: { slug: string; hp: string } | null = oppLead1
+      ? { slug: oppLead1, hp: "100%" }
+      : null;
+
+    for (let tIdx = 0; tIdx < this.turns.length; tIdx++) {
+      const turn = this.turns[tIdx]!;
+      const snap = turn.stateSnapshot as {
+        p1a: SlotStateSnapshot;
+        p1b: SlotStateSnapshot;
+        p2a: SlotStateSnapshot;
+        p2b: SlotStateSnapshot;
+      };
+
+      // ターン開始時点のスナップショットを補正
+      if (!snap.p1a.slug && currentP1a) {
+        snap.p1a = {
+          ...snap.p1a,
+          slug: currentP1a.slug,
+          teamIdx: currentP1a.teamIdx,
+          hp: snap.p1a.hp ?? currentP1a.hp,
+        };
+      } else if (snap.p1a.slug && snap.p1a.teamIdx !== null) {
+        currentP1a = { slug: snap.p1a.slug, teamIdx: snap.p1a.teamIdx, hp: snap.p1a.hp ?? "100%" };
+      }
+
+      if (!snap.p1b.slug && currentP1b) {
+        snap.p1b = {
+          ...snap.p1b,
+          slug: currentP1b.slug,
+          teamIdx: currentP1b.teamIdx,
+          hp: snap.p1b.hp ?? currentP1b.hp,
+        };
+      } else if (snap.p1b.slug && snap.p1b.teamIdx !== null) {
+        currentP1b = { slug: snap.p1b.slug, teamIdx: snap.p1b.teamIdx, hp: snap.p1b.hp ?? "100%" };
+      }
+
+      if (!snap.p2a.slug && currentP2a) {
+        snap.p2a = {
+          ...snap.p2a,
+          slug: currentP2a.slug,
+          hp: snap.p2a.hp ?? currentP2a.hp,
+        };
+      } else if (snap.p2a.slug) {
+        currentP2a = { slug: snap.p2a.slug, hp: snap.p2a.hp ?? "100%" };
+      }
+
+      if (!snap.p2b.slug && currentP2b) {
+        snap.p2b = {
+          ...snap.p2b,
+          slug: currentP2b.slug,
+          hp: snap.p2b.hp ?? currentP2b.hp,
+        };
+      } else if (snap.p2b.slug) {
+        currentP2b = { slug: snap.p2b.slug, hp: snap.p2b.hp ?? "100%" };
+      }
+
+      // ターン内イベントの交代によるスロット追跡および技の所有者バインド補正
+      for (const ev of turn.events) {
+        if (ev.verb === "switch") {
+          const slot = ev.args[0];
+          const newSlug = ev.args[1];
+          const newHp = ev.args[2] ?? "100%";
+          if (slot === "p1a" && newSlug) {
+            const teamIdx = this.options.myTeam.findIndex((m) => m.slug === newSlug);
+            currentP1a = { slug: newSlug, teamIdx: teamIdx >= 0 ? teamIdx : 0, hp: newHp };
+          } else if (slot === "p1b" && newSlug) {
+            const teamIdx = this.options.myTeam.findIndex((m) => m.slug === newSlug);
+            currentP1b = { slug: newSlug, teamIdx: teamIdx >= 0 ? teamIdx : 0, hp: newHp };
+          } else if (slot === "p2a" && newSlug) {
+            currentP2a = { slug: newSlug, hp: newHp };
+          } else if (slot === "p2b" && newSlug) {
+            currentP2b = { slug: newSlug, hp: newHp };
+          }
+        } else if (ev.verb === "move") {
+          const slot = ev.args[0];
+          const moveSlug = ev.args[1];
+          if (!moveSlug) continue;
+
+          // 自軍技の場合: もし現在の slot のポケモンがこの技を覚えず、他方の slot が覚えているなら再バインド
+          if (slot === "p1a" && currentP1b) {
+            const p1aMoves = currentP1a ? (this.options.p1Moves?.(currentP1a.teamIdx) ?? []) : [];
+            const p1bMoves = this.options.p1Moves?.(currentP1b.teamIdx) ?? [];
+            if (!p1aMoves.includes(moveSlug) && p1bMoves.includes(moveSlug)) {
+              ev.args[0] = "p1b";
+            }
+          } else if (slot === "p1b" && currentP1a) {
+            const p1aMoves = this.options.p1Moves?.(currentP1a.teamIdx) ?? [];
+            const p1bMoves = currentP1b ? (this.options.p1Moves?.(currentP1b.teamIdx) ?? []) : [];
+            if (!p1bMoves.includes(moveSlug) && p1aMoves.includes(moveSlug)) {
+              ev.args[0] = "p1a";
+            }
+          }
+        }
+      }
+    }
   }
 }
 

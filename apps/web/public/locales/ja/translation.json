@@ -358,7 +358,8 @@
       "jumpToTime": "動画の該当箇所へシーク",
       "jumpToTurn": "ターンへジャンプ",
       "applyToForm": "戦績フォームへ反映して確認",
-      "analysisFailed": "動画の解析中にエラーが発生しました。"
+      "analysisFailed": "動画の解析中にエラーが発生しました。",
+      "validationWarningTitle": "解析結果に確認が必要な項目があります"
     },
     "analytics": {
       "title": "勝率インサイト",
