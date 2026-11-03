@@ -1,6 +1,10 @@
 use crate::sim::battle::{Battle, TurnState};
+use crate::solver::belief::BeliefState;
+use crate::solver::determinizer::{Determinizer, PriorProvider};
 use crate::solver::evaluator::{BattleResult, check_battle_result, evaluate_for_player};
 use crate::solver::legal_actions::{PlayerAction, get_player_actions};
+use crate::wasm_api::{CandidateAnalysisJs, PlayerActionJs, PvStepJs, SlotActionJs};
+use kifu::{ActionQuality, BattleKifu, TurnEvaluationReport};
 use rand::RngExt;
 use std::collections::HashMap;
 
@@ -27,6 +31,7 @@ impl Default for IsmctsConfig {
 pub struct ActionStats {
     pub action: PlayerAction,
     pub visits: usize,
+    pub avail_visits: usize,
     pub total_reward: f64,
 }
 
@@ -35,6 +40,7 @@ impl ActionStats {
         Self {
             action,
             visits: 0,
+            avail_visits: 0,
             total_reward: 0.0,
         }
     }
@@ -168,7 +174,37 @@ impl Node {
         }
     }
 
-    /// Selects an action index using UCB1.
+    pub fn new_empty() -> Self {
+        Self {
+            visits: 0,
+            p1_actions: Vec::new(),
+            p2_actions: Vec::new(),
+            children: HashMap::new(),
+        }
+    }
+
+    /// Ensures all legal actions in the current determinization exist in `action_pool`,
+    /// increments their `avail_visits`, and returns their indices in `action_pool`.
+    pub fn sync_available_actions(
+        action_pool: &mut Vec<ActionStats>,
+        legal_actions: Vec<PlayerAction>,
+    ) -> Vec<usize> {
+        let mut available_indices = Vec::with_capacity(legal_actions.len());
+        for act in legal_actions {
+            let idx = if let Some(pos) = action_pool.iter().position(|s| s.action == act) {
+                pos
+            } else {
+                let pos = action_pool.len();
+                action_pool.push(ActionStats::new(act));
+                pos
+            };
+            action_pool[idx].avail_visits += 1;
+            available_indices.push(idx);
+        }
+        available_indices
+    }
+
+    /// Selects an action index using UCB1 over the full `actions` slice.
     pub fn select_action(
         actions: &[ActionStats],
         total_visits: usize,
@@ -182,9 +218,38 @@ impl Node {
                 // Prioritize unvisited actions
                 return idx;
             }
+            let avail = stat.avail_visits.max(total_visits).max(1);
             let exploitation = stat.win_rate();
-            let exploration =
-                exploration_c * ((total_visits as f64).ln() / stat.visits as f64).sqrt();
+            let exploration = exploration_c * ((avail as f64).ln() / stat.visits as f64).sqrt();
+            let ucb = exploitation + exploration;
+            if ucb > best_val {
+                best_val = ucb;
+                best_idx = idx;
+            }
+        }
+
+        best_idx
+    }
+
+    /// Selects an action index from `available_indices` using Information Set UCB1 (IS-UCT).
+    pub fn select_available_action(
+        actions: &[ActionStats],
+        available_indices: &[usize],
+        total_visits: usize,
+        exploration_c: f64,
+    ) -> usize {
+        let mut best_idx = available_indices.first().copied().unwrap_or(0);
+        let mut best_val = f64::NEG_INFINITY;
+
+        for &idx in available_indices {
+            let stat = &actions[idx];
+            if stat.visits == 0 {
+                return idx;
+            }
+            let avail = stat.avail_visits.max(1).max(stat.visits);
+            let _ = total_visits;
+            let exploitation = stat.win_rate();
+            let exploration = exploration_c * ((avail as f64).ln() / stat.visits as f64).sqrt();
             let ucb = exploitation + exploration;
             if ucb > best_val {
                 best_val = ucb;
@@ -316,6 +381,139 @@ impl Ismcts {
             self.simulate(&mut root, &mut state, 0, searching_player);
         }
 
+        self.finalize_analysis(root, root_battle, current_eval, searching_player, true)
+    }
+
+    /// 不完全情報集合 (`BeliefState`) 上で Determinization を行いながら真の ISMCTS 解析を実行する
+    pub fn analyze_belief<P: PriorProvider>(
+        &self,
+        belief: &BeliefState,
+        determinizer: &Determinizer<P>,
+        searching_player: u8,
+    ) -> PositionAnalysis {
+        let mut rng = rand::rng();
+        let mut root = Node::new_empty();
+        let mut eval_sum = 0.0;
+        let iters = self.config.iterations.max(1);
+
+        for _ in 0..iters {
+            let mut state = determinizer.sample_battle(belief, &mut rng);
+            eval_sum += evaluate_for_player(&state, searching_player);
+            self.simulate_determinized(&mut root, &mut state, 0, searching_player);
+        }
+
+        let current_eval = eval_sum / (iters as f64);
+        // 不完全情報下では相手の控えや乱数が未確定なため、単一盤面での確定詰み判定は無効化
+        self.finalize_analysis(
+            root,
+            &belief.base_battle,
+            current_eval,
+            searching_player,
+            false,
+        )
+    }
+
+    /// 新棋譜 (`BattleKifu`) の指定ターン (`turn_index`) における盤面可視化・期待勝率・最善手・悪手判定を一括算出する
+    pub fn evaluate_kifu_turn(&self, kifu: &BattleKifu, turn_index: usize) -> TurnEvaluationReport {
+        let belief = BeliefState::from_kifu_up_to_turn(kifu, turn_index);
+        let snapshot = belief.to_snapshot_view();
+        let determinizer = Determinizer::default();
+        let analysis = self.analyze_belief(&belief, &determinizer, 1);
+
+        let convert_action = |act: &PlayerAction| PlayerActionJs {
+            slot_a: SlotActionJs {
+                choice: act.a.choice.clone(),
+                target: act.a.target,
+                mega: act.a.mega,
+            },
+            slot_b: SlotActionJs {
+                choice: act.b.choice.clone(),
+                target: act.b.target,
+                mega: act.b.mega,
+            },
+        };
+
+        let best_action_js = convert_action(&analysis.best_action);
+        let best_action_win_rate = analysis
+            .candidates
+            .first()
+            .map(|c| c.win_rate)
+            .unwrap_or(analysis.current_eval);
+
+        let actual_action = kifu
+            .turns
+            .get(turn_index)
+            .map(|t| t.p1_action.clone())
+            .unwrap_or_else(|| best_action_js.clone());
+
+        let normalize_choice = |s: &str| s.replace('-', "").to_lowercase();
+        let actual_cand = analysis.candidates.iter().find(|c| {
+            normalize_choice(&c.action.a.choice) == normalize_choice(&actual_action.slot_a.choice)
+                && c.action.a.target == actual_action.slot_a.target
+                && c.action.a.mega == actual_action.slot_a.mega
+                && normalize_choice(&c.action.b.choice)
+                    == normalize_choice(&actual_action.slot_b.choice)
+                && c.action.b.target == actual_action.slot_b.target
+                && c.action.b.mega == actual_action.slot_b.mega
+        });
+
+        let actual_action_win_rate = actual_cand.map(|c| c.win_rate);
+        let win_rate_delta = actual_action_win_rate.map(|w| (w - best_action_win_rate).min(0.0));
+        let action_quality = win_rate_delta.map(|delta| {
+            if delta >= -0.02 {
+                ActionQuality::Best
+            } else if delta >= -0.06 {
+                ActionQuality::Good
+            } else if delta >= -0.15 {
+                ActionQuality::Inaccuracy
+            } else {
+                ActionQuality::Blunder
+            }
+        });
+
+        let candidates_js = analysis
+            .candidates
+            .into_iter()
+            .map(|cand| CandidateAnalysisJs {
+                rank: cand.rank,
+                action: convert_action(&cand.action),
+                win_rate: cand.win_rate,
+                visits: cand.visits,
+                pv: cand
+                    .pv
+                    .into_iter()
+                    .map(|step| PvStepJs {
+                        turn: step.turn,
+                        p1_action: convert_action(&step.p1_action),
+                        p2_action: convert_action(&step.p2_action),
+                    })
+                    .collect(),
+                is_mate: cand.is_mate,
+            })
+            .collect();
+
+        TurnEvaluationReport {
+            turn_number: snapshot.turn_number,
+            snapshot,
+            expected_win_rate: analysis.current_eval,
+            best_action: best_action_js,
+            best_action_win_rate,
+            actual_action,
+            actual_action_win_rate,
+            win_rate_delta,
+            action_quality,
+            candidates: candidates_js,
+        }
+    }
+
+    fn finalize_analysis(
+        &self,
+        root: Node,
+        root_battle: &Battle,
+        current_eval: f64,
+        searching_player: u8,
+        check_mate_on_root: bool,
+    ) -> PositionAnalysis {
         let searching_actions = if searching_player == 1 {
             &root.p1_actions
         } else {
@@ -332,43 +530,48 @@ impl Ismcts {
         for (idx, stat) in searching_actions.iter().enumerate() {
             let pv = root.extract_pv(searching_player, idx, 3);
 
-            // A candidate move cannot be a guaranteed win (mate / 詰め筋)
-            // if the opponent has an immediate refutation that defeats the searching player.
-            let mut refuted = false;
-            for opp_stat in opp_acts {
-                let mut test_battle = root_battle.clone();
-                let (p1_act, p2_act) = if searching_player == 1 {
-                    (&stat.action, &opp_stat.action)
-                } else {
-                    (&opp_stat.action, &stat.action)
-                };
-                let _ = step_turn(&mut test_battle, p1_act, p2_act);
-                if matches!(test_battle.turn_state, TurnState::WaitingForSwitch { .. }) {
-                    auto_resolve_forced_switch(&mut test_battle);
-                }
-                if check_battle_result(&test_battle) == BattleResult::Win(3 - searching_player) {
-                    refuted = true;
-                    break;
-                }
-            }
-
-            // Check if PV leads to guaranteed win (mate / 詰め筋)
             let mut is_mate = false;
-            if !refuted {
-                let mut test_battle = root_battle.clone();
-                for step in &pv {
-                    let _ = step_turn(&mut test_battle, &step.p1_action, &step.p2_action);
+            if check_mate_on_root {
+                // A candidate move cannot be a guaranteed win (mate / 詰め筋)
+                // if the opponent has an immediate refutation that defeats the searching player.
+                let mut refuted = false;
+                for opp_stat in opp_acts {
+                    let mut test_battle = root_battle.clone();
+                    let (p1_act, p2_act) = if searching_player == 1 {
+                        (&stat.action, &opp_stat.action)
+                    } else {
+                        (&opp_stat.action, &stat.action)
+                    };
+                    let _ = step_turn(&mut test_battle, p1_act, p2_act);
                     if matches!(test_battle.turn_state, TurnState::WaitingForSwitch { .. }) {
                         auto_resolve_forced_switch(&mut test_battle);
                     }
-                    if check_battle_result(&test_battle) == BattleResult::Win(searching_player) {
-                        is_mate = true;
-                        break;
-                    }
                     if check_battle_result(&test_battle) == BattleResult::Win(3 - searching_player)
                     {
-                        is_mate = false;
+                        refuted = true;
                         break;
+                    }
+                }
+
+                // Check if PV leads to guaranteed win (mate / 詰め筋)
+                if !refuted {
+                    let mut test_battle = root_battle.clone();
+                    for step in &pv {
+                        let _ = step_turn(&mut test_battle, &step.p1_action, &step.p2_action);
+                        if matches!(test_battle.turn_state, TurnState::WaitingForSwitch { .. }) {
+                            auto_resolve_forced_switch(&mut test_battle);
+                        }
+                        if check_battle_result(&test_battle) == BattleResult::Win(searching_player)
+                        {
+                            is_mate = true;
+                            break;
+                        }
+                        if check_battle_result(&test_battle)
+                            == BattleResult::Win(3 - searching_player)
+                        {
+                            is_mate = false;
+                            break;
+                        }
                     }
                 }
             }
@@ -418,6 +621,7 @@ impl Ismcts {
             .map(|c| ActionStats {
                 action: c.action.clone(),
                 visits: c.visits,
+                avail_visits: c.visits,
                 total_reward: c.win_rate * c.visits as f64,
             })
             .collect();
@@ -472,6 +676,78 @@ impl Ismcts {
 
         // Backpropagate rewards:
         // P1 reward is aligned with searching_player if searching_player == 1, else 1.0 - reward
+        let p1_reward = if searching_player == 1 {
+            reward
+        } else {
+            1.0 - reward
+        };
+        let p2_reward = 1.0 - p1_reward;
+
+        node.p1_actions[p1_idx].visits += 1;
+        node.p1_actions[p1_idx].avail_visits += 1;
+        node.p1_actions[p1_idx].total_reward += p1_reward;
+
+        node.p2_actions[p2_idx].visits += 1;
+        node.p2_actions[p2_idx].avail_visits += 1;
+        node.p2_actions[p2_idx].total_reward += p2_reward;
+
+        reward
+    }
+
+    fn simulate_determinized(
+        &self,
+        node: &mut Node,
+        state: &mut Battle,
+        depth: usize,
+        searching_player: u8,
+    ) -> f64 {
+        node.visits += 1;
+
+        if check_battle_result(state) != BattleResult::Ongoing || depth >= self.config.max_depth {
+            return evaluate_for_player(state, searching_player);
+        }
+
+        let legal_p1 = get_player_actions(state, 1);
+        let legal_p2 = get_player_actions(state, 2);
+
+        if legal_p1.is_empty() || legal_p2.is_empty() {
+            return evaluate_for_player(state, searching_player);
+        }
+
+        let avail_p1 = Node::sync_available_actions(&mut node.p1_actions, legal_p1);
+        let avail_p2 = Node::sync_available_actions(&mut node.p2_actions, legal_p2);
+
+        let p1_idx = Node::select_available_action(
+            &node.p1_actions,
+            &avail_p1,
+            node.visits,
+            self.config.exploration_c,
+        );
+        let p2_idx = Node::select_available_action(
+            &node.p2_actions,
+            &avail_p2,
+            node.visits,
+            self.config.exploration_c,
+        );
+
+        let p1_action = node.p1_actions[p1_idx].action.clone();
+        let p2_action = node.p2_actions[p2_idx].action.clone();
+
+        let _ = step_turn(state, &p1_action, &p2_action);
+        if matches!(state.turn_state, TurnState::WaitingForSwitch { .. }) {
+            auto_resolve_forced_switch(state);
+        }
+
+        let reward = if let Some(child) = node.children.get_mut(&(p1_idx, p2_idx)) {
+            self.simulate_determinized(child, state, depth + 1, searching_player)
+        } else {
+            let mut child = Node::new_empty();
+            let rollout_reward = self.rollout(state, searching_player);
+            child.visits = 1;
+            node.children.insert((p1_idx, p2_idx), child);
+            rollout_reward
+        };
+
         let p1_reward = if searching_player == 1 {
             reward
         } else {

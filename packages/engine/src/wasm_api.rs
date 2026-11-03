@@ -155,36 +155,10 @@ pub struct PokemonData {
     pub substitute_hp: i32,
 }
 
-#[derive(Deserialize, Tsify, Clone, Default)]
-#[serde(default)]
-pub struct InputPokemonData {
-    pub ident: String,
-    pub species: String,
-    pub hp: i32,
-    pub maxhp: i32,
-    pub speed: i32,
-    pub attack: i32,
-    pub defense: i32,
-    pub sp_attack: i32,
-    pub sp_defense: i32,
-    pub item: Option<String>,
-    pub ability: Option<String>,
-    pub status: Option<String>,
-    pub type1: String,
-    pub type2: Option<String>,
-    pub added_type: Option<String>,
-    pub boosts: Boosts,
-    pub volatile_status: Vec<String>,
-    pub last_move_used: Option<String>,
-    pub consecutive_move_counter: u8,
-    pub pp_used: std::collections::HashMap<String, u8>,
-    pub taunt_turns: u8,
-    pub moves: Vec<String>,
-    pub is_mega: bool,
-    pub evs: Option<PokemonEvs>,
-    pub nature: Option<Nature>,
-    pub substitute_hp: i32,
-}
+pub use kifu::types::{
+    CandidateAnalysisJs, InputPokemonData, PlayerActionJs, PositionAnalysisJs, PvStepJs,
+    SlotActionJs,
+};
 
 impl Default for PokemonData {
     fn default() -> Self {
@@ -385,18 +359,6 @@ pub struct TurnActions {
     #[serde(default)]
     pub p2b_mega: bool,
 }
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
-pub struct SlotActionJs {
-    pub choice: String,
-    pub target: i8,
-    pub mega: bool,
-}
-
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
-pub struct PlayerActionJs {
-    pub slot_a: SlotActionJs,
-    pub slot_b: SlotActionJs,
-}
 
 #[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
 pub struct AiSearchResultJs {
@@ -408,31 +370,6 @@ pub struct AiSearchResultJs {
 #[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
 pub struct LegalActionsJs {
     pub actions: Vec<PlayerActionJs>,
-}
-
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
-pub struct PvStepJs {
-    pub turn: usize,
-    pub p1_action: PlayerActionJs,
-    pub p2_action: PlayerActionJs,
-}
-
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
-pub struct CandidateAnalysisJs {
-    pub rank: usize,
-    pub action: PlayerActionJs,
-    pub win_rate: f64,
-    pub visits: usize,
-    pub pv: Vec<PvStepJs>,
-    pub is_mate: bool,
-}
-
-#[derive(Serialize, Deserialize, Tsify, Clone, Debug)]
-pub struct PositionAnalysisJs {
-    pub current_eval: f64,
-    pub total_simulations: usize,
-    pub candidates: Vec<CandidateAnalysisJs>,
-    pub best_action: PlayerActionJs,
 }
 
 #[derive(Deserialize, Tsify, Clone, Debug)]
@@ -886,48 +823,24 @@ pub fn create_pokemon(
     let meta = pkmn_meta::pokemon_meta::get_pokemon_meta(&species)
         .ok_or_else(|| wasm_bindgen::JsError::new(&format!("Unknown species: {}", species)))?;
 
-    // Math for Level 50 and 31 IVs:
-    // Base stat at 0 EVs:
-    // HP = floor((2 * Base + 31) * 50 / 100) + 50 + 10 = Base + 75
-    // Other = floor((2 * Base + 31) * 50 / 100) + 5 = Base + 20
-
-    let base_hp = meta.base_stats()[0] + 75;
-    let base_atk = meta.base_stats()[1] + 20;
-    let base_def = meta.base_stats()[2] + 20;
-    let base_spa = meta.base_stats()[3] + 20;
-    let base_spd = meta.base_stats()[4] + 20;
-    let base_spe = meta.base_stats()[5] + 20;
-
-    let pre_nature_hp = base_hp + evs.hp.unwrap_or(0) as u32;
-    let pre_nature_atk = base_atk + evs.atk.unwrap_or(0) as u32;
-    let pre_nature_def = base_def + evs.def.unwrap_or(0) as u32;
-    let pre_nature_spa = base_spa + evs.spa.unwrap_or(0) as u32;
-    let pre_nature_spd = base_spd + evs.spd.unwrap_or(0) as u32;
-    let pre_nature_spe = base_spe + evs.spe.unwrap_or(0) as u32;
-
-    let mut hp = pre_nature_hp as i32;
-    if species.to_lowercase().replace("-", "") == "shedinja" {
-        hp = 1;
-    }
-
-    let apply_nature = |val: u32, is_buff: bool, is_nerf: bool| -> i32 {
-        let mut stat = val as i32;
-        if is_buff {
-            stat = (stat * 11) / 10;
-        } else if is_nerf {
-            stat = (stat * 9) / 10;
-        }
-        stat
-    };
-
     let nature_enum = nature_opt.unwrap_or(Nature::Hardy);
     let (buff, nerf) = nature_enum.modifiers();
+    let nmod = |stat_idx: u8| -> i8 {
+        if buff == stat_idx {
+            1
+        } else if nerf == stat_idx {
+            -1
+        } else {
+            0
+        }
+    };
 
-    let atk = apply_nature(pre_nature_atk, buff == 1, nerf == 1);
-    let def = apply_nature(pre_nature_def, buff == 2, nerf == 2);
-    let spa = apply_nature(pre_nature_spa, buff == 3, nerf == 3);
-    let spd = apply_nature(pre_nature_spd, buff == 4, nerf == 4);
-    let spe = apply_nature(pre_nature_spe, buff == 5, nerf == 5);
+    let hp = meta.calc_hp_lv50(evs.hp.unwrap_or(0)) as i32;
+    let atk = meta.calc_stat_lv50(1, evs.atk.unwrap_or(0), nmod(1)) as i32;
+    let def = meta.calc_stat_lv50(2, evs.def.unwrap_or(0), nmod(2)) as i32;
+    let spa = meta.calc_stat_lv50(3, evs.spa.unwrap_or(0), nmod(3)) as i32;
+    let spd = meta.calc_stat_lv50(4, evs.spd.unwrap_or(0), nmod(4)) as i32;
+    let spe = meta.calc_stat_lv50(5, evs.spe.unwrap_or(0), nmod(5)) as i32;
 
     let data = PokemonData {
         ident,
@@ -1106,4 +1019,73 @@ fn convert_pokemon(p: &crate::sim::pokemon::Pokemon) -> PokemonData {
         nature: p.nature,
         substitute_hp: p.substitute_hp,
     }
+}
+
+#[wasm_bindgen]
+pub fn get_kifu_snapshot(
+    kifu: tsify::Ts<kifu::BattleKifu>,
+    turn_index: usize,
+) -> Result<tsify::Ts<kifu::TurnSnapshotView>, wasm_bindgen::JsError> {
+    let kifu_rust: kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    let belief = crate::solver::belief::BeliefState::from_kifu_up_to_turn(&kifu_rust, turn_index);
+    let snapshot = belief.to_snapshot_view();
+    tsify::Ts::from_rust(&snapshot).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn analyze_kifu_turn(
+    kifu: tsify::Ts<kifu::BattleKifu>,
+    turn_index: usize,
+    iterations: Option<usize>,
+) -> Result<tsify::Ts<kifu::TurnEvaluationReport>, wasm_bindgen::JsError> {
+    let kifu_rust: kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    let mut config = crate::solver::IsmctsConfig::default();
+    if let Some(iters) = iterations {
+        config.iterations = iters;
+    }
+    let ismcts = crate::solver::Ismcts::new(config);
+    let report = ismcts.evaluate_kifu_turn(&kifu_rust, turn_index);
+    tsify::Ts::from_rust(&report).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn annotate_pbn_with_evaluation(
+    pbn_text: &str,
+    turn_index: Option<usize>,
+    iterations: Option<usize>,
+) -> Result<String, wasm_bindgen::JsError> {
+    use crate::solver::BattleKifuSolverExt;
+    let mut kifu =
+        kifu::BattleKifu::from_pbn(pbn_text).map_err(|e| wasm_bindgen::JsError::new(e.as_str()))?;
+    if let Some(idx) = turn_index {
+        kifu.annotate_turn_with_evaluation(idx, iterations)
+            .map_err(|e| wasm_bindgen::JsError::new(e.as_str()))?;
+    } else {
+        kifu.annotate_all_turns_with_evaluation(iterations);
+    }
+    Ok(kifu.to_pbn())
+}
+
+#[wasm_bindgen]
+pub fn annotate_kifu_with_evaluation(
+    kifu: tsify::Ts<kifu::BattleKifu>,
+    turn_index: Option<usize>,
+    iterations: Option<usize>,
+) -> Result<tsify::Ts<kifu::BattleKifu>, wasm_bindgen::JsError> {
+    use crate::solver::BattleKifuSolverExt;
+    let mut kifu_rust: kifu::BattleKifu = kifu
+        .to_rust()
+        .map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))?;
+    if let Some(idx) = turn_index {
+        kifu_rust
+            .annotate_turn_with_evaluation(idx, iterations)
+            .map_err(|e| wasm_bindgen::JsError::new(e.as_str()))?;
+    } else {
+        kifu_rust.annotate_all_turns_with_evaluation(iterations);
+    }
+    tsify::Ts::from_rust(&kifu_rust).map_err(|e| wasm_bindgen::JsError::new(&e.to_string()))
 }
