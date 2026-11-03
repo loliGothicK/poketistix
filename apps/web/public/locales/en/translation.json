@@ -286,7 +286,8 @@
       "jumpToTime": "Seek video to timestamp",
       "jumpToTurn": "Jump to Turn",
       "applyToForm": "Apply to Battle Record Form",
-      "analysisFailed": "An error occurred while analyzing the video."
+      "analysisFailed": "An error occurred while analyzing the video.",
+      "validationWarningTitle": "Some items in the analysis need review"
     },
     "analytics": {
       "title": "Winrate Insights",

@@ -74,6 +74,7 @@ export function VideoKifuImportDialog({
   const [progress, setProgress] = useState<VideoAnalysisProgress | null>(null);
   const [pbnText, setPbnText] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [validationWarnings, setValidationWarnings] = useState<readonly string[] | null>(null);
 
   useEffect(() => {
     return () => {
@@ -108,6 +109,7 @@ export function VideoKifuImportDialog({
     setVideoPreviewUrl(nextUrl);
     setVideoFile(file);
     setErrorMessage(null);
+    setValidationWarnings(null);
   };
 
   const handleStartAnalysis = async () => {
@@ -118,6 +120,7 @@ export function VideoKifuImportDialog({
 
     setAnalyzing(true);
     setErrorMessage(null);
+    setValidationWarnings(null);
     setProgress(null);
 
     try {
@@ -131,6 +134,7 @@ export function VideoKifuImportDialog({
         onProgress: (p) => setProgress(p),
       });
       setPbnText(summary.pbnText);
+      setValidationWarnings(summary.validationErrors ?? null);
     } catch (err: unknown) {
       if (!controller.signal.aborted) {
         const msg =
@@ -351,6 +355,21 @@ export function VideoKifuImportDialog({
           )}
 
           {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+
+          {validationWarnings && validationWarnings.length > 0 && (
+            <Alert severity="warning">
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {t("battleRecord.videoImport.validationWarningTitle")}
+              </Typography>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {validationWarnings.map((w, idx) => (
+                  <li key={idx}>
+                    <Typography variant="caption">{w}</Typography>
+                  </li>
+                ))}
+              </ul>
+            </Alert>
+          )}
 
           {/* PBN エディタ & タイムスタンプ付きレビューリスト */}
           <Box

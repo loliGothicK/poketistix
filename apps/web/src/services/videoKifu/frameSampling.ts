@@ -360,7 +360,7 @@ export function analyzeVideoFrameRgba(
   const isSelectingUi =
     commandTimerVisible || isCommandMenu || activeP1Slot !== null || selectedMoveIndex !== null;
 
-  const canShowMessageOrBanner = !isSelectingUi && visibleHudCount < 3;
+  const canShowMessageOrBanner = !isSelectingUi && previewP1Cards < 4 && previewP2Cards < 4;
   const [msgX0, msgY0, msgX1, msgY1] = toPixelBounds(roi.messageBox, width, height);
   let whiteMsgPixels = 0;
   if (canShowMessageOrBanner) {

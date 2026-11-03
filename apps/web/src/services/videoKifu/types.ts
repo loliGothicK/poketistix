@@ -123,6 +123,7 @@ export interface VideoKifuAnalysisSummary {
   readonly turnTimestamps: Readonly<Record<number, number>>;
   readonly totalSampledFrames: number;
   readonly detectedTurnCount: number;
+  readonly validationErrors?: readonly string[];
 }
 
 export type RoiOcrHint = "species" | "move" | "ability" | "message" | "hp" | "result";
