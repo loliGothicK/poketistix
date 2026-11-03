@@ -13,10 +13,79 @@ const ap = getApplicativeValidation(getSemigroup<MitamaError>());
  * fp-ts の Validated を用いて、すべての不変条件違反を集約して報告する。
  */
 
+const RESIDUAL_BRACKETS = new Set<string>([
+  "sandstorm",
+  "life-orb",
+  "burn",
+  "poison",
+  "recoil",
+  "crash",
+  "leech-seed",
+  "curse",
+  "spikes",
+  "stealth-rock",
+  "bind",
+  "grassy-terrain",
+]);
+
+const NON_ATTACKING_MOVES =
+  /protect|detect|endure|spiky-shield|kings-shield|baneful-bunker|wide-guard|quick-guard|swords-dance|tailwind|trick-room|helping-hand|parting-shot|yawn|taunt|will-o-wisp|thunder-wave|spore/i;
+
+/**
+ * 物理的サニタイズ（PBN レンダリング前のターンデータ健全化）:
+ * 1. 同一ターン内での同一スロットによる二重行動（重複 move イベント）を物理的に排除
+ * 2. 単体技における誤った自己攻撃ターゲット（-> slot）の除去
+ */
+export function sanitizeTurnEvents(turn: TurnRecord): TurnRecord {
+  const actedSlots = new Set<string>();
+  const sanitizedEvents: LogEvent[] = [];
+
+  for (const ev of turn.events) {
+    if (ev.verb === "move") {
+      const slot = ev.args[0] ?? "";
+      const moveSlug = ev.args[1] ?? "";
+
+      // 同一ターンで既に技行使済みのスロットによる2回目の技はノイズとして物理的に除外
+      if (actedSlots.has(slot)) {
+        continue;
+      }
+      actedSlots.add(slot);
+
+      // 単体技でターゲットが自身になっている不正な指定を修正
+      const isSelfMove = /curse|belly-drum|substitute|pain-split/i.test(moveSlug);
+      const arrowIdx = ev.args.indexOf("->");
+      if (!isSelfMove && arrowIdx >= 0 && arrowIdx + 1 < ev.args.length) {
+        const target = ev.args[arrowIdx + 1];
+        if (target === slot) {
+          // 自身のスロットへのターゲット指定を除去
+          const cleanArgs = [...ev.args.slice(0, arrowIdx), ...ev.args.slice(arrowIdx + 2)];
+          sanitizedEvents.push({ ...ev, args: cleanArgs });
+          continue;
+        }
+      }
+    }
+
+    sanitizedEvents.push(ev);
+  }
+
+  return {
+    ...turn,
+    events: sanitizedEvents,
+  };
+}
+
+/**
+ * 全ターンの構造的サニタイズ
+ */
+export function sanitizeAllTurns(turns: readonly TurnRecord[]): readonly TurnRecord[] {
+  return turns.map(sanitizeTurnEvents);
+}
+
 /**
  * 1. 初手アクティブスロットの検証
  * Turn 1 の stateSnapshot において、自分側(p1a, p1b)および相手側(p2a, p2b)の
  * アクティブスロットの種族スラッグが null のまま進行していないことを検証する。
+ * これが未解決の場合、以降の全解析が破綻するため即座に検証失敗とする。
  */
 export function validateLeadActiveSlots(
   turns: readonly TurnRecord[],
@@ -48,27 +117,9 @@ export function validateLeadActiveSlots(
   return right(turns);
 }
 
-const RESIDUAL_BRACKETS = new Set<string>([
-  "sandstorm",
-  "life-orb",
-  "burn",
-  "poison",
-  "recoil",
-  "crash",
-  "leech-seed",
-  "curse",
-  "spikes",
-  "stealth-rock",
-  "bind",
-  "grassy-terrain",
-]);
-
-const NON_ATTACKING_MOVES =
-  /protect|detect|endure|spiky-shield|kings-shield|baneful-bunker|wide-guard|quick-guard|swords-dance|tailwind|trick-room|helping-hand|parting-shot|yawn|taunt|will-o-wisp|thunder-wave|spore/i;
-
 /**
  * 2. 自己攻撃の検証
- * 単体攻撃技において、攻撃スロット自身を対象として直接ダメージを与えている異常（スロット誤判定の連鎖）を検出する。
+ * 単体攻撃技において、攻撃スロット自身を対象として直接ダメージを与えている異常を検出する。
  */
 export function validateNoSelfAttack(
   turns: readonly TurnRecord[],
@@ -163,21 +214,26 @@ export function validateNoDuplicateActionPerTurn(
 
 /**
  * PBN 文字列にレンダリングする前に、構造化されたターン情報・イベント列に対して
- * fp-ts の sequenceT(ap) で合成検証・サニタイズを実行する。
+ * 1. 物理的サニタイズ（重複行動・自己攻撃ターゲットの除去）を適用
+ * 2. fp-ts の sequenceT(ap) で合成検証を実行
  */
 export function sanitizeAndValidateBattleLog(
   turns: readonly TurnRecord[],
   _leadEvents: readonly LogEvent[],
 ): ValidateResult<readonly TurnRecord[]> {
+  // まず物理的サニタイズを実行
+  const sanitizedTurns = sanitizeAllTurns(turns);
+
+  // サニタイズ結果に対して fp-ts Validated による不変条件検証を実行
   const validation = sequenceT(ap)(
-    validateLeadActiveSlots(turns),
-    validateNoSelfAttack(turns),
-    validateNoDuplicateActionPerTurn(turns),
+    validateLeadActiveSlots(sanitizedTurns),
+    validateNoSelfAttack(sanitizedTurns),
+    validateNoDuplicateActionPerTurn(sanitizedTurns),
   );
 
   if (isLeft(validation)) {
     return left(validation.left);
   }
 
-  return right(turns);
+  return right(sanitizedTurns);
 }

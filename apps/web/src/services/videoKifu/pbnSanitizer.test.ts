@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isLeft, isRight } from "fp-ts/lib/Either";
 import {
   sanitizeAndValidateBattleLog,
+  sanitizeTurnEvents,
   validateLeadActiveSlots,
   validateNoSelfAttack,
   validateNoDuplicateActionPerTurn,
@@ -48,7 +49,53 @@ function createDummyTurn(
   };
 }
 
-describe("battleLogSanitizer (Structured AST Validation with fp-ts)", () => {
+describe("battleLogSanitizer (Structured AST Sanitization & Validation with fp-ts)", () => {
+  it("physically sanitizes duplicate actions within the same turn", () => {
+    const rawTurn = createDummyTurn(
+      1,
+      { p1a: "lopunny", p1b: "kingambit", p2a: "incineroar", p2b: "rillaboom" },
+      [
+        {
+          verb: "move",
+          args: ["p1a", "protect"],
+          t: 1000,
+          confidence: 1,
+          review: false,
+        },
+        {
+          verb: "move",
+          args: ["p1a", "kowtow-cleave"],
+          t: 2000,
+          confidence: 1,
+          review: false,
+        },
+      ],
+    );
+
+    const sanitized = sanitizeTurnEvents(rawTurn);
+    expect(sanitized.events.filter((e) => e.verb === "move").length).toBe(1);
+    expect(sanitized.events[0]?.args[1]).toBe("protect");
+  });
+
+  it("physically sanitizes erroneous self-attack targeting", () => {
+    const rawTurn = createDummyTurn(
+      1,
+      { p1a: "kingambit", p1b: "lopunny", p2a: "incineroar", p2b: "rillaboom" },
+      [
+        {
+          verb: "move",
+          args: ["p1a", "kowtow-cleave", "->", "p1a"],
+          t: 1000,
+          confidence: 1,
+          review: false,
+        },
+      ],
+    );
+
+    const sanitized = sanitizeTurnEvents(rawTurn);
+    expect(sanitized.events[0]?.args).toEqual(["p1a", "kowtow-cleave"]);
+  });
+
   it("rejects Turn 1 when lead slots are unresolved (null)", () => {
     const turns = [createDummyTurn(1, { p1a: null, p1b: null, p2a: null, p2b: null })];
     const res = validateLeadActiveSlots(turns);
@@ -89,7 +136,7 @@ describe("battleLogSanitizer (Structured AST Validation with fp-ts)", () => {
     }
   });
 
-  it("rejects when a slot executes multiple moves in the same turn", () => {
+  it("rejects when a slot executes multiple moves in the same turn without sanitization", () => {
     const turns = [
       createDummyTurn(
         1,
@@ -119,41 +166,16 @@ describe("battleLogSanitizer (Structured AST Validation with fp-ts)", () => {
     }
   });
 
-  it("accumulates multiple errors across different validations using fp-ts Validated before PBN render", () => {
-    const invalidTurns = [
-      createDummyTurn(1, { p1a: null, p1b: null, p2a: null, p2b: null }, [
-        {
-          verb: "move",
-          args: ["p1a", "kowtow-cleave"],
-          t: 1000,
-          confidence: 1,
-          review: false,
-        },
-        {
-          verb: "damage",
-          args: ["p1a", "142/142 -> 100/142"],
-          t: 1100,
-          confidence: 1,
-          review: false,
-        },
-        {
-          verb: "move",
-          args: ["p1a", "close-combat"],
-          t: 2000,
-          confidence: 1,
-          review: false,
-        },
-      ]),
-    ];
+  it("accumulates unresolvable errors (LeadSlotUnresolved) via fp-ts Validated before PBN render", () => {
+    const invalidTurns = [createDummyTurn(1, { p1a: null, p1b: null, p2a: null, p2b: null }, [])];
     const res = sanitizeAndValidateBattleLog(invalidTurns, []);
     expect(isLeft(res)).toBe(true);
     if (isLeft(res)) {
-      // Accumulates LeadSlotUnresolved, SelfAttackDetected, and DuplicateActionPerTurn
-      expect(res.left.length).toBeGreaterThanOrEqual(3);
+      expect(res.left.some((e) => e.message.includes("[LeadSlotUnresolved]"))).toBe(true);
     }
   });
 
-  it("accepts valid and consistent TurnRecords", () => {
+  it("accepts valid and consistent TurnRecords after sanitization", () => {
     const validTurns = [
       createDummyTurn(
         1,
