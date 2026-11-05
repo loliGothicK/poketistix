@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import { fileURLToPath } from "node:url";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
@@ -20,6 +20,7 @@ export default defineConfig({
     environment: "happy-dom",
     pool: "vmThreads",
     globals: true,
+    exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
     coverage: {
       reporter: ["text", "html", "json-summary"],
     },

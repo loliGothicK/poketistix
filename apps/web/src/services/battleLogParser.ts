@@ -20,6 +20,24 @@ import {
   type FieldEffect,
 } from "./battleLogPatterns";
 import { moveByIdentifier } from "@/data/moves";
+import * as E from "fp-ts/lib/Either";
+import {
+  createInitialBattleState,
+  validateLeadDeploy,
+  validateSwitchIn,
+  validateWithdraw,
+  validateFaint,
+  validateWeatherEnd,
+  validateTerrainEnd,
+  validateFieldEffectEnd,
+  validateSideConditionEnd,
+  validateMoveExecution,
+  validateStatusInflict,
+  validateStatusCure,
+  validateCantMove,
+  validateResidualDamage,
+  type BattleState,
+} from "./videoKifu/battleDomainContract";
 
 export type SlotIdent = "p1a" | "p1b" | "p2a" | "p2b";
 
@@ -240,6 +258,7 @@ export class BattleLogParser {
   private pendingCrit = false;
   private recentBracketedDamage: Partial<Record<SlotIdent, { hpAfter: string; t: number }>> = {};
 
+  private contractState: BattleState = createInitialBattleState();
   private readonly patternSets: readonly BattleLogPatternSet[];
 
   /** 実際に場に出た自分のポケモン（登録パーティ内インデックス, 出現順） */
@@ -346,6 +365,15 @@ export class BattleLogParser {
   /** コマンド選択画面に入った（= 新しいターンが始まった）ことを通知する */
   beginTurn(timestampMs: number): void {
     const turnNumber = this.turns.length + 1;
+    this.contractState = {
+      ...this.contractState,
+      phase: "turn",
+      turnNumber,
+      turnActions: {
+        actedSlots: new Set(),
+        lastMove: null,
+      },
+    };
 
     // Turn 1 開始時点で先発繰り出しが OCR 欠落等で未着地の場合、
     // 選出データ (p1Selection) の先頭2体をダブルバトルの先発として確実に着地させる
@@ -692,6 +720,7 @@ export class BattleLogParser {
       this.onProtected(key, timestampMs) ||
       this.onMoveOutcome(key, timestampMs) ||
       this.onSideCondition(key, timestampMs) ||
+      this.onStatChange(key, timestampMs) ||
       this.onFieldChange(key, timestampMs) ||
       this.onSpecialMoveEffect(key, timestampMs) ||
       this.onStatReset(key, timestampMs) ||
@@ -704,7 +733,6 @@ export class BattleLogParser {
       this.onResidualDamage(text, key, timestampMs) ||
       this.onFainted(key, timestampMs) ||
       this.onHeal(text, key, timestampMs) ||
-      this.onStatChange(key, timestampMs) ||
       this.onMoveUsed(text, timestampMs);
 
     if (handled) {
@@ -1617,6 +1645,17 @@ export class BattleLogParser {
     const { species } = this.options.dictionaries;
     const roster = new Set(this.options.p2Roster);
     const inRoster = species.filter((entry) => roster.has(entry.slug));
+    const normClean = normalizeOcrToken(clean);
+    for (const entry of inRoster) {
+      const aliasNorm = normalizeOcrToken(entry.alias);
+      if (aliasNorm.length >= 2 && normClean.includes(aliasNorm)) {
+        return { slug: entry.slug, confidence: 95 };
+      }
+      const m = approxFind(normClean, aliasNorm);
+      if (m.score >= 0.8) {
+        return { slug: entry.slug, confidence: Math.round(m.score * 100) };
+      }
+    }
     const fromRoster = inRoster.length > 0 ? fuzzyMatchEntity(clean, inRoster) : null;
     if (fromRoster && fromRoster.confidence >= 70) return fromRoster;
     const any = fuzzyMatchEntity(clean, species);
@@ -1681,6 +1720,11 @@ export class BattleLogParser {
     const slots = this.resolveSlots(key, candidates);
     const slot = slots[0];
     if (slot) {
+      const withdrawRes = validateWithdraw(this.contractState, slot);
+      if (E.isLeft(withdrawRes)) {
+        return false;
+      }
+      this.contractState = withdrawRes.right;
       this.pendingWithdrawSlot = slot;
       const currentMon = this.slots[slot];
       if (currentMon) {
@@ -1744,6 +1788,20 @@ export class BattleLogParser {
     if (current?.slug === slug && !this.fainted[slot]) return;
     const other = OPP_SLOTS.find((s) => s !== slot);
     if (other && this.slots[other]?.slug === slug && !this.fainted[other]) return;
+
+    if (this.turns.length === 0) {
+      const deployRes = validateLeadDeploy(this.contractState, slot, { slug });
+      if (E.isLeft(deployRes)) {
+        return;
+      }
+      this.contractState = deployRes.right;
+    } else {
+      const switchRes = validateSwitchIn(this.contractState, slot, { slug });
+      if (E.isLeft(switchRes)) {
+        return;
+      }
+      this.contractState = switchRes.right;
+    }
 
     let idx = this.options.p2Roster.indexOf(baseSlug);
     if (idx < 0) idx = this.options.p2Roster.indexOf(slug);
@@ -1839,6 +1897,27 @@ export class BattleLogParser {
     if (!seenBefore) this.observedOwnIndices.push(teamIdx);
 
     const activeSlug = this.ownMegaSlugByTeamIdx.get(teamIdx) ?? member.slug;
+
+    if (this.turns.length === 0) {
+      const deployRes = validateLeadDeploy(this.contractState, slot, {
+        slug: activeSlug,
+        teamIdx,
+      });
+      if (E.isLeft(deployRes)) {
+        return;
+      }
+      this.contractState = deployRes.right;
+    } else {
+      const switchRes = validateSwitchIn(this.contractState, slot, {
+        slug: activeSlug,
+        teamIdx,
+      });
+      if (E.isLeft(switchRes)) {
+        return;
+      }
+      this.contractState = switchRes.right;
+    }
+
     this.slots[slot] = {
       slug: activeSlug,
       teamIdx,
@@ -2030,6 +2109,12 @@ export class BattleLogParser {
 
     if (!slot) return false;
 
+    const moveRes = validateMoveExecution(this.contractState, slot, move.slug);
+    if (E.isLeft(moveRes)) {
+      return false;
+    }
+    this.contractState = moveRes.right;
+
     this.pendingCrit = false;
     const ev = this.emit("move", [slot, move.slug], t, move.confidence / 100, {
       review: matched.length === 0 || move.confidence < 80,
@@ -2063,6 +2148,14 @@ export class BattleLogParser {
     const headKey = key.slice(0, Math.max(0, matchEnd - matchedPhrase.length));
     const slot = this.resolveSlots(headKey)[0] ?? this.resolveSlots(key)[0];
     if (!slot) return false;
+
+    if (matchedReason === "slp" || matchedReason === "par" || matchedReason === "frz") {
+      const cantRes = validateCantMove(this.contractState, slot, matchedReason);
+      if (E.isLeft(cantRes)) {
+        return false;
+      }
+      this.contractState = cantRes.right;
+    }
 
     this.emit("cant", [slot, matchedReason], t, bestScore, {
       review: false,
@@ -2119,6 +2212,20 @@ export class BattleLogParser {
         unique: true,
       });
     } else {
+      const isMajor =
+        matchedDef.status === "slp" ||
+        matchedDef.status === "brn" ||
+        matchedDef.status === "frz" ||
+        matchedDef.status === "par" ||
+        matchedDef.status === "psn" ||
+        matchedDef.status === "tox";
+      if (isMajor) {
+        const statusRes = validateStatusInflict(this.contractState, slot, matchedDef.status as any);
+        if (E.isLeft(statusRes)) {
+          return false;
+        }
+        this.contractState = statusRes.right;
+      }
       this.statusCondition[slot] = matchedDef.status;
       const mon = this.slots[slot];
       if (mon) {
@@ -2179,6 +2286,13 @@ export class BattleLogParser {
     if (!slot) return false;
 
     if (matchedDef.isVolatile) {
+      if (matchedDef.status === "confusion") {
+        const cureRes = validateStatusCure(this.contractState, slot, "confusion");
+        if (E.isLeft(cureRes)) {
+          return false;
+        }
+        this.contractState = cureRes.right;
+      }
       if (this.volatileStatus[slot]?.[matchedDef.status]) {
         delete this.volatileStatus[slot][matchedDef.status];
       }
@@ -2187,6 +2301,17 @@ export class BattleLogParser {
         unique: true,
       });
     } else {
+      const cureTarget =
+        matchedDef.status === "status"
+          ? (this.statusCondition[slot] as any)
+          : (matchedDef.status as any);
+      if (cureTarget) {
+        const cureRes = validateStatusCure(this.contractState, slot, cureTarget);
+        if (E.isLeft(cureRes)) {
+          return false;
+        }
+        this.contractState = cureRes.right;
+      }
       const prevStatus =
         this.statusCondition[slot] ??
         (matchedDef.status === "status" ? "status" : matchedDef.status);
@@ -2330,11 +2455,26 @@ export class BattleLogParser {
       const nextLayers =
         condition === "spikes" || condition === "toxic-spikes" ? currentLayers + 1 : 1;
       this.sideConditions[side][condition] = nextLayers;
+      this.contractState = {
+        ...this.contractState,
+        sideConditions: {
+          ...this.contractState.sideConditions,
+          [side]: {
+            ...this.contractState.sideConditions[side],
+            [condition]: nextLayers,
+          },
+        },
+      };
       this.emit("side", [side, `+${condition}`], t, bestScore, {
         review: false,
         unique: condition !== "spikes" && condition !== "toxic-spikes",
       });
     } else {
+      const endRes = validateSideConditionEnd(this.contractState, side, condition as any);
+      if (E.isLeft(endRes)) {
+        return false;
+      }
+      this.contractState = endRes.right;
       delete this.sideConditions[side][condition];
       this.emit("side", [side, `-${condition}`], t, bestScore, {
         review: false,
@@ -2576,6 +2716,19 @@ export class BattleLogParser {
     const headKey = key.slice(0, Math.max(0, matchEnd - matchedPhrase.length));
     const slot = this.resolveSlots(headKey)[0] ?? this.resolveSlots(key)[0];
     if (!slot || !this.slots[slot]) return false;
+
+    if (
+      matchedEffect === "sandstorm" ||
+      matchedEffect === "poison" ||
+      matchedEffect === "burn" ||
+      matchedEffect === "life-orb"
+    ) {
+      const residualRes = validateResidualDamage(this.contractState, slot, matchedEffect);
+      if (E.isLeft(residualRes)) {
+        return false;
+      }
+      this.contractState = residualRes.right;
+    }
 
     const mon = this.slots[slot]!;
     const isOwn = slot.startsWith("p1");
@@ -2870,6 +3023,10 @@ export class BattleLogParser {
     if (slots.length === 0) return false;
     for (const slot of slots) {
       if (this.fainted[slot]) continue;
+      const faintRes = validateFaint(this.contractState, slot);
+      if (E.isRight(faintRes)) {
+        this.contractState = faintRes.right;
+      }
       this.fainted[slot] = true;
       const mon = this.slots[slot];
       if (mon) {
@@ -3017,6 +3174,11 @@ export class BattleLogParser {
 
     if (effect.kind === "weather") {
       if (effect.value === "None") {
+        const endRes = validateWeatherEnd(this.contractState);
+        if (E.isLeft(endRes)) {
+          return false;
+        }
+        this.contractState = endRes.right;
         if (this.weather !== "None") {
           this.weather = "None";
           this.weatherState = null;
@@ -3025,11 +3187,20 @@ export class BattleLogParser {
       } else if (effect.value !== this.weather) {
         this.weather = effect.value;
         const maxTurns = this.detectWeatherExtender(effect.value) ? 8 : 5;
+        this.contractState = {
+          ...this.contractState,
+          weather: { kind: effect.value as any, remainingTurns: maxTurns, maxTurns },
+        };
         this.weatherState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
         this.emit("weather", [effect.value], t, 0.98, { review: false });
       }
     } else if (effect.kind === "terrain") {
       if (effect.value === "None") {
+        const endRes = validateTerrainEnd(this.contractState);
+        if (E.isLeft(endRes)) {
+          return false;
+        }
+        this.contractState = endRes.right;
         if (this.terrain !== "None") {
           this.terrain = "None";
           this.terrainState = null;
@@ -3038,11 +3209,20 @@ export class BattleLogParser {
       } else if (effect.value !== this.terrain) {
         this.terrain = effect.value;
         const maxTurns = this.detectTerrainExtender() ? 8 : 5;
+        this.contractState = {
+          ...this.contractState,
+          terrain: { kind: effect.value as any, remainingTurns: maxTurns, maxTurns },
+        };
         this.terrainState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
         this.emit("terrain", [effect.value], t, 0.98, { review: false });
       }
     } else if (effect.kind === "trick-room") {
       if (!effect.on) {
+        const endRes = validateFieldEffectEnd(this.contractState, "trick-room");
+        if (E.isLeft(endRes)) {
+          return false;
+        }
+        this.contractState = endRes.right;
         if (this.trickRoom) {
           this.trickRoom = false;
           this.trickRoomState = null;
@@ -3050,6 +3230,13 @@ export class BattleLogParser {
         }
       } else if (!this.trickRoom) {
         this.trickRoom = true;
+        this.contractState = {
+          ...this.contractState,
+          fieldEffects: {
+            ...this.contractState.fieldEffects,
+            "trick-room": true,
+          },
+        };
         this.trickRoomState = { startTurn: currentTurnNum, maxTurns: 5 };
         this.emit("field", ["trick-room", "on"], t, 0.98, { review: false });
       }

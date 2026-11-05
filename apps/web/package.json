@@ -12,6 +12,7 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ci": "vitest --run --reporter=junit --outputFile=../../test-results/vitest.xml",
+    "test:integration": "vitest --run --config vitest.integration.config.ts",
     "lint": "oxlint --type-aware --type-check .",
     "lint:fix": "oxlint --fix-dangerously .",
     "fmt": "oxfmt .",

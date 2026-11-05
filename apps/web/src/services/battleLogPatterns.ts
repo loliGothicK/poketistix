@@ -257,10 +257,10 @@ function compileTemplateRegex(template: string): RegExp {
 
 const cleanName = (s: string): string =>
   s
-    .replace(/[!！/7|"'”’].*$/, "")
+    .replace(/^[!！/7|"'”’\s_ーニ.。、・,]+/u, "")
+    .replace(/[!！/7|"'”’\s_ーニ.。、・,]+$/u, "")
     .replace(/\s+the\s+.*$/i, "")
-    .replace(/^[\s_ーニ.。、・,]+/u, "")
-    .replace(/[!！.。\s_ーニ、・,]+$/u, "")
+
     .trim();
 
 /** テンプレート定義から BattleLogPatternSet を全自動コンパイルする（データ駆動） */
@@ -1031,7 +1031,9 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
   lang: "ja",
   withdraw: [
     "{mon} 戻れ！",
+    "{mon} 戻れ",
     "{trainer}は {mon}を 引っこめた！",
+    "{trainer}は {mon}を 引っこめた",
     "相手の {mon}は {trainer}の元へ 戻っていく！",
     "{mon}は {trainer}の元へ 戻っていく！",
   ],
@@ -1057,6 +1059,14 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     "{mon}を くりだした！",
   ],
   goTwo: [
+    "ゆけっ！ {mon1} と {mon2}！",
+    "ゆけっ！ {mon1}と {mon2}！",
+    "ゆけっ {mon1} と {mon2}！",
+    "ゆけっ {mon1}と {mon2}！",
+    "行けっ！ {mon1} と {mon2}！",
+    "行けっ！ {mon1}と {mon2}！",
+    "行けっ {mon1} と {mon2}！",
+    "行けっ {mon1}と {mon2}！",
     "ゆけっ！ {mon1}！ {mon2}！",
     "ゆけっ！ {mon1} {mon2}！",
     "ゆけっ {mon1} {mon2}！",
