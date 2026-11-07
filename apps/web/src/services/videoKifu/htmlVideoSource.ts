@@ -10,6 +10,89 @@ import { DEFAULT_CHAMPIONS_ROI_LAYOUT, toPixelBounds } from "./roiLayout";
 import { analyzeVideoFrameRgba, computeRoiLumaHash } from "./frameSampling";
 
 /**
+ * メッセージ枠・特性バナーの白文字を高コントラスト二値化（白背景に黒文字化）する共通前処理
+ */
+export function binarizeOcrPixels(data: Uint8ClampedArray | Uint8Array): void {
+  const len = data.length;
+  for (let i = 0; i < len; i += 4) {
+    const r = data[i] ?? 0;
+    const g = data[i + 1] ?? 0;
+    const b = data[i + 2] ?? 0;
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
+    let val = 255;
+    if (luma >= 120 && maxDiff <= 65) {
+      val = Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)));
+    }
+    data[i] = val;
+    data[i + 1] = val;
+    data[i + 2] = val;
+  }
+}
+
+/**
+ * Node.js (テスト・バッチ) 環境用: Canvas API なしで RGBA ピクセルから直接 24-bit BMP バッファを生成する共通前処理
+ */
+export function createPreprocessedOcrBmp(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  rect: NormalizedRect,
+): Uint8Array {
+  const [x0, y0, x1, y1] = toPixelBounds(rect, width, height);
+  const sw = Math.max(1, x1 - x0);
+  const sh = Math.max(1, y1 - y0);
+  const pad = 12;
+  const dw = sw * 2 + pad * 2;
+  const dh = sh * 2 + pad * 2;
+
+  const rowStride = (dw * 3 + 3) & ~3;
+  const bmp = new Uint8Array(54 + rowStride * dh);
+  const view = new DataView(bmp.buffer, bmp.byteOffset, bmp.byteLength);
+
+  // BMP Header
+  bmp[0] = 0x42; // 'B'
+  bmp[1] = 0x4d; // 'M'
+  view.setUint32(2, 54 + rowStride * dh, true);
+  view.setUint32(10, 54, true);
+  view.setUint32(14, 40, true);
+  view.setInt32(18, dw, true);
+  view.setInt32(22, -dh, true); // top-down
+  view.setUint16(26, 1, true);
+  view.setUint16(28, 24, true);
+  view.setUint32(34, rowStride * dh, true);
+
+  for (let dy = 0; dy < dh; dy++) {
+    const rowOff = 54 + dy * rowStride;
+    const sy = y0 + Math.floor((dy - pad) / 2);
+    const inY = dy >= pad && dy < dh - pad && sy >= 0 && sy < height;
+
+    for (let dx = 0; dx < dw; dx++) {
+      let val = 255;
+      if (inY && dx >= pad && dx < dw - pad) {
+        const sx = x0 + Math.floor((dx - pad) / 2);
+        if (sx >= 0 && sx < width) {
+          const idx = (sy * width + sx) * 4;
+          const r = rgba[idx] ?? 0;
+          const g = rgba[idx + 1] ?? 0;
+          const b = rgba[idx + 2] ?? 0;
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+          const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
+          if (luma >= 120 && maxDiff <= 65) {
+            val = Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)));
+          }
+        }
+      }
+      const pOff = rowOff + dx * 3;
+      bmp[pOff] = val;
+      bmp[pOff + 1] = val;
+      bmp[pOff + 2] = val;
+    }
+  }
+  return bmp;
+}
+
+/**
  * ブラウザ標準の実験的 `TextDetector` API（存在する場合）または外部注入された `RoiOcrProvider` で
  * 指定した正規化 ROI 領域を 2x コントラスト強調してテキスト抽出する
  */
@@ -22,57 +105,44 @@ export async function recognizeRoiText(
 ): Promise<string | null> {
   if (typeof document === "undefined") return null;
 
-  const [x0, y0, x1, y1] = toPixelBounds(rect, sourceCanvas.width, sourceCanvas.height);
-  const w = Math.max(1, x1 - x0);
-  const h = Math.max(1, y1 - y0);
-
-  const cropCanvas = document.createElement("canvas");
-  const pad = 12;
-  cropCanvas.width = w * 2 + pad * 2;
-  cropCanvas.height = h * 2 + pad * 2;
-  const ctx = cropCanvas.getContext("2d");
-  if (!ctx) return null;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(sourceCanvas, x0, y0, w, h, pad, pad, w * 2, h * 2);
-
   if (ocrProvider) {
-    return ocrProvider(cropCanvas, hint);
+    const [x0, y0, x1, y1] = toPixelBounds(rect, sourceCanvas.width, sourceCanvas.height);
+    const w = Math.max(1, x1 - x0);
+    const h = Math.max(1, y1 - y0);
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = w;
+    cropCanvas.height = h;
+    const ctx = cropCanvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(sourceCanvas, x0, y0, w, h, 0, 0, w, h);
+      return ocrProvider(cropCanvas, hint);
+    }
+    return null;
   }
 
   if (tesseractWorker) {
     try {
-      if (hint === "message" || hint === "ability") {
-        const imgData = ctx.getImageData(0, 0, cropCanvas.width, cropCanvas.height);
-        const data = imgData.data;
-        const len = data.length;
-        for (let i = 0; i < len; i += 4) {
-          const r = data[i] ?? 0;
-          const g = data[i + 1] ?? 0;
-          const b = data[i + 2] ?? 0;
-          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-          const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
-          let val = 255;
-          if (luma >= 120 && maxDiff <= 65) {
-            val = Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)));
-          }
-          data[i] = val;
-          data[i + 1] = val;
-          data[i + 2] = val;
-        }
-        ctx.putImageData(imgData, 0, 0);
+      const srcCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+      if (srcCtx) {
+        const fullImg = srcCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+        const bmp = createPreprocessedOcrBmp(
+          fullImg.data,
+          sourceCanvas.width,
+          sourceCanvas.height,
+          rect,
+        );
+        const blob =
+          typeof Blob !== "undefined"
+            ? new Blob([bmp.buffer as ArrayBuffer], { type: "image/bmp" })
+            : Buffer.from(bmp.buffer, bmp.byteOffset, bmp.byteLength);
+        const ocrPromise = tesseractWorker.recognize(blob as unknown as string);
+        const timeoutPromise = new Promise<{ data: { text: string } }>((_, reject) =>
+          setTimeout(() => reject(new Error("OCR timeout")), 12000),
+        );
+        const ret = await Promise.race([ocrPromise, timeoutPromise]);
+        const text = ret.data.text.trim();
+        return text || null;
       }
-
-      const ocrPromise = tesseractWorker.recognize(cropCanvas);
-      const timeoutPromise = new Promise<{ data: { text: string } }>((_, reject) =>
-        setTimeout(() => reject(new Error("OCR timeout")), 8000),
-      );
-      const ret = await Promise.race([ocrPromise, timeoutPromise]);
-      const text = ret.data.text.trim();
-      return text || null;
     } catch {
       // Fallback below
     }
@@ -86,13 +156,23 @@ export async function recognizeRoiText(
   };
   if (typeof win.TextDetector === "function") {
     try {
-      const detector = new win.TextDetector();
-      const blocks = await detector.detect(cropCanvas);
-      const joined = blocks
-        .map((b) => b.rawValue?.trim() ?? "")
-        .filter(Boolean)
-        .join(" ");
-      return joined || null;
+      const [x0, y0, x1, y1] = toPixelBounds(rect, sourceCanvas.width, sourceCanvas.height);
+      const w = Math.max(1, x1 - x0);
+      const h = Math.max(1, y1 - y0);
+      const cropCanvas = document.createElement("canvas");
+      cropCanvas.width = w;
+      cropCanvas.height = h;
+      const ctx = cropCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(sourceCanvas, x0, y0, w, h, 0, 0, w, h);
+        const detector = new win.TextDetector();
+        const blocks = await detector.detect(cropCanvas);
+        const joined = blocks
+          .map((b) => b.rawValue?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ");
+        return joined || null;
+      }
     } catch {
       return null;
     }
@@ -212,9 +292,11 @@ export class HtmlVideoFrameSource implements VideoFrameSource {
         ? (async () => {
             try {
               const initAll = (async () => {
-                const first = await createWorker("jpn");
+                const first = await createWorker(["eng", "jpn"]);
                 const rest = await Promise.all(
-                  Array.from({ length: OCR_WORKER_POOL_SIZE - 1 }, () => createWorker("jpn")),
+                  Array.from({ length: OCR_WORKER_POOL_SIZE - 1 }, () =>
+                    createWorker(["eng", "jpn"]),
+                  ),
                 );
                 return [first, ...rest];
               })();

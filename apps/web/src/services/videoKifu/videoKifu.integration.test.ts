@@ -6,67 +6,14 @@ import { createWorker } from "tesseract.js";
 import { isRight } from "fp-ts/lib/Either";
 import { importSets } from "@/lib/pokepaste";
 import { VideoKifuAnalyzer } from "./analyzer";
+import { createPreprocessedOcrBmp } from "./htmlVideoSource";
 import { buildChampionsDictionaries } from "./kifuSummary";
-import { toPixelBounds } from "./roiLayout";
 import { loadAllFixtureCases } from "./testCases";
 import type { NormalizedRect, RoiOcrHint, VideoFrameCaptured, VideoFrameSource } from "./types";
 
 const W = 960;
 const H = 540;
 const FRAME_BYTES = W * H * 4;
-
-function processRoiToBmp(
-  rgba: Uint8Array,
-  width: number,
-  height: number,
-  rect: NormalizedRect,
-): Buffer {
-  const [x0, y0, x1, y1] = toPixelBounds(rect, width, height);
-  const sw = Math.max(1, x1 - x0);
-  const sh = Math.max(1, y1 - y0);
-  const pad = 12;
-  const dw = sw * 2 + pad * 2;
-  const dh = sh * 2 + pad * 2;
-
-  const rowStride = (dw * 3 + 3) & ~3;
-  const bmp = Buffer.alloc(54 + rowStride * dh);
-  bmp.write("BM", 0);
-  bmp.writeUInt32LE(54 + rowStride * dh, 2);
-  bmp.writeUInt32LE(54, 10);
-  bmp.writeUInt32LE(40, 14);
-  bmp.writeInt32LE(dw, 18);
-  bmp.writeInt32LE(-dh, 22);
-  bmp.writeUInt16LE(1, 26);
-  bmp.writeUInt16LE(24, 28);
-  bmp.writeUInt32LE(rowStride * dh, 34);
-
-  for (let dy = 0; dy < dh; dy++) {
-    const rowOff = 54 + dy * rowStride;
-    for (let dx = 0; dx < dw; dx++) {
-      let val = 255;
-      if (dx >= pad && dx < dw - pad && dy >= pad && dy < dh - pad) {
-        const sx = Math.min(width - 1, x0 + Math.floor((dx - pad) / 2));
-        const sy = Math.min(height - 1, y0 + Math.floor((dy - pad) / 2));
-        const idx = (sy * width + sx) * 4;
-        const r = rgba[idx] ?? 0;
-        const g = rgba[idx + 1] ?? 0;
-        const b = rgba[idx + 2] ?? 0;
-        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-        const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
-        if (luma >= 120 && maxDiff <= 65) {
-          val = Math.max(0, Math.min(255, Math.round(((235 - luma) / 115) * 255)));
-        } else {
-          val = 255;
-        }
-      }
-      const pOff = rowOff + dx * 3;
-      bmp[pOff] = val;
-      bmp[pOff + 1] = val;
-      bmp[pOff + 2] = val;
-    }
-  }
-  return bmp;
-}
 
 function getNested(obj: Record<string, unknown>, keyPath: string): string {
   const parts = keyPath.split(".");
@@ -178,9 +125,11 @@ describe("VideoKifuAnalyzer Fixture Regression Tests", () => {
             };
           },
           async recognizeRoiText(rect: NormalizedRect, _hint: RoiOcrHint): Promise<string | null> {
-            const bmp = processRoiToBmp(frames[curSec]!, W, H, rect);
+            const bmp = createPreprocessedOcrBmp(frames[curSec]!, W, H, rect);
             const worker = workers[workerRR++ % workers.length]!;
-            const res = await worker.recognize(bmp);
+            const res = await worker.recognize(
+              Buffer.from(bmp.buffer, bmp.byteOffset, bmp.byteLength),
+            );
             const text = res.data.text.trim();
             return text || null;
           },

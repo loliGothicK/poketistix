@@ -20,7 +20,7 @@ import {
   sampleBadgeTypeFromRgba,
   type PokemonTypeName,
 } from "./badgeClassifier";
-import { detectSelectionDigitFromRgba } from "./digitRecognition";
+import { detectTeamPreviewDigitFromRgba } from "./digitRecognition";
 import {
   calcTrainedPokemonStatsLv50,
   formatChampionsSpread,
@@ -78,6 +78,9 @@ export class VideoKifuAnalyzer {
     };
 
     const cardToP1Idx = new Map<number, number>();
+    for (let i = 0; i < myTeam.length; i++) {
+      cardToP1Idx.set(i, i);
+    }
     const prevP1CardHashes: [number, number, number, number, number, number] = [0, 0, 0, 0, 0, 0];
     const p1SelectionDigits: (number | null)[] = [null, null, null, null];
     const p2CardVotes: [
@@ -92,18 +95,20 @@ export class VideoKifuAnalyzer {
     const resolveCardToP1Idx = (cardI: number): number => {
       const mapped = cardToP1Idx.get(cardI);
       if (mapped !== undefined) return mapped;
-      const assigned = new Set(cardToP1Idx.values());
-      for (let i = 0; i < myTeam.length; i++) {
-        if (!assigned.has(i)) {
-          cardToP1Idx.set(cardI, i);
-          return i;
-        }
-      }
       return cardI;
     };
 
     const p1Selection: number[] = [];
     const p2PreviewSlugs: string[] = [];
+    const p1SelectedCardVotes = new Map<number, number>();
+    const p1CardDigitVotes: Map<1 | 2 | 3 | 4, number>[] = [
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+    ];
 
     const getP1MaxHp = (teamIdx: number): number => {
       const member = myTeam[teamIdx];
@@ -356,8 +361,6 @@ export class VideoKifuAnalyzer {
         const p2Badge1X = isPreparingLayout ? 1518 : 1748;
         const p2Badge2X = isPreparingLayout ? 1568 : 1798;
         const p1SpriteX = isPreparingLayout ? 290 : 60;
-        const p1DigitX = isPreparingLayout ? 515 : 285;
-        const p1DigitYOffset = isPreparingLayout ? 16 : 16;
 
         // (a) P2 プレビュー（相手6体）の同定（14x14 スプライトテンプレート＋タイプバッジHSV）
         for (let i = 0; i < 6; i++) {
@@ -475,30 +478,66 @@ export class VideoKifuAnalyzer {
           }
         }
 
-        // (c) P1 選出確定番号（1..4）のテンプレートマッチング検出
-        for (let cardI = 0; cardI < 6; cardI++) {
-          const y0 = yBase + cardI * 126;
-          const digit =
-            detectSelectionDigitFromRgba(
-              captured.rgba,
-              captured.width,
-              captured.height,
-              from1080p(p1DigitX, y0 + p1DigitYOffset, 75, 75),
-            ) ??
-            detectSelectionDigitFromRgba(
-              captured.rgba,
-              captured.width,
-              captured.height,
-              from1080p(285, y0 + p1DigitYOffset, 75, 75),
-            );
-          if (digit !== null && digit >= 1 && digit <= 4) {
-            const p1Idx = resolveCardToP1Idx(cardI);
-            p1SelectionDigits[digit - 1] = p1Idx;
+        for (const cardI of frame.previewSelectedP1Indices) {
+          const p1Idx = resolveCardToP1Idx(cardI);
+          if (p1Idx !== null) {
+            p1SelectedCardVotes.set(p1Idx, (p1SelectedCardVotes.get(p1Idx) ?? 0) + 1);
           }
         }
-        if (p1SelectionDigits.every((d) => d !== null)) {
+
+        // (c) P1 選出確定番号（1..4）の高精度検出
+        // 見せ合い画面の白背景ボックス内（18x24 テンプレート）から正確に 1..4 を検出
+        const frameDigits = new Map<number, 1 | 2 | 3 | 4>();
+        for (let cardI = 0; cardI < Math.min(6, myTeam.length); cardI++) {
+          const res = detectTeamPreviewDigitFromRgba(
+            captured.rgba,
+            captured.width,
+            captured.height,
+            cardI,
+          );
+          if (res !== null) {
+            frameDigits.set(cardI, res.digit);
+            p1CardDigitVotes[cardI]?.set(
+              res.digit,
+              (p1CardDigitVotes[cardI]?.get(res.digit) ?? 0) + 1,
+            );
+            const p1Idx = resolveCardToP1Idx(cardI);
+            if (p1Idx !== null) {
+              p1SelectionDigits[res.digit - 1] = p1Idx;
+            }
+          }
+        }
+
+        // 1フレーム内で 1..4 の4つの数字が重複なく全て揃った瞬間（完全な選出コマ）を優先検出
+        if (frameDigits.size >= 4) {
+          const digitsPresent = new Set(frameDigits.values());
+          if (
+            digitsPresent.has(1) &&
+            digitsPresent.has(2) &&
+            digitsPresent.has(3) &&
+            digitsPresent.has(4)
+          ) {
+            const completeSelection: number[] = [0, 0, 0, 0];
+            for (const [cI, d] of frameDigits.entries()) {
+              const pIdx = resolveCardToP1Idx(cI) ?? cI;
+              completeSelection[d - 1] = pIdx;
+            }
+            p1Selection.length = 0;
+            p1Selection.push(...completeSelection);
+            logParser.setP1Selection(p1Selection);
+          }
+        } else if (p1SelectionDigits.some((d) => d !== null)) {
+          const filled = p1SelectionDigits.filter((d): d is number => d !== null);
+          const selectedByTab = Array.from(p1SelectedCardVotes.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([idx]) => idx)
+            .filter((idx) => !filled.includes(idx));
+          const remaining = myTeam
+            .map((_, idx) => idx)
+            .filter((idx) => !filled.includes(idx) && !selectedByTab.includes(idx));
+          const tentative = [...filled, ...selectedByTab, ...remaining].slice(0, 4);
           p1Selection.length = 0;
-          p1Selection.push(...(p1SelectionDigits as number[]));
+          p1Selection.push(...tentative);
           logParser.setP1Selection(p1Selection);
         }
       }
@@ -507,22 +546,37 @@ export class VideoKifuAnalyzer {
       const canStartTurn =
         frame.isMoveTime45 &&
         timestampMs - lastTurnStartMs >= MIN_TURN_GAP_MS &&
-        (logParser.hasLead || tSec >= 65);
+        (logParser.hasLead || tSec >= 45);
 
       if (canStartTurn) {
         lastTurnStartMs = timestampMs;
         flushPendingDamages(timestampMs);
 
-        // Turn 1 開始時点で選出が未確定の場合、判明している選出番号または見せ合いスプライト照合から確定させる
-        if (logParser.turnCount === 0) {
-          if (p1Selection.length < 2) {
-            const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
-            const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
-            const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
-            p1Selection.length = 0;
-            p1Selection.push(...uniqueSelection);
+        // Turn 1 開始時: 先発スロットが未着地の場合、HUD の HP 実数値および選出データから確実に着地させる
+        if (
+          logParser.turnCount === 0 &&
+          (!logParser.hasLead ||
+            !logParser.getActiveSlotSlug("p1a") ||
+            !logParser.getActiveSlotSlug("p1b"))
+        ) {
+          const hp0 = frame.hpBars[0].exactHp;
+          const hp1 = frame.hpBars[1].exactHp;
+          let p1aIdx = -1;
+          let p1bIdx = -1;
+          if (hp0 !== null) {
+            p1aIdx = myTeam.findIndex((_, idx) => getP1MaxHp(idx) === hp0);
           }
-          logParser.setP1Selection(p1Selection);
+          if (hp1 !== null) {
+            p1bIdx = myTeam.findIndex((_, idx) => getP1MaxHp(idx) === hp1);
+          }
+          if (p1aIdx < 0 && p1Selection[0] !== undefined) p1aIdx = p1Selection[0];
+          if (p1bIdx < 0 && p1Selection[1] !== undefined) p1bIdx = p1Selection[1];
+          if (p1aIdx < 0 && p1SelectionDigits[0] !== null) p1aIdx = p1SelectionDigits[0];
+          if (p1bIdx < 0 && p1SelectionDigits[1] !== null) p1bIdx = p1SelectionDigits[1];
+
+          if (p1aIdx >= 0 && p1bIdx >= 0 && p1aIdx !== p1bIdx) {
+            logParser.deployLeadsIfUnset([p1aIdx, p1bIdx], Math.max(0, timestampMs - 10000));
+          }
         }
 
         logParser.beginTurn(timestampMs);
@@ -726,6 +780,7 @@ export class VideoKifuAnalyzer {
 
       // 3. 特性発動バナー（`<Pokémon>'s <特性>` / `<アイテム>`）
       if (
+        frame.phase !== "TeamPreview" &&
         (frame.p1AbilityBannerVisible || frame.p2AbilityBannerVisible) &&
         frame.abilityRoiHash !== 0 &&
         frame.abilityRoiHash !== prevAbilityHash
@@ -748,6 +803,7 @@ export class VideoKifuAnalyzer {
 
       // 4. 下部メッセージ枠
       if (
+        frame.phase !== "TeamPreview" &&
         frame.messageBoxVisible &&
         frame.messageRoiHash !== 0 &&
         frame.messageRoiHash !== prevMessageHash
@@ -826,20 +882,54 @@ export class VideoKifuAnalyzer {
 
     flushPendingDamages(durationSec * 1000);
 
-    // P1選出: 見せ合い画面の選択番号 (1..4) が揃っていればそれを採用する。
-    // 揃わない場合でも判明している選出番号や観察済みインデックスから4体を確実に構成する。
-    if (p1SelectionDigits.every((d) => d !== null)) {
-      p1Selection.length = 0;
-      p1Selection.push(...(p1SelectionDigits as number[]));
-    } else {
-      const filledDigits = p1SelectionDigits.filter((d): d is number => d !== null);
-      const candidates = [...filledDigits, ...logParser.observedOwnIndices, 0, 1, 2, 3, 4, 5];
-      const uniqueSelection = Array.from(new Set(candidates)).slice(0, 4);
-      p1Selection.length = 0;
-      p1Selection.push(...uniqueSelection);
+    // P1選出: 見せ合い画面の選択番号 (1..4) の最多得票カードを順に貪欲割り当て
+    const digitAssignments = new Map<1 | 2 | 3 | 4, number>();
+    const assignedCards = new Set<number>();
+    for (const d of [1, 2, 3, 4] as const) {
+      let bestCard = -1;
+      let bestVotes = 0;
+      for (let cardI = 0; cardI < Math.min(6, myTeam.length); cardI++) {
+        if (assignedCards.has(cardI)) continue;
+        const v = p1CardDigitVotes[cardI]?.get(d) ?? 0;
+        if (v > bestVotes) {
+          bestVotes = v;
+          bestCard = cardI;
+        }
+      }
+      if (bestCard >= 0 && bestVotes > 0) {
+        digitAssignments.set(d, bestCard);
+        assignedCards.add(bestCard);
+      }
     }
+
+    const assignedSelection: number[] = [];
+    for (const d of [1, 2, 3, 4] as const) {
+      const cI = digitAssignments.get(d);
+      if (cI !== undefined) {
+        assignedSelection.push(resolveCardToP1Idx(cI));
+      }
+    }
+
+    const selectedByTab = Array.from(p1SelectedCardVotes.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([idx]) => idx)
+      .filter((idx) => !assignedSelection.includes(idx));
+    const remaining = myTeam
+      .map((_, idx) => idx)
+      .filter((idx) => !assignedSelection.includes(idx) && !selectedByTab.includes(idx));
+
+    p1Selection.length = 0;
+    p1Selection.push(...assignedSelection, ...selectedByTab, ...remaining);
+    p1Selection.splice(4);
     logParser.setP1Selection(p1Selection);
+
+    // 見せ合いの選出情報やパーティ技情報がある場合、確定情報に基づいてスロット・技所有者を正しく上書き
     logParser.finalizeLeadAndSlots(p1Selection, p2PreviewSlugs);
+    const finalizedSelection = logParser.getP1Selection();
+    if (finalizedSelection.length > 0) {
+      p1Selection.length = 0;
+      p1Selection.push(...finalizedSelection);
+    }
 
     // 最終 HP 残量から勝敗が未確定の場合の推定
     if (matchResult === "UNKNOWN") {

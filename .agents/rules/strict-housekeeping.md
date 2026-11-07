@@ -25,3 +25,6 @@ Before concluding any task or reporting completion to the user, you MUST perform
 6. **Clean Up Associated Dead Code**: If you remove a feature, component, or UI element, proactively search for and delete all associated dead code. This strictly includes removing orphaned localization keys from translation files (`en/translation.json`, `ja/translation.json`, etc.).
 7. **Remove Temporary Debugging Code**: If you added temporary logs (e.g., `console.log`, `console.error`) or experimental code to debug an issue, you MUST remove them and restore the code to its original clean state before reporting completion.
 8. **ABSOLUTE PROHIBITION on Destructive Git Commands**: You are strictly forbidden from running `git checkout`, `git restore`, or `git reset` on any files in the workspace. NO EXCEPTIONS. Do not use these even if you just want to revert a temporary debug change you made to a test file. Manually edit the file to revert changes.
+9. **ABSOLUTE PROHIBITION on Deceptive Verification via Idealized Scripts**:
+   - 実際にアプリケーションが稼働する実行パス（ブラウザ環境、非同期 `<video>` シーク、Web Worker 通信、ダイアログ欠落時の挙動）を検証せず、ローカルの理想化されたスクラッチスクリプト（全フレーム事前メモリ展開等）の成功ログのみをもって「完了」「エラーゼロ」と報告することを **STRICTLY PROHIBITED** とする。
+   - スクラッチスクリプトで仮説検証を行う場合でも、必ず「実稼働コードパス（本番実装のランタイム挙動）」に対する影響・欠落時耐性を検証しなければならない。実環境と異なる前提条件で得られた結果を、あたかも本番の解決結果であるかのように偽って報告してはならない。

@@ -189,10 +189,16 @@ export function analyzeVideoFrameRgba(
     ) {
       previewP1Cards += 1;
       const [tabR, tabG, tabB] = sampleRgba(rgba, width, height, 96 / 1920, ySample);
+      const [tabPrepR, tabPrepG, tabPrepB] = sampleRgba(
+        rgba,
+        width,
+        height,
+        304 / 1920,
+        yPrepSample,
+      );
       if (
         (tabR > 215 && tabG > 215 && tabB > 215) ||
-        isLimeHighlight(lr, lg, lb) ||
-        isDimmedLimeHighlight(ldr, ldg, ldb)
+        (tabPrepR > 215 && tabPrepG > 215 && tabPrepB > 215)
       ) {
         previewSelectedP1Indices.push(i);
       }

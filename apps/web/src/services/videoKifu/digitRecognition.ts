@@ -1,6 +1,116 @@
 import type { NormalizedRect } from "./types";
 import { toPixelBounds } from "./roiLayout";
 
+export const TEAM_PREVIEW_SELECTION_TEMPLATES_18X24: Record<
+  1 | 2 | 3 | 4,
+  readonly (readonly number[])[]
+> = {
+  1: [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
+  ],
+  2: [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1],
+    [0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    [0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1],
+    [1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1],
+    [1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+  ],
+  3: [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1],
+    [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1],
+    [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1],
+    [1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+  ],
+  4: [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+    [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+    [0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1],
+    [1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1],
+    [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1],
+    [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1],
+  ],
+};
+
 export const SELECTION_DIGIT_TEMPLATES_24X17: Record<
   1 | 2 | 3 | 4,
   readonly (readonly number[])[]
@@ -322,6 +432,127 @@ export function detectSelectionDigitFromRgba(
   }
 
   return bestScore >= 0.85 ? bestDigit : null;
+}
+
+/**
+ * 見せ合い（TeamPreview）画面における特定カード（0..5）の選出番号 (1..4) を高精度に検出する。
+ * - 白背景ボックス (1080p基準: X: 86..134, Y: y0+40..y0+108) の存在確認 (非選出時は暗色のため即座に null)
+ * - 白背景内に描かれた黒数字 (X: 94..128, Y: y0+52..y0+92) と 18x24 テンプレートの IoU マッチング
+ */
+export function detectTeamPreviewDigitFromRgba(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  cardIndex: number,
+): { digit: 1 | 2 | 3 | 4; score: number } | null {
+  if (cardIndex < 0 || cardIndex >= 6) return null;
+
+  const y0 = 140 + cardIndex * 126;
+
+  // Selecting レイアウト (X: 86..134, Char: 94..128) と Preparing レイアウト (X: 294..342, Char: 302..336, Y +19px) の両方を走査
+  const layoutCandidates = [
+    { boxX0: 86, boxX1: 134, charX0: 94, charX1: 128, yOffset: 0 },
+    { boxX0: 294, boxX1: 342, charX0: 302, charX1: 336, yOffset: 19 },
+  ];
+
+  for (const layout of layoutCandidates) {
+    const curY0 = y0 + layout.yOffset;
+    const boxSx = Math.max(0, Math.round((layout.boxX0 / 1920) * width));
+    const boxEx = Math.min(width, Math.round((layout.boxX1 / 1920) * width));
+    const boxSy = Math.max(0, Math.round(((curY0 + 40) / 1080) * height));
+    const boxEy = Math.min(height, Math.round(((curY0 + 108) / 1080) * height));
+
+    let whiteCount = 0;
+    let totalCount = 0;
+    for (let y = boxSy; y < boxEy; y++) {
+      for (let x = boxSx; x < boxEx; x++) {
+        const idx = (y * width + x) * 4;
+        const r = rgba[idx] ?? 0;
+        const g = rgba[idx + 1] ?? 0;
+        const b = rgba[idx + 2] ?? 0;
+        if (r > 180 && g > 180 && b > 180) {
+          whiteCount++;
+        }
+        totalCount++;
+      }
+    }
+
+    if (totalCount === 0) continue;
+    const whiteRatio = whiteCount / totalCount;
+    if (whiteRatio < 0.25) continue;
+
+    const charSx = Math.max(0, Math.round((layout.charX0 / 1920) * width));
+    const charEx = Math.min(width, Math.round((layout.charX1 / 1920) * width));
+    const charSy = Math.max(0, Math.round(((curY0 + 52) / 1080) * height));
+    const charEy = Math.min(height, Math.round(((curY0 + 92) / 1080) * height));
+
+    const charW = Math.max(1, charEx - charSx);
+    const charH = Math.max(1, charEy - charSy);
+
+    const tW = 18;
+    const tH = 24;
+    const patch: number[] = Array.from<number>({ length: tW * tH }).fill(0);
+    const stepX = charW / tW;
+    const stepY = charH / tH;
+
+    for (let py = 0; py < tH; py++) {
+      const yStart = charSy + Math.floor(py * stepY);
+      const yEnd = Math.min(charEy, charSy + Math.ceil((py + 1) * stepY));
+      for (let px = 0; px < tW; px++) {
+        const xStart = charSx + Math.floor(px * stepX);
+        const xEnd = Math.min(charEx, charSx + Math.ceil((px + 1) * stepX));
+
+        let blackCount = 0;
+        let sampleCount = 0;
+        for (let y = yStart; y < yEnd; y++) {
+          for (let x = xStart; x < xEnd; x++) {
+            const idx = (y * width + x) * 4;
+            const r = rgba[idx] ?? 0;
+            const g = rgba[idx + 1] ?? 0;
+            const b = rgba[idx + 2] ?? 0;
+            if (r < 120 && g < 120 && b < 120) {
+              blackCount++;
+            }
+            sampleCount++;
+          }
+        }
+        patch[py * tW + px] = sampleCount > 0 && blackCount / sampleCount >= 0.35 ? 1 : 0;
+      }
+    }
+
+    let bestDigit: (1 | 2 | 3 | 4) | null = null;
+    let bestScore = -1;
+
+    for (const digit of [1, 2, 3, 4] as const) {
+      const tmpl = TEAM_PREVIEW_SELECTION_TEMPLATES_18X24[digit];
+      let intersection = 0;
+      let union = 0;
+
+      for (let r = 0; r < tH; r++) {
+        const tmplRow = tmpl[r];
+        if (!tmplRow) continue;
+        for (let c = 0; c < tW; c++) {
+          const pVal = patch[r * tW + c] ?? 0;
+          const tVal = tmplRow[c] ?? 0;
+          if (pVal === 1 && tVal === 1) intersection++;
+          if (pVal === 1 || tVal === 1) union++;
+        }
+      }
+
+      const score = union > 0 ? intersection / union : 0;
+      if (score > bestScore) {
+        bestScore = score;
+        bestDigit = digit;
+      }
+    }
+
+    const minScore = layout.yOffset > 0 ? 0.2 : 0.45;
+    if (bestDigit !== null && bestScore >= minScore) {
+      return { digit: bestDigit, score: bestScore };
+    }
+  }
+
+  return null;
 }
 
 export function detectSelectionDigit(

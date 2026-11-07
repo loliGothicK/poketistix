@@ -59,7 +59,7 @@ export const DEFAULT_CHAMPIONS_ROI_LAYOUT: ChampionsRoiLayout = {
     from1080p(1365, 800, 515, 100),
     from1080p(1365, 930, 515, 100),
   ],
-  targetSelectionPanel: from1080p(1056, 432, 864, 648),
+  targetSelectionPanel: from1080p(500, 460, 420, 90),
   communicatingBox: from1080p(840, 275, 240, 45),
   commandTimerBox: from1080p(1550, 295, 310, 60),
 };

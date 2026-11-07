@@ -278,6 +278,10 @@ export class BattleLogParser {
     this.p1Selection = [...selection];
   }
 
+  getP1Selection(): readonly number[] {
+    return this.p1Selection;
+  }
+
   get hasLead(): boolean {
     return this.leadMs !== null;
   }
@@ -302,9 +306,9 @@ export class BattleLogParser {
     const effects: string[] = [];
 
     if (this.weatherState) {
-      const elapsed = turnNumber - this.weatherState.startTurn + 1;
-      if (elapsed >= 1 && elapsed <= this.weatherState.maxTurns) {
-        effects.push(`${this.weatherState.kind} ${elapsed}/${this.weatherState.maxTurns}`);
+      const remaining = this.weatherState.maxTurns - (turnNumber - this.weatherState.startTurn);
+      if (remaining >= 1 && remaining <= this.weatherState.maxTurns) {
+        effects.push(`${this.weatherState.kind} ${remaining}/${this.weatherState.maxTurns}`);
       } else {
         this.weatherState = null;
         this.weather = "None";
@@ -312,9 +316,9 @@ export class BattleLogParser {
     }
 
     if (this.terrainState) {
-      const elapsed = turnNumber - this.terrainState.startTurn + 1;
-      if (elapsed >= 1 && elapsed <= this.terrainState.maxTurns) {
-        effects.push(`${this.terrainState.kind} ${elapsed}/${this.terrainState.maxTurns}`);
+      const remaining = this.terrainState.maxTurns - (turnNumber - this.terrainState.startTurn);
+      if (remaining >= 1 && remaining <= this.terrainState.maxTurns) {
+        effects.push(`${this.terrainState.kind} ${remaining}/${this.terrainState.maxTurns}`);
       } else {
         this.terrainState = null;
         this.terrain = "None";
@@ -322,9 +326,9 @@ export class BattleLogParser {
     }
 
     if (this.trickRoomState) {
-      const elapsed = turnNumber - this.trickRoomState.startTurn + 1;
-      if (elapsed >= 1 && elapsed <= this.trickRoomState.maxTurns) {
-        effects.push(`Trick Room ${elapsed}/${this.trickRoomState.maxTurns}`);
+      const remaining = this.trickRoomState.maxTurns - (turnNumber - this.trickRoomState.startTurn);
+      if (remaining >= 1 && remaining <= this.trickRoomState.maxTurns) {
+        effects.push(`Trick Room ${remaining}/${this.trickRoomState.maxTurns}`);
       } else {
         this.trickRoomState = null;
         this.trickRoom = false;
@@ -375,37 +379,9 @@ export class BattleLogParser {
       },
     };
 
-    // Turn 1 開始時点で先発繰り出しが OCR 欠落等で未着地の場合、
-    // 選出データ (p1Selection) の先頭2体をダブルバトルの先発として確実に着地させる
-    if (turnNumber === 1) {
-      if (this.leadMs === null) {
-        this.leadMs = Math.max(0, timestampMs - 5000);
-      }
-      if (
-        this.slots.p1a === null &&
-        this.p1Selection.length > 0 &&
-        this.p1Selection[0] !== undefined
-      ) {
-        this.placeOwn("p1a", this.p1Selection[0], timestampMs, false);
-      }
-      if (
-        this.slots.p1b === null &&
-        this.p1Selection.length > 1 &&
-        this.p1Selection[1] !== undefined
-      ) {
-        this.placeOwn("p1b", this.p1Selection[1], timestampMs, false);
-      }
-
-      // 相手側の先発着地 (p2a, p2b): 見せ合い・観察済みから未確定スロットを確実に解決
-      const oppCandidates = Array.from(
-        new Set([...this.observedOppSlugs, ...this.options.p2Roster]),
-      );
-      if (this.slots.p2a === null && oppCandidates[0]) {
-        this.placeOpponent("p2a", oppCandidates[0], timestampMs, 0.9);
-      }
-      if (this.slots.p2b === null && oppCandidates[1]) {
-        this.placeOpponent("p2b", oppCandidates[1], timestampMs, 0.9);
-      }
+    // Turn 1 開始時のタイムスタンプ記録
+    if (turnNumber === 1 && this.leadMs === null) {
+      this.leadMs = Math.max(0, timestampMs - 5000);
     }
 
     const alive = (slot: "p1a" | "p1b"): boolean =>
@@ -853,19 +829,17 @@ export class BattleLogParser {
       : "? 100%";
 
     // P1 Bench
-    const p1Selected =
-      this.p1Selection.length > 0
-        ? this.p1Selection.slice(0, 4)
-        : this.observedOwnIndices.length > 0
-          ? this.observedOwnIndices.slice(0, 4)
-          : this.options.myTeam.slice(0, 4).map((_, i) => i);
-
     const p1ActiveIndices = new Set<number>();
     if (snap.p1a.teamIdx !== null) p1ActiveIndices.add(snap.p1a.teamIdx);
     if (snap.p1b.teamIdx !== null) p1ActiveIndices.add(snap.p1b.teamIdx);
 
+    const maxP1Bench = Math.max(0, 4 - p1ActiveIndices.size);
+    const candidateIndices =
+      this.p1Selection.length > 0 ? this.p1Selection.slice(0, 4) : this.observedOwnIndices;
+
     const p1BenchParts: string[] = [];
-    for (const idx of p1Selected) {
+    for (const idx of candidateIndices) {
+      if (p1BenchParts.length >= maxP1Bench) break;
       if (p1ActiveIndices.has(idx)) continue;
       const member = this.options.myTeam[idx];
       if (!member) continue;
@@ -970,8 +944,41 @@ export class BattleLogParser {
             boostEvents.push(next);
             i++;
           } else if (next.verb === "terrain" || next.verb === "weather") {
-            const targetSlot =
-              lastAbilitySlot ?? switchEvents[switchEvents.length - 1]?.args[0] ?? "";
+            let targetSlot = lastAbilitySlot;
+            if (!targetSlot) {
+              const val = next.args[0] ?? "";
+              for (const sEv of switchEvents) {
+                const sSlot = sEv.args[0] ?? "";
+                const sSlug = sEv.args[1] ?? "";
+                if (
+                  (val === "Sandstorm" &&
+                    (sSlug === "tyranitar" || sSlug === "hippowdon" || sSlug === "gigalith")) ||
+                  (val === "Rain" &&
+                    (sSlug === "pelipper" || sSlug === "politoed" || sSlug === "kyogre")) ||
+                  (val === "Sun" &&
+                    (sSlug === "torkoal" ||
+                      sSlug === "ninetales" ||
+                      sSlug === "groudon" ||
+                      sSlug.includes("charizard"))) ||
+                  (val === "Snow" &&
+                    (sSlug.includes("ninetales") ||
+                      sSlug === "abomasnow" ||
+                      sSlug === "slowking-galar")) ||
+                  (val === "Grassy" && (sSlug === "rillaboom" || sSlug === "arboliva")) ||
+                  (val === "Psychic" &&
+                    (sSlug === "indeedee" || sSlug === "indeedee-f" || sSlug === "tapu-lele")) ||
+                  (val === "Electric" &&
+                    (sSlug === "miraidon" || sSlug === "pincurchin" || sSlug === "tapu-koko")) ||
+                  (val === "Misty" && (sSlug === "weezing-galar" || sSlug === "tapu-fini"))
+                ) {
+                  targetSlot = sSlot;
+                  break;
+                }
+              }
+            }
+            if (!targetSlot) {
+              targetSlot = switchEvents[switchEvents.length - 1]?.args[0] ?? "";
+            }
             if (!fieldEventsBySlot.has(targetSlot)) {
               fieldEventsBySlot.set(targetSlot, []);
             }
@@ -1039,6 +1046,8 @@ export class BattleLogParser {
         const actor = ev.args[0];
         const moveId = ev.args[1];
         const isDefensive = moveId ? PROTECT_MOVE.test(moveId) : false;
+        const moveMeta = moveId ? moveByIdentifier.get(moveId) : undefined;
+        const isStatus = moveMeta?.category === "status";
         i++;
 
         const targetMap = new Map<
@@ -1071,6 +1080,9 @@ export class BattleLogParser {
 
           // 1. 対象へのダメージ（すなあらし・いのちのたま等の定数/反動ダメージは技ブロックに含めない）
           if (next.verb === "damage") {
+            if (isStatus) {
+              break;
+            }
             const isResidual = Boolean(next.bracket && RESIDUAL_DAMAGE_BRACKETS.has(next.bracket));
             if (isResidual) {
               break;
@@ -1272,6 +1284,29 @@ export class BattleLogParser {
         lines.push(`    ${slot}: ${dmgEv.args[1]}`);
         lines.push(`  }`);
         i += 2;
+      } else if (
+        ev.verb === "item" &&
+        i + 1 < events.length &&
+        events[i + 1]!.verb === "boost" &&
+        events[i + 1]!.args[0] === ev.args[0]
+      ) {
+        const boostEvents: LogEvent[] = [];
+        let j = i + 1;
+        while (
+          j < events.length &&
+          events[j]!.verb === "boost" &&
+          events[j]!.args[0] === ev.args[0]
+        ) {
+          boostEvents.push(events[j]!);
+          j++;
+        }
+        const baseStr = formatEvent(ev);
+        lines.push(`  ${baseStr} {`);
+        for (const b of boostEvents) {
+          lines.push(`    ${formatEvent(b)}`);
+        }
+        lines.push(`  }`);
+        i = j;
       } else {
         lines.push(`  ${formatEvent(ev)}`);
         i++;
@@ -1476,6 +1511,13 @@ export class BattleLogParser {
     } else if (this.pendingSideItemHeal[side]) {
       pendingBracket = this.pendingSideItemHeal[side];
       this.pendingSideItemHeal[side] = undefined;
+    } else if (
+      this.terrain === "Grassy" &&
+      !this.healedFromTerrainThisTurn[target] &&
+      this.currentTurnHasMove()
+    ) {
+      pendingBracket = "grassy-terrain";
+      this.healedFromTerrainThisTurn[target] = true;
     }
 
     // 1/16 定率回復（grassy-terrain, leftovers, aqua-ring, ingrain）のキャリブレーション
@@ -1707,15 +1749,16 @@ export class BattleLogParser {
   /** 手持ちへの戻り（「<トレーナー> withdrew <X>!」 / 「もどれ！ <X>」 等） */
   private onWithdrawn(text: string): boolean {
     const key = normalizeOcrToken(text);
-    const matched = this.patternSets.some((p) => p.matchWithdraw(text, key));
+    const isOppWithdraw =
+      approxFind(key, normalizeOcrToken("引っこめた")).score >= 0.75 ||
+      approxFind(key, "withdrew").score >= 0.75;
+    const isOwnWithdraw =
+      approxFind(key, normalizeOcrToken("戻れ")).score >= 0.75 ||
+      approxFind(key, "comeback").score >= 0.75;
+    const matched =
+      isOppWithdraw || isOwnWithdraw || this.patternSets.some((p) => p.matchWithdraw(text, key));
     if (!matched) return false;
 
-    const isOppWithdraw =
-      approxFind(key, normalizeOcrToken("引っこめた")).score >= 0.8 ||
-      approxFind(key, "withdrew").score >= 0.8;
-    const isOwnWithdraw =
-      approxFind(key, normalizeOcrToken("戻れ")).score >= 0.8 ||
-      approxFind(key, "comeback").score >= 0.8;
     const candidates = isOppWithdraw ? OPP_SLOTS : isOwnWithdraw ? OWN_SLOTS : SLOTS;
     const slots = this.resolveSlots(key, candidates);
     const slot = slots[0];
@@ -1754,7 +1797,29 @@ export class BattleLogParser {
         break;
       }
     }
-    if (!names || names.length === 0) return false;
+    if (!names || names.length === 0) {
+      const isSentOutPhrase =
+        approxFind(key, normalizeOcrToken("繰り出し")).score >= 0.72 ||
+        approxFind(key, normalizeOcrToken("くりだし")).score >= 0.72 ||
+        /\bsent out\b/i.test(text);
+      if (isSentOutPhrase) {
+        const detected: { slug: string; end: number }[] = [];
+        for (const slug of this.options.p2Roster) {
+          for (const alias of this.speciesAliases(slug)) {
+            const m = approxFind(key, alias);
+            if (m.score >= NAME_THRESHOLD) {
+              detected.push({ slug, end: m.end });
+              break;
+            }
+          }
+        }
+        if (detected.length > 0) {
+          detected.sort((a, b) => a.end - b.end);
+          names = detected.map((d) => d.slug);
+        }
+      }
+      if (!names || names.length === 0) return false;
+    }
 
     const resolved = names.map((n) => this.resolveOpponentSlug(n));
     if (resolved.every((r) => r === null)) return false;
@@ -1863,7 +1928,45 @@ export class BattleLogParser {
         break;
       }
     }
-    if (!names || names.length === 0) return false;
+    if (!names || names.length === 0) {
+      const isGoPhrase =
+        approxFind(key, normalizeOcrToken("ゆけ")).score >= 0.72 ||
+        approxFind(key, normalizeOcrToken("行け")).score >= 0.72 ||
+        /\bgo\b/i.test(text);
+
+      const detected: { idx: number; end: number }[] = [];
+      this.options.myTeam.forEach((member, idx) => {
+        for (const alias of this.speciesAliases(member.slug)) {
+          const m = approxFind(key, alias);
+          if (m.score >= NAME_THRESHOLD) {
+            detected.push({ idx, end: m.end });
+            break;
+          }
+        }
+      });
+
+      if (this.leadMs === null && detected.length >= 2) {
+        detected.sort((a, b) => a.end - b.end);
+        const idxA = detected[0]!.idx;
+        const idxB = detected[1]!.idx;
+        if (idxA !== idxB) {
+          this.placeOwn("p1a", idxA, t, false);
+          this.placeOwn("p1b", idxB, t, false);
+          this.markLead(t);
+          return true;
+        }
+      } else if (isGoPhrase && detected.length >= 1) {
+        const idx = detected[0]!.idx;
+        const preferred =
+          this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
+            ? this.pendingWithdrawSlot
+            : (OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p1a");
+        this.pendingWithdrawSlot = null;
+        this.placeOwn(preferred, idx, t, false);
+        return true;
+      }
+      return false;
+    }
 
     const indices = names.map((n) => this.resolveOwnIndex(n));
     if (indices.every((i) => i < 0)) return false;
@@ -1884,6 +1987,19 @@ export class BattleLogParser {
     }
     this.markLead(t);
     return true;
+  }
+
+  deployLeadsIfUnset(p1Indices: readonly [number, number], t: number): void {
+    if (this.turns.length > 0) return;
+    const [idxA, idxB] = p1Indices;
+    if (idxA === idxB || idxA < 0 || idxB < 0) return;
+    if (this.slots["p1a"] === null) {
+      this.placeOwn("p1a", idxA, t, false);
+    }
+    if (this.slots["p1b"] === null) {
+      this.placeOwn("p1b", idxB, t, false);
+    }
+    this.markLead(t);
   }
 
   private placeOwn(slot: SlotIdent, teamIdx: number, t: number, guessedSlot: boolean): void {
@@ -2054,7 +2170,7 @@ export class BattleLogParser {
     const head = normalizeOcrToken(match.actorPart);
     const actorKey = head.replace(/^(?:相手の|相手|theopposing)/i, "");
     if (!actorKey) return false;
-    const isOpposing =
+    let isOpposing =
       Boolean(match.isOpposing) ||
       this.patternSets.some((p) =>
         p.opposingPrefixes.some((prefix) => approxFind(head, prefix).score >= 0.8),
@@ -2063,16 +2179,36 @@ export class BattleLogParser {
     const move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
     if (!move || move.confidence < 72) return false;
 
+    // 自軍（P1）にしか存在しないポケモンの技、またはP1固有の技の場合は相手側の技と誤認させない
+    const ownTeamIdx = this.resolveOwnIndex(actorKey);
+    const isP1ExclusiveMon =
+      ownTeamIdx >= 0 && !this.observedOppSlugs.has(this.options.myTeam[ownTeamIdx]?.slug ?? "");
+    if (isP1ExclusiveMon) {
+      isOpposing = false;
+    } else {
+      const p1ActiveSlots = OWN_SLOTS.filter((s) => this.slots[s] !== null && !this.fainted[s]);
+      const p1KnowsMove = p1ActiveSlots.some((s) => {
+        const mon = this.slots[s];
+        if (!mon) return false;
+        const moves = this.options.p1Moves?.(mon.teamIdx) ?? [];
+        return moves.includes(move.slug);
+      });
+      if (p1ActiveSlots.length > 0 && !p1KnowsMove) {
+        isOpposing = true;
+      }
+    }
+
     const candidates = isOpposing ? OPP_SLOTS : OWN_SLOTS;
     const matched = this.resolveSlots(head, candidates);
 
     let slot: SlotIdent | undefined = matched[0];
 
-    // 自軍スロットの場合、技スラッグを実際に覚えているポケモンがいるスロットを優先して特定する
+    // 自軍スロットの場合、対象ポケモンまたは技スラッグを実際に覚えているポケモンがいるスロットを優先して特定する
     if (!isOpposing && (!slot || matched.length === 0)) {
       const slotWithMove = OWN_SLOTS.find((s) => {
         const mon = this.slots[s];
         if (!mon || this.fainted[s]) return false;
+        if (ownTeamIdx >= 0 && mon.teamIdx === ownTeamIdx) return true;
         const moves = this.options.p1Moves?.(mon.teamIdx) ?? [];
         return moves.includes(move.slug);
       });
@@ -2088,16 +2224,8 @@ export class BattleLogParser {
     );
 
     if (slot && actedSlots.has(slot)) {
-      // 既に今ターン技を使用済みのスロットの場合、未行動の味方スロットへ移譲する
-      const otherSlot = candidates.find(
-        (s) => s !== slot && !actedSlots.has(s) && !this.fainted[s],
-      );
-      if (otherSlot) {
-        slot = otherSlot;
-      } else {
-        // 両スロット行動済み、または同一技の連続フレーム重複の場合は二重行動を阻止して無視
-        return false;
-      }
+      // 同一スロットが既に今ターン技を使用済みの場合、重複ログまたは二重行動なので無視する
+      return false;
     }
 
     if (!slot) {
@@ -2220,7 +2348,11 @@ export class BattleLogParser {
         matchedDef.status === "psn" ||
         matchedDef.status === "tox";
       if (isMajor) {
-        const statusRes = validateStatusInflict(this.contractState, slot, matchedDef.status as any);
+        const statusRes = validateStatusInflict(
+          this.contractState,
+          slot,
+          matchedDef.status as unknown as Parameters<typeof validateStatusInflict>[2],
+        );
         if (E.isLeft(statusRes)) {
           return false;
         }
@@ -2303,8 +2435,8 @@ export class BattleLogParser {
     } else {
       const cureTarget =
         matchedDef.status === "status"
-          ? (this.statusCondition[slot] as any)
-          : (matchedDef.status as any);
+          ? (this.statusCondition[slot] as unknown as Parameters<typeof validateStatusCure>[2])
+          : (matchedDef.status as unknown as Parameters<typeof validateStatusCure>[2]);
       if (cureTarget) {
         const cureRes = validateStatusCure(this.contractState, slot, cureTarget);
         if (E.isLeft(cureRes)) {
@@ -2470,7 +2602,11 @@ export class BattleLogParser {
         unique: condition !== "spikes" && condition !== "toxic-spikes",
       });
     } else {
-      const endRes = validateSideConditionEnd(this.contractState, side, condition as any);
+      const endRes = validateSideConditionEnd(
+        this.contractState,
+        side,
+        condition as unknown as Parameters<typeof validateSideConditionEnd>[2],
+      );
       if (E.isLeft(endRes)) {
         return false;
       }
@@ -2813,7 +2949,7 @@ export class BattleLogParser {
         ev.verb === "damage" &&
         ev.args[0] === slot &&
         !ev.bracket &&
-        Math.abs(t - ev.t) <= 1000
+        Math.abs(t - ev.t) <= 3000
       ) {
         const beforeToken = ev.args[1]?.split("->")[0]?.trim();
         const rawAfterToken = ev.args[1]?.split("->")[1]?.trim();
@@ -2900,7 +3036,7 @@ export class BattleLogParser {
   }
 
   /** 「まもりきった」「ワイドガードがまもった」「ファストガードがまもった」相当の防御メッセージ */
-  private onProtected(key: string, _t: number): boolean {
+  private onProtected(key: string, t: number): boolean {
     let isWideGuard = false;
     let isQuickGuard = false;
     let isProtectedItself = false;
@@ -2926,13 +3062,28 @@ export class BattleLogParser {
     }
 
     if (isProtectedItself) isProtected = true;
-    if (!isProtected && !isWideGuard && !isQuickGuard) return false;
+
+    const protectStanceTokens = [
+      normalizeOcrToken("守りの体勢に入った"),
+      normalizeOcrToken("りの体勢に入った"),
+      normalizeOcrToken("守りの体勢に入っつた"),
+      "enteredaprotectivestance",
+    ];
+    const isProtectStance = protectStanceTokens.some((tok) => approxFind(key, tok).score >= 0.72);
+
+    if (!isProtected && !isWideGuard && !isQuickGuard && !isProtectStance) return false;
 
     const slot = this.resolveSlots(key)[0];
     if (slot) {
       const side = slot.startsWith("p1") ? "p1" : "p2";
       if (isWideGuard) this.sideConditions[side]["wide-guard"] = 1;
       if (isQuickGuard) this.sideConditions[side]["quick-guard"] = 1;
+
+      if (isProtectStance) {
+        this.emit("move", [slot, "protect"], t, 1, { review: false, unique: true });
+        this.setAction(slot, "protect");
+        return true;
+      }
     }
 
     const events = this.currentEvents();
@@ -3189,7 +3340,11 @@ export class BattleLogParser {
         const maxTurns = this.detectWeatherExtender(effect.value) ? 8 : 5;
         this.contractState = {
           ...this.contractState,
-          weather: { kind: effect.value as any, remainingTurns: maxTurns, maxTurns },
+          weather: {
+            kind: effect.value as unknown as NonNullable<BattleState["weather"]>["kind"],
+            remainingTurns: maxTurns,
+            maxTurns,
+          },
         };
         this.weatherState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
         this.emit("weather", [effect.value], t, 0.98, { review: false });
@@ -3211,7 +3366,11 @@ export class BattleLogParser {
         const maxTurns = this.detectTerrainExtender() ? 8 : 5;
         this.contractState = {
           ...this.contractState,
-          terrain: { kind: effect.value as any, remainingTurns: maxTurns, maxTurns },
+          terrain: {
+            kind: effect.value as unknown as NonNullable<BattleState["terrain"]>["kind"],
+            remainingTurns: maxTurns,
+            maxTurns,
+          },
         };
         this.terrainState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
         this.emit("terrain", [effect.value], t, 0.98, { review: false });
@@ -3365,7 +3524,7 @@ export class BattleLogParser {
     }
 
     // 2. HUD の回復完了よりもメッセージが先に到達した場合、自軍のみ正確な実数値（1/16 または 1/4）で即時 emit。
-    // ※ 相手（%表記）は最大HPや端数によって6%または7%と変動するため勝手に決め打ちせず、HUDのHPバー実測値（SoT）を待つ。
+    // 相手（%表記）は最大HPや端数によって変動するため、HUD実測値を待つ。
     if (
       isOwn &&
       (effectBracket === "grassy-terrain" ||
@@ -3467,39 +3626,76 @@ export class BattleLogParser {
   }
 
   /**
-   * 選出データ (p1Selection) および相手見せ合い (p2Roster) を基に、
-   * 先発スロットの未確定 (? 100%) やスロット誤判定の連鎖を事後的に確定・補正する。
+   * 見せ合い画面の選出データ (p1Selection) およびパーティ技情報を基に、
+   * 先発スロットおよび技の所有者を解決・補正する。
    */
-  finalizeLeadAndSlots(p1Selection: readonly number[], p2Roster?: readonly string[]): void {
+  finalizeLeadAndSlots(p1Selection: readonly number[], _p2Roster?: readonly string[]): void {
     if (this.turns.length === 0) return;
 
-    // 1. P1 先発 (p1a, p1b) の確定
-    const lead0 = p1Selection[0] !== undefined ? this.options.myTeam[p1Selection[0]] : undefined;
-    const lead1 = p1Selection[1] !== undefined ? this.options.myTeam[p1Selection[1]] : undefined;
+    // 1. 画面上で実際に検出された先発ポケモン (leadEvents / slots) を最優先
+    const p1aEv = this.leadEvents.find((e) => e.verb === "switch" && e.args[0] === "p1a");
+    const p1bEv = this.leadEvents.find((e) => e.verb === "switch" && e.args[0] === "p1b");
+    const detectedP1aIdx = p1aEv
+      ? this.options.myTeam.findIndex(
+          (m) => m.slug === p1aEv.args[1] || m.identifier === p1aEv.args[1],
+        )
+      : -1;
+    const detectedP1bIdx = p1bEv
+      ? this.options.myTeam.findIndex(
+          (m) => m.slug === p1bEv.args[1] || m.identifier === p1bEv.args[1],
+        )
+      : -1;
 
-    // 2. P2 先発の推論 (observedOppSlugs または p2Roster から未確定スロットを埋める)
-    const oppCandidates = Array.from(
-      new Set([...this.observedOppSlugs, ...(p2Roster ?? this.options.p2Roster)]),
-    );
-    const oppLead0 = oppCandidates[0];
-    const oppLead1 = oppCandidates[1];
+    const lead0Idx = detectedP1aIdx >= 0 ? detectedP1aIdx : p1Selection[0];
+    const lead1Idx = detectedP1bIdx >= 0 ? detectedP1bIdx : p1Selection[1];
+    const lead0 = lead0Idx !== undefined ? this.options.myTeam[lead0Idx] : undefined;
+    const lead1 = lead1Idx !== undefined ? this.options.myTeam[lead1Idx] : undefined;
+
+    // 2. 実機バトル中に画面上で実際に観測されたポケモン (observedOwnIndices)
+    // 画面に出た先発2体 + 画面に出た控えポケモンから真の選出 (最大4体) を確定
+    const reconciledSelection: number[] = [];
+    if (lead0Idx !== undefined && lead0Idx >= 0) reconciledSelection.push(lead0Idx);
+    if (lead1Idx !== undefined && lead1Idx >= 0 && !reconciledSelection.includes(lead1Idx)) {
+      reconciledSelection.push(lead1Idx);
+    }
+    for (const obsIdx of this.observedOwnIndices) {
+      if (reconciledSelection.length >= 4) break;
+      if (!reconciledSelection.includes(obsIdx)) {
+        reconciledSelection.push(obsIdx);
+      }
+    }
+    // 見せ合い画面で選出されていたが場に出なかった残りの選出メンバーを追加（4枠を維持）
+    for (const selIdx of p1Selection) {
+      if (reconciledSelection.length >= 4) break;
+      if (!reconciledSelection.includes(selIdx)) {
+        reconciledSelection.push(selIdx);
+      }
+    }
+    this.p1Selection = reconciledSelection;
+
+    // 3. 相手側の先発（画面上で実際に観測された相手ポケモンのみ）
+    const observedOppList = Array.from(this.observedOppSlugs);
+    const oppLead0 = observedOppList[0];
+    const oppLead1 = observedOppList[1];
 
     let currentP1a: { slug: string; teamIdx: number; hp: string } | null =
-      lead0 && p1Selection[0] !== undefined
+      lead0 && lead0Idx !== undefined
         ? {
             slug: lead0.slug,
-            teamIdx: p1Selection[0],
-            hp: `${this.options.p1MaxHp(p1Selection[0])}/${this.options.p1MaxHp(p1Selection[0])}`,
+            teamIdx: lead0Idx,
+            hp: `${this.options.p1MaxHp(lead0Idx)}/${this.options.p1MaxHp(lead0Idx)}`,
           }
         : null;
+
     let currentP1b: { slug: string; teamIdx: number; hp: string } | null =
-      lead1 && p1Selection[1] !== undefined
+      lead1 && lead1Idx !== undefined
         ? {
             slug: lead1.slug,
-            teamIdx: p1Selection[1],
-            hp: `${this.options.p1MaxHp(p1Selection[1])}/${this.options.p1MaxHp(p1Selection[1])}`,
+            teamIdx: lead1Idx,
+            hp: `${this.options.p1MaxHp(lead1Idx)}/${this.options.p1MaxHp(lead1Idx)}`,
           }
         : null;
+
     let currentP2a: { slug: string; hp: string } | null = oppLead0
       ? { slug: oppLead0, hp: "100%" }
       : null;
@@ -3507,6 +3703,111 @@ export class BattleLogParser {
       ? { slug: oppLead1, hp: "100%" }
       : null;
 
+    // 先発繰り出しイベント (@lead) の自軍スロット補正
+    const leadTs =
+      this.leadMs ??
+      (this.turns[0]?.timestampMs ? Math.max(0, this.turns[0].timestampMs - 5000) : 53000);
+    if (lead0 && lead0Idx !== undefined) {
+      const existingP1a = this.leadEvents.find((e) => e.verb === "switch" && e.args[0] === "p1a");
+      const hp0 = `${this.options.p1MaxHp(lead0Idx)}/${this.options.p1MaxHp(lead0Idx)}`;
+      if (existingP1a) {
+        existingP1a.args[1] = lead0.slug;
+        existingP1a.args[2] = hp0;
+      } else {
+        this.leadEvents.push({
+          verb: "switch",
+          args: ["p1a", lead0.slug, hp0],
+          t: leadTs,
+          confidence: 1,
+          review: false,
+        });
+      }
+    }
+    if (lead1 && lead1Idx !== undefined) {
+      const existingP1b = this.leadEvents.find((e) => e.verb === "switch" && e.args[0] === "p1b");
+      const hp1 = `${this.options.p1MaxHp(lead1Idx)}/${this.options.p1MaxHp(lead1Idx)}`;
+      if (existingP1b) {
+        existingP1b.args[1] = lead1.slug;
+        existingP1b.args[2] = hp1;
+      } else {
+        this.leadEvents.push({
+          verb: "switch",
+          args: ["p1b", lead1.slug, hp1],
+          t: leadTs,
+          confidence: 1,
+          review: false,
+        });
+      }
+    }
+
+    const idxP1a = this.leadEvents.findIndex((e) => e.verb === "switch" && e.args[0] === "p1a");
+    const idxP1b = this.leadEvents.findIndex((e) => e.verb === "switch" && e.args[0] === "p1b");
+    if (idxP1a >= 0 && idxP1b >= 0 && idxP1b < idxP1a) {
+      const [evP1a] = this.leadEvents.splice(idxP1a, 1);
+      const newIdxP1b = this.leadEvents.findIndex(
+        (e) => e.verb === "switch" && e.args[0] === "p1b",
+      );
+      this.leadEvents.splice(newIdxP1b, 0, evP1a!);
+    }
+
+    const hasSandstorm = this.leadEvents.some(
+      (e) => e.verb === "weather" && e.args[0] === "Sandstorm",
+    );
+    if (hasSandstorm) {
+      const hasSandStream = this.leadEvents.some(
+        (e) => e.verb === "ability" && e.args[1] === "sand-stream",
+      );
+      if (!hasSandStream) {
+        const sandSlot = this.leadEvents.find(
+          (e) => e.verb === "switch" && (e.args[1] === "tyranitar" || e.args[1] === "hippowdon"),
+        )?.args[0];
+        if (sandSlot) {
+          const wIdx = this.leadEvents.findIndex(
+            (e) => e.verb === "weather" && e.args[0] === "Sandstorm",
+          );
+          this.leadEvents.splice(wIdx, 0, {
+            verb: "ability",
+            args: [sandSlot, "sand-stream"],
+            t: leadTs,
+            confidence: 1,
+            review: false,
+          });
+        }
+      }
+    }
+
+    // Turn 1 開始時点の先発は、選出情報があれば確実に lead0, lead1 に解決
+    const turn1 = this.turns[0]!;
+    const snap1 = turn1.stateSnapshot as {
+      p1a: SlotStateSnapshot;
+      p1b: SlotStateSnapshot;
+      p2a: SlotStateSnapshot;
+      p2b: SlotStateSnapshot;
+    };
+    if (currentP1a) {
+      snap1.p1a = {
+        ...snap1.p1a,
+        slug: currentP1a.slug,
+        teamIdx: currentP1a.teamIdx,
+        hp: snap1.p1a.hp ?? currentP1a.hp,
+      };
+    }
+    if (currentP1b) {
+      snap1.p1b = {
+        ...snap1.p1b,
+        slug: currentP1b.slug,
+        teamIdx: currentP1b.teamIdx,
+        hp: snap1.p1b.hp ?? currentP1b.hp,
+      };
+    }
+    if (!snap1.p2a.slug && currentP2a) {
+      snap1.p2a = { ...snap1.p2a, slug: currentP2a.slug, hp: snap1.p2a.hp ?? currentP2a.hp };
+    }
+    if (!snap1.p2b.slug && currentP2b) {
+      snap1.p2b = { ...snap1.p2b, slug: currentP2b.slug, hp: snap1.p2b.hp ?? currentP2b.hp };
+    }
+
+    // ターンごとの時系列追跡（交代イベントによるスロット更新と、技所有者の補正）
     for (let tIdx = 0; tIdx < this.turns.length; tIdx++) {
       const turn = this.turns[tIdx]!;
       const snap = turn.stateSnapshot as {
@@ -3516,50 +3817,52 @@ export class BattleLogParser {
         p2b: SlotStateSnapshot;
       };
 
-      // ターン開始時点のスナップショットを補正
-      if (!snap.p1a.slug && currentP1a) {
-        snap.p1a = {
-          ...snap.p1a,
-          slug: currentP1a.slug,
-          teamIdx: currentP1a.teamIdx,
-          hp: snap.p1a.hp ?? currentP1a.hp,
-        };
-      } else if (snap.p1a.slug && snap.p1a.teamIdx !== null) {
-        currentP1a = { slug: snap.p1a.slug, teamIdx: snap.p1a.teamIdx, hp: snap.p1a.hp ?? "100%" };
+      // Turn 2 以降のスナップショットで、前ターンから引き継がれるべきスロットを補正
+      if (tIdx > 0) {
+        if (!snap.p1a.slug && currentP1a) {
+          snap.p1a = {
+            ...snap.p1a,
+            slug: currentP1a.slug,
+            teamIdx: currentP1a.teamIdx,
+            hp: snap.p1a.hp ?? currentP1a.hp,
+          };
+        } else if (snap.p1a.slug && snap.p1a.teamIdx !== null) {
+          currentP1a = {
+            slug: snap.p1a.slug,
+            teamIdx: snap.p1a.teamIdx,
+            hp: snap.p1a.hp ?? "100%",
+          };
+        }
+
+        if (!snap.p1b.slug && currentP1b) {
+          snap.p1b = {
+            ...snap.p1b,
+            slug: currentP1b.slug,
+            teamIdx: currentP1b.teamIdx,
+            hp: snap.p1b.hp ?? currentP1b.hp,
+          };
+        } else if (snap.p1b.slug && snap.p1b.teamIdx !== null) {
+          currentP1b = {
+            slug: snap.p1b.slug,
+            teamIdx: snap.p1b.teamIdx,
+            hp: snap.p1b.hp ?? "100%",
+          };
+        }
+
+        if (!snap.p2a.slug && currentP2a) {
+          snap.p2a = { ...snap.p2a, slug: currentP2a.slug, hp: snap.p2a.hp ?? currentP2a.hp };
+        } else if (snap.p2a.slug) {
+          currentP2a = { slug: snap.p2a.slug, hp: snap.p2a.hp ?? "100%" };
+        }
+
+        if (!snap.p2b.slug && currentP2b) {
+          snap.p2b = { ...snap.p2b, slug: currentP2b.slug, hp: snap.p2b.hp ?? currentP2b.hp };
+        } else if (snap.p2b.slug) {
+          currentP2b = { slug: snap.p2b.slug, hp: snap.p2b.hp ?? "100%" };
+        }
       }
 
-      if (!snap.p1b.slug && currentP1b) {
-        snap.p1b = {
-          ...snap.p1b,
-          slug: currentP1b.slug,
-          teamIdx: currentP1b.teamIdx,
-          hp: snap.p1b.hp ?? currentP1b.hp,
-        };
-      } else if (snap.p1b.slug && snap.p1b.teamIdx !== null) {
-        currentP1b = { slug: snap.p1b.slug, teamIdx: snap.p1b.teamIdx, hp: snap.p1b.hp ?? "100%" };
-      }
-
-      if (!snap.p2a.slug && currentP2a) {
-        snap.p2a = {
-          ...snap.p2a,
-          slug: currentP2a.slug,
-          hp: snap.p2a.hp ?? currentP2a.hp,
-        };
-      } else if (snap.p2a.slug) {
-        currentP2a = { slug: snap.p2a.slug, hp: snap.p2a.hp ?? "100%" };
-      }
-
-      if (!snap.p2b.slug && currentP2b) {
-        snap.p2b = {
-          ...snap.p2b,
-          slug: currentP2b.slug,
-          hp: snap.p2b.hp ?? currentP2b.hp,
-        };
-      } else if (snap.p2b.slug) {
-        currentP2b = { slug: snap.p2b.slug, hp: snap.p2b.hp ?? "100%" };
-      }
-
-      // ターン内イベントの交代によるスロット追跡および技の所有者バインド補正
+      // ターン内イベントの交代（switch）によるスロット追跡および技所有者の補正
       for (const ev of turn.events) {
         if (ev.verb === "switch") {
           const slot = ev.args[0];
@@ -3593,6 +3896,14 @@ export class BattleLogParser {
             const p1bMoves = currentP1b ? (this.options.p1Moves?.(currentP1b.teamIdx) ?? []) : [];
             if (!p1bMoves.includes(moveSlug) && p1aMoves.includes(moveSlug)) {
               ev.args[0] = "p1a";
+            }
+          } else if (slot?.startsWith("p2")) {
+            const p1aMoves = currentP1a ? (this.options.p1Moves?.(currentP1a.teamIdx) ?? []) : [];
+            const p1bMoves = currentP1b ? (this.options.p1Moves?.(currentP1b.teamIdx) ?? []) : [];
+            if (p1aMoves.includes(moveSlug) && !p1bMoves.includes(moveSlug)) {
+              ev.args[0] = "p1a";
+            } else if (p1bMoves.includes(moveSlug) && !p1aMoves.includes(moveSlug)) {
+              ev.args[0] = "p1b";
             }
           }
         }

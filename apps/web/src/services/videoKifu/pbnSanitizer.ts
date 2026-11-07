@@ -35,34 +35,56 @@ const NON_ATTACKING_MOVES =
  * 物理的サニタイズ（PBN レンダリング前のターンデータ健全化）:
  * 1. 同一ターン内での同一スロットによる二重行動（重複 move イベント）を物理的に排除
  * 2. 単体技における誤った自己攻撃ターゲット（-> slot）の除去
+ * 3. 単体攻撃技による誤った自己攻撃アクターの修復（対向陣営への自動再バインド）
  */
 export function sanitizeTurnEvents(turn: TurnRecord): TurnRecord {
   const actedSlots = new Set<string>();
   const sanitizedEvents: LogEvent[] = [];
+  let lastMoveEv: LogEvent | null = null;
+  const p1SlotHint = turn.stateSnapshot.p1b.slug ? "p1b" : "p1a";
+  const p2SlotHint = turn.stateSnapshot.p2a.slug ? "p2a" : "p2b";
 
   for (const ev of turn.events) {
     if (ev.verb === "move") {
       const slot = ev.args[0] ?? "";
       const moveSlug = ev.args[1] ?? "";
 
-      // 同一ターンで既に技行使済みのスロットによる2回目の技はノイズとして物理的に除外
       if (actedSlots.has(slot)) {
         continue;
       }
       actedSlots.add(slot);
 
-      // 単体技でターゲットが自身になっている不正な指定を修正
       const isSelfMove = /curse|belly-drum|substitute|pain-split/i.test(moveSlug);
       const arrowIdx = ev.args.indexOf("->");
       if (!isSelfMove && arrowIdx >= 0 && arrowIdx + 1 < ev.args.length) {
         const target = ev.args[arrowIdx + 1];
         if (target === slot) {
-          // 自身のスロットへのターゲット指定を除去
           const cleanArgs = [...ev.args.slice(0, arrowIdx), ...ev.args.slice(arrowIdx + 2)];
-          sanitizedEvents.push({ ...ev, args: cleanArgs });
+          const sanitizedEv = { ...ev, args: cleanArgs };
+          sanitizedEvents.push(sanitizedEv);
+          lastMoveEv = sanitizedEv;
           continue;
         }
       }
+      lastMoveEv = ev;
+      sanitizedEvents.push(ev);
+      continue;
+    }
+
+    if (ev.verb === "damage" && lastMoveEv) {
+      const target = ev.args[0] ?? "";
+      const moveActor = lastMoveEv.args[0] ?? "";
+      const moveSlug = lastMoveEv.args[1] ?? "";
+      const isResidual = Boolean(ev.bracket && RESIDUAL_BRACKETS.has(ev.bracket));
+      const isSelfHurtMove = /curse|belly-drum|substitute|pain-split/i.test(moveSlug);
+
+      if (target === moveActor && !isResidual && !isSelfHurtMove) {
+        const oppSlot = target.startsWith("p1") ? p2SlotHint : p1SlotHint;
+        lastMoveEv.args[0] = oppSlot;
+      }
+      lastMoveEv = null;
+    } else if (ev.verb === "switch" || ev.verb === "weather" || ev.verb === "terrain") {
+      lastMoveEv = null;
     }
 
     sanitizedEvents.push(ev);
