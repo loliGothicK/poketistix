@@ -147,22 +147,26 @@ describe("VideoKifuAnalyzer Fixture Regression Tests", () => {
         await Promise.all(workers.map((w) => w.terminate()));
 
         const actualPbn = summary.pbnText.trim();
-
-        // 最新の出力を常に latest.pbn に書き出し（差分修正用ベース）
         const latestPath = path.join(tc.dirPath, "latest.pbn");
-        fs.writeFileSync(latestPath, actualPbn + "\n", "utf8");
 
         if (!tc.truthPbn) {
+          fs.writeFileSync(latestPath, actualPbn + "\n", "utf8");
           console.warn(
             `[NOTICE] No truth.pbn found for ${tc.id}. Wrote generated PBN to latest.pbn. Please inspect, modify diffs, and save as truth.pbn.`,
           );
           return;
         }
 
+        if (actualPbn !== tc.truthPbn.trim()) {
+          fs.writeFileSync(latestPath, actualPbn + "\n", "utf8");
+        } else if (fs.existsSync(latestPath)) {
+          fs.unlinkSync(latestPath);
+        }
+
         // truth.pbn と actualPbn を比較（不一致なら Vitest が明快な Diff を出力）
         expect(actualPbn).toBe(tc.truthPbn.trim());
       },
-      180_000,
+      450_000,
     );
   });
 });

@@ -7,7 +7,7 @@ export default defineConfig({
     ...baseConfig.test,
     include: ["src/**/*.integration.test.ts"],
     exclude: [...configDefaults.exclude],
-    testTimeout: 300_000,
+    testTimeout: 450_000,
     hookTimeout: 60_000,
   },
 });

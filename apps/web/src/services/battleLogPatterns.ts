@@ -38,7 +38,8 @@ export interface ItemEffectPhraseDef {
     | "switch-self"
     | "switch-target"
     | "pop-balloon"
-    | "float-balloon";
+    | "float-balloon"
+    | "off";
 }
 
 export interface StatWordDef {
@@ -502,8 +503,8 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
   ],
   sentOutTwo: ["{trainer} sent out {mon1} and {mon2}!"],
   sentOutOne: ["The opposing {mon} was dragged out!", "{trainer} sent out {mon}!"],
-  goTwo: ["Go! {mon1} and {mon2}!"],
-  goOne: ["Go! {mon}!", "{mon} was dragged out!"],
+  goTwo: ["Go! {mon1} and {mon2}!", "Go {mon1} and {mon2}!", "Gol {mon1} and {mon2}!"],
+  goOne: ["Go! {mon}!", "Go {mon}!", "Gol {mon}!", "{mon} was dragged out!"],
   moveUsed: ["The opposing {mon} used {move}!", "{mon} used {move}!"],
   readyToHelp: ["The opposing {mon1} is ready to help {mon2}!", "{mon1} is ready to help {mon2}!"],
   readyToHelpPhrase: "isreadytohelp",
@@ -830,7 +831,8 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     {
       phrase: "knockedoff",
       consumed: true,
-      targetPosition: "last",
+      targetPosition: "first",
+      action: "off",
     },
     {
       phrase: "corroded",
@@ -842,7 +844,7 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
       consumed: true,
     },
     {
-      phrase: "stole",
+      phrase: "stolethe",
       consumed: true,
       targetPosition: "last",
     },
@@ -1099,7 +1101,9 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
   quickGuard: ["ファストガードで守られた"],
   protectItself: [
     "攻撃から身を守った",
-    "攻撃から",
+    "攻撃からbeste",
+    "攻撃からbefore",
+    "bensbefore",
     "攻撃を守りきった",
     "身を守った",
     "守りきった",
@@ -1111,6 +1115,9 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
   ],
   protectGeneral: [
     "攻撃から身を守った",
+    "攻撃からbeste",
+    "攻撃からbefore",
+    "bensbefore",
     "攻撃を守りきった",
     "身を守った",
     "守りきった",
@@ -1180,6 +1187,7 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "天候の影響がなくなった", effect: { kind: "weather", value: "None" } },
     { phrase: "足下に草がおいしげった", effect: { kind: "terrain", value: "Grassy" } },
     { phrase: "足下の草が消え去った", effect: { kind: "terrain", value: "None" } },
+    { phrase: "草が消え去った", effect: { kind: "terrain", value: "None" } },
     { phrase: "足下に電気がかけめぐる", effect: { kind: "terrain", value: "Electric" } },
     { phrase: "足下の電気が消え去った", effect: { kind: "terrain", value: "None" } },
     { phrase: "足下に霧が立ち込めた", effect: { kind: "terrain", value: "Misty" } },
@@ -1411,7 +1419,8 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     {
       phrase: "をはたき落とした",
       consumed: true,
-      targetPosition: "last",
+      targetPosition: "first",
+      action: "off",
     },
     {
       phrase: "を溶かした",
@@ -1451,6 +1460,8 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "ねがいごとがかなった", effect: "wish" },
     { phrase: "いやしのねがいが", effect: "healing-wish" },
     { phrase: "がたてたお茶を", effect: "hospitality" },
+    { phrase: "飲みほした", effect: "hospitality" },
+    { phrase: "お茶を", effect: "hospitality" },
     { phrase: "体力が回復した", effect: "grassy-terrain" },
   ],
   cantPhrases: [
@@ -1489,6 +1500,7 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "を襲", effect: "sandstorm" },
     { phrase: "をbs", effect: "sandstorm" },
     { phrase: "bhsun", effect: "sandstorm" },
+    { phrase: "vebs", effect: "sandstorm" },
     { phrase: "やけどのダメージを受けた", effect: "burn" },
     { phrase: "毒のダメージを受けた", effect: "poison" },
     { phrase: "命が少し削られた", effect: "life-orb" },

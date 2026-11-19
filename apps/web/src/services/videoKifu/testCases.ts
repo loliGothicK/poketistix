@@ -46,7 +46,9 @@ export function loadAllFixtureCases(): readonly VideoFixtureCase[] {
     try {
       const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as VideoTestCaseMeta;
       const pokepaste = fs.readFileSync(pastePath, "utf8");
-      const truthPbn = fs.existsSync(truthPath) ? fs.readFileSync(truthPath, "utf8") : null;
+      const truthPbn = fs.existsSync(truthPath)
+        ? fs.readFileSync(truthPath, "utf8").replace(/\r\n/g, "\n")
+        : null;
 
       cases.push({
         id: entry.name,

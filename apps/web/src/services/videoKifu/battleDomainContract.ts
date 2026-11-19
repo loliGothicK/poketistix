@@ -220,7 +220,11 @@ export function validateLeadDeploy(
   }
 
   const currentSideSlugs = state.observedSlugsBySide[side];
-  if (!currentSideSlugs.includes(mon.slug) && currentSideSlugs.length >= 4) {
+  const baseSlug = mon.slug.replace(/-mega(-[xyz])?$/, "");
+  const alreadyObserved = currentSideSlugs.some(
+    (s) => s === mon.slug || s.replace(/-mega(-[xyz])?$/, "") === baseSlug,
+  );
+  if (!alreadyObserved && currentSideSlugs.length >= 4) {
     return E.left({
       type: "RosterLimitExceeded",
       side,
@@ -229,9 +233,7 @@ export function validateLeadDeploy(
     });
   }
 
-  const nextSideSlugs = currentSideSlugs.includes(mon.slug)
-    ? currentSideSlugs
-    : [...currentSideSlugs, mon.slug];
+  const nextSideSlugs = alreadyObserved ? currentSideSlugs : [...currentSideSlugs, baseSlug];
 
   const newMon: ActiveMonState = {
     slug: mon.slug,
@@ -290,7 +292,11 @@ export function validateSwitchIn(
   }
 
   const currentSideSlugs = state.observedSlugsBySide[side];
-  if (!currentSideSlugs.includes(mon.slug) && currentSideSlugs.length >= 4) {
+  const baseSlug = mon.slug.replace(/-mega(-[xyz])?$/, "");
+  const alreadyObserved = currentSideSlugs.some(
+    (s) => s === mon.slug || s.replace(/-mega(-[xyz])?$/, "") === baseSlug,
+  );
+  if (!alreadyObserved && currentSideSlugs.length >= 4) {
     return E.left({
       type: "RosterLimitExceeded",
       side,
@@ -299,9 +305,7 @@ export function validateSwitchIn(
     });
   }
 
-  const nextSideSlugs = currentSideSlugs.includes(mon.slug)
-    ? currentSideSlugs
-    : [...currentSideSlugs, mon.slug];
+  const nextSideSlugs = alreadyObserved ? currentSideSlugs : [...currentSideSlugs, baseSlug];
 
   const newMon: ActiveMonState = {
     slug: mon.slug,
@@ -725,12 +729,22 @@ export function validateResidualDamage(
     });
   }
 
-  if (effect === "life-orb" && current.mon.itemSlug !== "life-orb") {
-    return E.left({
-      type: "ResidualPreconditionFailed",
-      slot,
-      effect,
-      reason: `スロット ${slot} はいのちのたま所持者ではない (実態: ${current.mon.itemSlug ?? "なし"})`,
+  if (effect === "life-orb") {
+    if (current.mon.itemSlug && current.mon.itemSlug !== "life-orb") {
+      return E.left({
+        type: "ResidualPreconditionFailed",
+        slot,
+        effect,
+        reason: `スロット ${slot} はいのちのたま所持者ではない (実態: ${current.mon.itemSlug})`,
+      });
+    }
+    const updatedMon = { ...current.mon, itemSlug: "life-orb" };
+    return E.right({
+      ...state,
+      slots: {
+        ...state.slots,
+        [slot]: { ...current, mon: updatedMon },
+      },
     });
   }
 

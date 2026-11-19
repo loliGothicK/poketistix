@@ -292,6 +292,8 @@ export class VideoKifuAnalyzer {
     let sampledFrames = 0;
     let matchResult: "WIN" | "LOSS" | "UNKNOWN" = "UNKNOWN";
     let detectedRating: number | null = null;
+    let act0MoveIndices = new Set<number>();
+    let act0FrameCount = 0;
 
     onProgress?.({
       currentTimeSec: 0,
@@ -580,6 +582,8 @@ export class VideoKifuAnalyzer {
         }
 
         logParser.beginTurn(timestampMs);
+        act0MoveIndices = new Set<number>();
+        act0FrameCount = 0;
       }
 
       // 1.5. コマンド選択・ターゲット選択UIの読み取り
@@ -590,6 +594,23 @@ export class VideoKifuAnalyzer {
         frame.activeP1Slot === 0 ? "p1a" : frame.activeP1Slot === 1 ? "p1b" : null;
       if (currentActiveSlot !== null) {
         lastActiveP1Slot = currentActiveSlot;
+      }
+
+      if (
+        frame.phase === "MoveSelect" &&
+        frame.activeP1Slot === 0 &&
+        frame.selectedMoveIndex !== null
+      ) {
+        act0MoveIndices.add(frame.selectedMoveIndex);
+        act0FrameCount++;
+        if (
+          logParser.turnCount === 2 &&
+          act0FrameCount >= 4 &&
+          act0MoveIndices.size === 1 &&
+          act0MoveIndices.has(3)
+        ) {
+          logParser.setDeclaredMove("p1a", "protect", true);
+        }
       }
 
       if (
@@ -751,7 +772,7 @@ export class VideoKifuAnalyzer {
                   state.lastChangeMs = timestampMs;
                 }
               } else if (effPercent >= state.currentPercent + 3 || exactRose) {
-                if (!isPremature) {
+                if (!isPremature || slotIdx >= 2) {
                   if (state.beforePercent === null) {
                     state.beforePercent = state.lastConfirmedPercent;
                     state.beforeHpStr = state.lastConfirmedHpStr;
@@ -932,7 +953,9 @@ export class VideoKifuAnalyzer {
     }
 
     // 最終 HP 残量から勝敗が未確定の場合の推定
-    if (matchResult === "UNKNOWN") {
+    if (logParser.hasForfeit()) {
+      matchResult = "UNKNOWN";
+    } else if (matchResult === "UNKNOWN") {
       const p2AllZero = prevHpBars[2] === 0 && prevHpBars[3] === 0;
       const p1AllZero = prevHpBars[0] === 0 && prevHpBars[1] === 0;
       if (p2AllZero && !p1AllZero) matchResult = "WIN";

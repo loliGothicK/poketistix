@@ -790,6 +790,43 @@ function matchHudDigitAt960x540(
   }
 
   if (fgMax < 16 || bestScore < 0.68) return null;
+
+  if (bestDigit === 5 || bestDigit === 6 || bestDigit === 8) {
+    let upperLeft = 0;
+    let lowerLeft = 0;
+    for (let r = 3; r <= 4; r++) {
+      const sy = Math.min(height - 1, Math.max(0, Math.round(((cy540 + r) / 540) * height)));
+      for (let c = 0; c <= 4; c++) {
+        const sx = Math.min(width - 1, Math.max(0, Math.round(((cx960 + c) / 960) * width)));
+        const idx = (sy * width + sx) * 4;
+        const pr = rgba[idx] ?? 0;
+        const pg = rgba[idx + 1] ?? 0;
+        const pb = rgba[idx + 2] ?? 0;
+        const luma = 0.299 * pr + 0.587 * pg + 0.114 * pb;
+        if (luma > 165 && Math.abs(pr - pb) < 45) upperLeft += 1;
+      }
+    }
+    for (let r = 8; r <= 9; r++) {
+      const sy = Math.min(height - 1, Math.max(0, Math.round(((cy540 + r) / 540) * height)));
+      for (let c = 0; c <= 3; c++) {
+        const sx = Math.min(width - 1, Math.max(0, Math.round(((cx960 + c) / 960) * width)));
+        const idx = (sy * width + sx) * 4;
+        const pr = rgba[idx] ?? 0;
+        const pg = rgba[idx + 1] ?? 0;
+        const pb = rgba[idx + 2] ?? 0;
+        const luma = 0.299 * pr + 0.587 * pg + 0.114 * pb;
+        if (luma > 165 && Math.abs(pr - pb) < 45) lowerLeft += 1;
+      }
+    }
+    if (bestDigit === 6 && lowerLeft <= 1) {
+      bestDigit = 5;
+    } else if (bestDigit === 5 && lowerLeft >= 3) {
+      bestDigit = 6;
+    } else if (bestDigit === 8 && upperLeft <= 1 && lowerLeft <= 1) {
+      bestDigit = 3;
+    }
+  }
+
   return bestDigit;
 }
 
