@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useState } from "react";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { flexRowCenter } from "@/theme/sx";
@@ -663,12 +664,7 @@ function CritToggle({
   );
 }
 
-function getKOLabel(
-  minHits: number,
-  maxHits: number,
-  ohkoChance: number,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
+function getKOLabel(minHits: number, maxHits: number, ohkoChance: number, t: TFunction): string {
   if (minHits === Infinity) return t("damageCalc.immune");
   if (minHits === 1 && ohkoChance === 1) return t("damageCalc.ohko");
   if (minHits === 1 && ohkoChance > 0)

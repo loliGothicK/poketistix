@@ -4878,7 +4878,7 @@
       "identifier": "golisopod-mega",
       "slug": null,
       "types": ["bug", "steel"],
-      "abilities": [194],
+      "abilities": [181],
       "status": [75, 150, 175, 70, 120, 40],
       "moves": "inherit",
       "species_id": 768

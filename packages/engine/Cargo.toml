@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 damage-calc = { path = "../damage-calc" }
 pkmn-meta = { path = "../pkmn-meta" }
 deriving_via = { workspace = true }
-rand = "0.10.3"
+rand = "0.10.4"
 getrandom = { version = "*", features = ["wasm_js"] }
 serde = { workspace = true }
 tsify = { workspace = true }

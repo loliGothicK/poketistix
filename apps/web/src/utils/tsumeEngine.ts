@@ -103,12 +103,7 @@ export class TsumeEngine {
       if (oppFirstMove) {
         const moveObj = this.battle.dex.moves.get(oppFirstMove);
         if (moveObj && moveObj.exists) {
-          const activeMove: import("@pkmn/sim").ActiveMove = Object.assign({}, moveObj, {
-            hit: 0,
-            affectsFainted: false,
-            sourceEffect: "",
-          });
-          this.battle.p2.active[0].lastMove = activeMove;
+          this.battle.p2.active[0].lastMove = this.battle.dex.getActiveMove(moveObj);
         }
       }
     }
