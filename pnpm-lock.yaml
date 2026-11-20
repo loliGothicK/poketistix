@@ -189,8 +189,8 @@ catalogs:
       specifier: 1.94.0
       version: 1.94.0
     oxlint-plugin-eslint:
-      specifier: 1.85.0
-      version: 1.85.0
+      specifier: 1.94.0
+      version: 1.94.0
     oxlint-tsgolint:
       specifier: 7.0.2007
       version: 7.0.2007
@@ -538,7 +538,7 @@ importers:
         version: 0.79.0
       oxlint-plugin-eslint:
         specifier: 'catalog:'
-        version: 1.85.0
+        version: 1.94.0
       oxlint-tsgolint:
         specifier: 'catalog:'
         version: 7.0.2007
@@ -575,7 +575,7 @@ importers:
         version: 0.79.0
       oxlint-plugin-eslint:
         specifier: 'catalog:'
-        version: 1.85.0
+        version: 1.94.0
       oxlint-tsgolint:
         specifier: 'catalog:'
         version: 7.0.2007
@@ -5272,8 +5272,8 @@ packages:
       vite-plus:
         optional: true
 
-  oxlint-plugin-eslint@1.85.0:
-    resolution: {integrity: sha512-oF8kTNV1+2d6Tb/VyQUAeiJLD+Rq5E4D65UJzcoy1rkmw1a08L0nJGDA6ypzlIe0uwjEgWBqZSeglh30MTHbrw==}
+  oxlint-plugin-eslint@1.94.0:
+    resolution: {integrity: sha512-H7wS6QlHsNO0MwmQAcpjcArx9ruaM5pnRn2LKeXVcYmLV6vj/sebxNLKfSCsvIlYGzk/mBCQTk3ujOp2yn9i0g==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
   oxlint-tsgolint@7.0.2007:
@@ -10318,7 +10318,7 @@ snapshots:
       '@oxfmt/binding-win32-ia32-msvc': 0.79.0
       '@oxfmt/binding-win32-x64-msvc': 0.79.0
 
-  oxlint-plugin-eslint@1.85.0: {}
+  oxlint-plugin-eslint@1.94.0: {}
 
   oxlint-tsgolint@7.0.2007:
     optionalDependencies:
