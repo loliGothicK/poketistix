@@ -598,8 +598,8 @@ importers:
   workers/docs-search:
     dependencies:
       hono:
-        specifier: 4.13.2
-        version: 4.13.2
+        specifier: 4.13.19
+        version: 4.13.19
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 5.20260801.1
@@ -4631,8 +4631,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.13.2:
-    resolution: {integrity: sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA==}
+  hono@4.13.19:
+    resolution: {integrity: sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA==}
     engines: {node: '>=16.9.0'}
 
   html-dom-parser@8.0.2:
@@ -9454,7 +9454,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.13.2: {}
+  hono@4.13.19: {}
 
   html-dom-parser@8.0.2:
     dependencies:
