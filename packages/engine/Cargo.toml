@@ -6,6 +6,9 @@ description = "Pokémon battle engine compiled to WebAssembly"
 license = "MIT"
 repository = "https://github.com/loliGothicK/poketistix"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -26,5 +29,3 @@ itertools = { workspace = true }
 [dev-dependencies]
 serde_json.workspace = true
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false

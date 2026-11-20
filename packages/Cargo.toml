@@ -2,9 +2,6 @@
 members = ["damage-calc", "data", "engine", "pkmn-meta"]
 resolver = "2"
 
-[profile.release]
-opt-level = 3
-
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
@@ -15,3 +12,6 @@ deriving_via = "2.3.1"
 derive-getters = "0.5.0"
 typed-builder = "0.23.2"
 itertools = "0.15.0"
+
+[profile.release]
+opt-level = 3
