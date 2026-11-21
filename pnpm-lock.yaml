@@ -240,7 +240,7 @@ importers:
         version: 28.0.0
       wrangler:
         specifier: 'catalog:'
-        version: 4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6)
+        version: 4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6)
 
   apps/web:
     dependencies:
@@ -306,7 +306,7 @@ importers:
         version: link:../../packages/data
       '@sentry/nextjs':
         specifier: 11.14.0
-        version: 11.14.0(@cloudflare/workers-types@5.20260801.1)(next@16.4.6(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))(wrangler@4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6))
+        version: 11.14.0(@cloudflare/workers-types@5.20261121.1)(next@16.4.6(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))(wrangler@4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6))
       '@supabase/ssr':
         specifier: 0.12.7
         version: 0.12.7(@supabase/supabase-js@2.119.1(@opentelemetry/api@1.10.0))
@@ -351,7 +351,7 @@ importers:
         version: 9.0.0
       drizzle-orm:
         specifier: 0.45.4
-        version: 0.45.4(@cloudflare/workers-types@5.20260801.1)(@opentelemetry/api@1.10.0)(postgres@4.1.1)
+        version: 0.45.4(@cloudflare/workers-types@5.20261121.1)(@opentelemetry/api@1.10.0)(postgres@4.1.1)
       fp-ts:
         specifier: 2.16.11
         version: 2.16.11
@@ -602,14 +602,14 @@ importers:
         version: 4.13.2
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: 5.20260801.1
-        version: 5.20260801.1
+        specifier: 5.20261121.1
+        version: 5.20261121.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
       wrangler:
         specifier: 'catalog:'
-        version: 4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6)
+        version: 4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6)
 
 packages:
 
@@ -836,8 +836,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@cloudflare/workers-types@5.20260801.1':
-    resolution: {integrity: sha512-XCv5xWi47WQOK0LpLa6997Mrpz8Ct+nZmp/M5Xp8Z4BFsarf7nYjkznGOcOoYK5m1GfbMFEEuQ2OIZnbIWoe9A==}
+  '@cloudflare/workers-types@5.20261121.1':
+    resolution: {integrity: sha512-eLzyhm8/Qn+yshOObNIVsV8YJyWR9BOBCnnuqmrqY5uhsVDlLMdCmOQ34oC3eoVLkav94Dc7MWcfC+FuaxdNjA==}
 
   '@codemirror/autocomplete@6.20.4':
     resolution: {integrity: sha512-yF8RhOf2SXlg00+qtupzLhrglcas61boqaONiNcbPIebHCpJocpqTBA6dyrtUrQO47hqyTdeob/3XnYilT7TaQ==}
@@ -6355,7 +6355,7 @@ snapshots:
   '@cloudflare/workerd-windows-64@1.20260925.1':
     optional: true
 
-  '@cloudflare/workers-types@5.20260801.1': {}
+  '@cloudflare/workers-types@5.20261121.1': {}
 
   '@codemirror/autocomplete@6.20.4':
     dependencies:
@@ -8016,7 +8016,7 @@ snapshots:
       rollup: 4.68.7
       webpack: 5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6))
 
-  '@sentry/cloudflare@11.14.0(@cloudflare/workers-types@5.20260801.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6))':
+  '@sentry/cloudflare@11.14.0(@cloudflare/workers-types@5.20261121.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6))':
     dependencies:
       '@opentelemetry/api': 1.10.0
       '@sentry/conventions': 0.33.0
@@ -8025,9 +8025,9 @@ snapshots:
       '@sentry/server-utils': 11.14.0
       magic-string: 0.30.21
     optionalDependencies:
-      '@cloudflare/workers-types': 5.20260801.1
+      '@cloudflare/workers-types': 5.20261121.1
       vite: 8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
-      wrangler: 4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6)
+      wrangler: 4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6)
 
   '@sentry/conventions@0.33.0': {}
 
@@ -8039,13 +8039,13 @@ snapshots:
     dependencies:
       '@sentry/core': 11.14.0
 
-  '@sentry/nextjs@11.14.0(@cloudflare/workers-types@5.20260801.1)(next@16.4.6(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))(wrangler@4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6))':
+  '@sentry/nextjs@11.14.0(@cloudflare/workers-types@5.20261121.1)(next@16.4.6(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(babel-plugin-macros@3.1.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))(wrangler@4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6))':
     dependencies:
       '@opentelemetry/api': 1.10.0
       '@rollup/plugin-commonjs': 28.0.1(rollup@4.68.7)
       '@sentry/browser-utils': 11.14.0
       '@sentry/bundler-plugins': 11.14.0(rollup@4.68.7)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))
-      '@sentry/cloudflare': 11.14.0(@cloudflare/workers-types@5.20260801.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6))
+      '@sentry/cloudflare': 11.14.0(@cloudflare/workers-types@5.20261121.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.25.12)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6))
       '@sentry/conventions': 0.33.0
       '@sentry/core': 11.14.0
       '@sentry/node': 11.14.0(rollup@4.68.7)(webpack@5.112.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.25.12)(lightningcss@1.33.0)(postcss@8.5.23)(sharp@0.35.4(@types/node@26.6.6)))
@@ -9066,9 +9066,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.15
 
-  drizzle-orm@0.45.4(@cloudflare/workers-types@5.20260801.1)(@opentelemetry/api@1.10.0)(postgres@4.1.1):
+  drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261121.1)(@opentelemetry/api@1.10.0)(postgres@4.1.1):
     optionalDependencies:
-      '@cloudflare/workers-types': 5.20260801.1
+      '@cloudflare/workers-types': 5.20261121.1
       '@opentelemetry/api': 1.10.0
       postgres: 4.1.1
 
@@ -11300,7 +11300,7 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20260925.1
       '@cloudflare/workerd-windows-64': 1.20260925.1
 
-  wrangler@4.141.0(@cloudflare/workers-types@5.20260801.1)(@types/node@26.6.6):
+  wrangler@4.141.0(@cloudflare/workers-types@5.20261121.1)(@types/node@26.6.6):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20260925.1)
@@ -11311,7 +11311,7 @@ snapshots:
       unenv: 2.0.0-rc.24
       workerd: 1.20260925.1
     optionalDependencies:
-      '@cloudflare/workers-types': 5.20260801.1
+      '@cloudflare/workers-types': 5.20261121.1
       fsevents: 2.3.3
     transitivePeerDependencies:
       - '@types/node'
