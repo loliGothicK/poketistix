@@ -6345,6 +6345,40 @@
       "switch": "Pokémon",
       "selectSwitch": "Select Pokémon to switch in",
       "selectTarget": "Select Target"
+    },
+    "format": {
+      "choices": "Single Choice",
+      "multi_select": "Multiple Select",
+      "ordering": "Ordering",
+      "grouping": "Grouping",
+      "one_way": "One-Way",
+      "input": "Input",
+      "tsume_action": "Tsume"
+    },
+    "list": {
+      "title": "Quiz Catalog (Study & Review)",
+      "subtitle": "Browse all questions, answers, and explanations to study and review.",
+      "openList": "Study & Review All Questions",
+      "backToQuiz": "Take the Quiz",
+      "searchPlaceholder": "Search questions, options, or explanations...",
+      "allDifficulties": "All",
+      "allFormats": "All Formats",
+      "questionCount": "{{count}} questions",
+      "showingCount": "Showing {{shown}} of {{total}} questions",
+      "expandAll": "Reveal All Answers",
+      "collapseAll": "Hide All Answers",
+      "showAnswer": "Show Answer & Explanation",
+      "hideAnswer": "Hide Answer & Explanation",
+      "correctAnswer": "Correct Answer",
+      "correctOrder": "Correct Order",
+      "correctGrouping": "Correct Grouping",
+      "explanation": "Explanation",
+      "groups": "Groups",
+      "itemsToClassify": "Items to Classify",
+      "practiceQuestion": "Practice This",
+      "practiceDialogTitle": "Practice Question",
+      "noMatches": "No questions matched your filters.",
+      "resetFilters": "Reset Filters"
     }
   },
   "feedback": {

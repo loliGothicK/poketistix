@@ -22,10 +22,12 @@ import MenuBookIcon from "@mui/icons-material/MenuBook";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 import * as Sentry from "@sentry/nextjs";
 import parse from "html-react-parser";
 import { marked } from "marked";
 import type { QuizQuestion, TsumePokemon } from "@/types/quiz";
+import { LocalizedLink } from "@/components/client/LocalizedLink";
 import { ChoicesFormat } from "./formats/ChoicesFormat";
 import { OneWayFormat } from "./formats/OneWayFormat";
 import { MultiSelectFormat } from "./formats/MultiSelectFormat";
@@ -319,6 +321,10 @@ export function QuizApp({ initialQuestions, directPlay, onReturnToMenu }: QuizAp
   };
 
   const handleBackToMenu = () => {
+    if (onReturnToMenu) {
+      onReturnToMenu();
+      return;
+    }
     setMode("menu");
     setMenuStep("category");
   };
@@ -1133,7 +1139,11 @@ export function QuizApp({ initialQuestions, directPlay, onReturnToMenu }: QuizAp
             {t("quiz.shareOnTwitter")}
           </Button>
 
-          <Box sx={{ mt: 2 }}>
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{ mt: 2, justifyContent: "center", flexWrap: "wrap" }}
+          >
             <Button
               variant="text"
               onClick={handleReturnMenu}
@@ -1141,7 +1151,22 @@ export function QuizApp({ initialQuestions, directPlay, onReturnToMenu }: QuizAp
             >
               {t("quiz.backToMenu")}
             </Button>
-          </Box>
+            {!directPlay && (
+              <Button
+                component={LocalizedLink}
+                href="/quiz/list"
+                variant="outlined"
+                startIcon={<FormatListBulletedIcon />}
+                sx={{
+                  color: "#fff",
+                  borderColor: "rgba(255,255,255,0.3)",
+                  "&:hover": { borderColor: "#fff", bgcolor: "rgba(255,255,255,0.08)" },
+                }}
+              >
+                {t("quiz.list.openList")}
+              </Button>
+            )}
+          </Stack>
         </Paper>
       </Box>
     );
@@ -1316,6 +1341,24 @@ export function QuizApp({ initialQuestions, directPlay, onReturnToMenu }: QuizAp
           </Grid>
         </Box>
       )}
+
+      <Box sx={{ mt: { xs: 3, sm: 4 }, textAlign: "center" }}>
+        <Button
+          component={LocalizedLink}
+          href="/quiz/list"
+          variant="outlined"
+          size="large"
+          startIcon={<FormatListBulletedIcon />}
+          sx={{
+            borderRadius: 3,
+            px: 3,
+            py: 1.25,
+            fontWeight: "bold",
+          }}
+        >
+          {t("quiz.list.openList")}
+        </Button>
+      </Box>
     </Box>
   );
 }

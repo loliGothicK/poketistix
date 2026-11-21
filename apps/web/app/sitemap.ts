@@ -19,6 +19,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/damage-calc", changeFrequency: "weekly", priority: 0.9 },
     { path: "/team-builder", changeFrequency: "weekly", priority: 0.9 },
     { path: "/quiz", changeFrequency: "daily", priority: 0.85 },
+    { path: "/quiz/list", changeFrequency: "daily", priority: 0.8 },
     { path: "/battle-analytics", changeFrequency: "weekly", priority: 0.75 },
     { path: "/battle-record", changeFrequency: "weekly", priority: 0.7 },
     { path: "/box", changeFrequency: "weekly", priority: 0.7 },

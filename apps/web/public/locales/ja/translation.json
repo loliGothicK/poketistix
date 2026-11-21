@@ -91,6 +91,40 @@
       "switch": "ポケモン",
       "selectSwitch": "交代先を選択",
       "selectTarget": "ターゲットを選択"
+    },
+    "format": {
+      "choices": "単一選択",
+      "multi_select": "複数選択",
+      "ordering": "並べ替え",
+      "grouping": "分類",
+      "one_way": "一方通行",
+      "input": "記述",
+      "tsume_action": "詰めポケ"
+    },
+    "list": {
+      "title": "クイズ一覧（予習・復習）",
+      "subtitle": "全問題の出題内容・正解・解説を一覧で確認できます。",
+      "openList": "問題一覧で予習・復習する",
+      "backToQuiz": "検定に挑戦する",
+      "searchPlaceholder": "問題文・選択肢・解説を検索...",
+      "allDifficulties": "すべて",
+      "allFormats": "すべての形式",
+      "questionCount": "{{count}}問",
+      "showingCount": "{{shown}} / {{total}}問を表示中",
+      "expandAll": "すべて答えを見る",
+      "collapseAll": "すべて答えを隠す",
+      "showAnswer": "答え・解説を見る",
+      "hideAnswer": "答え・解説を隠す",
+      "correctAnswer": "正解",
+      "correctOrder": "正しい順序",
+      "correctGrouping": "正しい分類",
+      "explanation": "解説",
+      "groups": "分類グループ",
+      "itemsToClassify": "分類する項目",
+      "practiceQuestion": "この問題を解く",
+      "practiceDialogTitle": "問題に挑戦",
+      "noMatches": "条件に一致する問題が見つかりませんでした。",
+      "resetFilters": "フィルターをリセット"
     }
   },
   "common": {
