@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 damage-calc = { path = "../damage-calc" }
 pkmn-meta = { path = "../pkmn-meta" }
+kifu = { path = "../kifu" }
 deriving_via = { workspace = true }
 rand = "0.10.4"
 getrandom = { version = "*", features = ["wasm_js"] }

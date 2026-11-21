@@ -9,6 +9,7 @@
     "build:wasm": "pnpm --filter @poketistix/damage-calc run build",
     "pack": "pnpm --filter @poketistix/damage-calc run build && pnpm --filter @poketistix/damage-calc pack",
     "test": "pnpm -r run test",
+    "test:integration": "pnpm --filter @poketistix/app run test:integration",
     "lint": "pnpm -r run lint",
     "fmt": "pnpm -r run fmt",
     "pretty": "pnpm -r run pretty",
