@@ -56,6 +56,7 @@ pub struct Pokemon {
     pub perish_turns: u8,
     pub magnet_rise_turns: u8,
     pub telekinesis_turns: u8,
+    pub heal_block_turns: u8,
     pub syrup_bomb_turns: u8,
     pub syrup_bomb_source: Option<PokemonIdent>,
     pub uproar_turns: u8,

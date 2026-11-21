@@ -1065,6 +1065,7 @@ pub fn build_pokemon(p: &InputPokemonData) -> crate::sim::pokemon::Pokemon {
         perish_turns: 0,
         magnet_rise_turns: 0,
         telekinesis_turns: 0,
+        heal_block_turns: 0,
         syrup_bomb_turns: 0,
         syrup_bomb_source: None,
         uproar_turns: 0,

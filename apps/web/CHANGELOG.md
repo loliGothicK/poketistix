@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- Features:
+
+    - quiz: Added the Quiz List page (`/quiz/list`) to browse, filter, and jump directly to quizzes by category and difficulty
+    - share: Added selective strategy note sharing when creating team share links
+    - blog: Published the verified Pokémon Champions End-of-Turn resolution order guide
+
 ## 0.7.1
 
 ### Patch Changes

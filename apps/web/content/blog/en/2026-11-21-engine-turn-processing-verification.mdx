@@ -1,0 +1,74 @@
+---
+title: "Pokémon Champions End-of-Turn Resolution Order (Verified Guide)"
+description: "A player-focused guide to the verified End-of-Turn resolution order in Pokémon Champions, highlighting the key interactions that decide Double Battles."
+date: "2026-11-21"
+tags: ["mechanics", "engine"]
+draft: false
+---
+
+As part of building our battle simulator (`engine`) for Pokétistix, we conducted a thorough verification of the **End-of-Turn resolution order** in the Pokémon Champions format.
+
+In Double Battles, weather damage, healing, residual damage, field expirations, and end-of-turn abilities all stack up at the end of a turn. Knowing **which effect resolves first** can directly decide whether a Pokémon survives or faints.
+
+Here is the verified End-of-Turn timeline along with the most important takeaways for players.
+
+---
+
+## Core Rule: Speed Order Within Each Step
+
+End-of-turn effects resolve in a fixed sequence of phases. Whenever multiple active Pokémon trigger effects within the same step, they resolve in **Speed order** (fastest first, or slowest first while Trick Room is active).
+
+If a Pokémon faints partway through the end-of-turn sequence, it is skipped for all remaining steps.
+
+---
+
+## Complete End-of-Turn Resolution Order
+
+In the Pokémon Champions environment, major end-of-turn effects resolve in the following order:
+
+| Order  | Phase                             | Key Effects, Abilities & Items                                                                                                |
+| :----: | :-------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| **1**  | **Weather**                       | Weather expiration → Sandstorm damage → Weather abilities (Rain Dish, Dry Skin, Solar Power, Ice Body)                        |
+| **2**  | **Delayed Moves**                 | Future Sight / Doom Desire → Wish                                                                                             |
+| **3**  | **Healing & Status Cure Block**   | Grassy Terrain heal → Leftovers / Black Sludge → Hydration → Shed Skin → Healer                                               |
+| **4**  | **Continuous Recovery & Drain**   | Aqua Ring → Ingrain → Leech Seed                                                                                              |
+| **5**  | **Status & Trap Residual Damage** | Poison / Toxic / Poison Heal → Burn → Curse → Partially Trapped (Bind, Fire Spin, etc.)                                       |
+| **6**  | **Signature Residual Effects**    | Salt Cure → Octolock → Syrup Bomb                                                                                             |
+| **7**  | **Volatile Status Expirations**   | Taunt → Encore → Disable → Magnet Rise → Telekinesis → Heal Block                                                             |
+| **8**  | **Countdowns & Turn-Only Clears** | Yawn (Drowsy) → Perish Song → Roost (Flying-type restore) & Flinch clear                                                      |
+| **9**  | **Field Expirations**             | Side conditions (Tailwind, etc.) → Whole-field conditions (Trick Room, Gravity, Magic Room, Wonder Room, Terrain, Fairy Lock) |
+| **10** | **Late Abilities & Upkeep Block** | Uproar upkeep/end → Sleep interrupting Thrash/Outrage → Cud Chew / Moody / Speed Boost → Harvest → Hunger Switch              |
+
+---
+
+## 2 Key Interactions That Decide Matches
+
+Among all end-of-turn steps, two timing interactions stand out as genuine game-deciders in Double Battles:
+
+### 1. When Roost and Electric Terrain Wear Off
+
+At the end of a turn, effects resolve in this exact order:
+
+1. **Yawn (Drowsy)** (Phase 8)
+2. **Roost ends (Flying type restored)** (Phase 8, after Yawn)
+3. **Terrain expires (Electric Terrain, etc.)** (Phase 9)
+
+Because both Roost and Electric Terrain remain active until _after_ Yawn resolves, even on the **final turn of Electric Terrain**, a Flying-type Pokémon that used Roost is still grounded while Electric Terrain is still up—meaning **it is protected from falling asleep to Yawn**.
+
+### 2. Perish Song Timing
+
+Two ordering relationships around **Perish Song** (Phase 8) frequently decide Double Battle endgames:
+
+- **Resolves _before_ Trick Room expires**
+  - When the last remaining Pokémon on both sides hit Perish count 0 on the same turn, they faint in **Speed order** (slowest first under Trick Room), and **the last side to faint wins**.
+  - Because Perish Song (Phase 8) resolves _before_ Trick Room wears off (Phase 9), on the **final turn of Trick Room**, Trick Room is still active during the Perish Song check—meaning the slower Pokémon faints first and the **faster side survives last to win**.
+- **Resolves _after_ residual damage (Sandstorm, Poison, Burn, Salt Cure, etc.)**
+  - All residual damage phases (Phases 1–6) tick before Perish Song (Phase 8). Even if you hold the winning Speed tie-breaker for Perish Song, fainting to residual damage beforehand immediately loses the game, making final-turn HP thresholds critical.
+
+---
+
+## Closing
+
+Even when you know what each move or ability does on its own, knowing the exact order in which overlapping end-of-turn effects resolve makes endgame calculations and HP management far more reliable.
+
+We are feeding these verified mechanics directly into the Pokétistix battle engine, quizzes, and analysis tools to support your practice and match reviews!

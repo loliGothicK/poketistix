@@ -747,8 +747,8 @@ impl EndOfTurnPhase {
         }
 
         // =========================================================================
-        // Step 19〜23: 状態変化の終了 (Volatile status ends)
-        // ちょうはつ(19) -> アンコール(20) -> かなしばり(21) -> でんじふゆう(22) -> テレキネシス(23)
+        // Step 19〜24: 状態変化の終了 (Volatile status ends)
+        // ちょうはつ(19) -> アンコール(20) -> かなしばり(21) -> でんじふゆう(22) -> テレキネシス(23) -> かいふくふうじ(24)
         // =========================================================================
         // Step 19: ちょうはつの終了 (Taunt end)
         // =========================================================================
@@ -869,6 +869,32 @@ impl EndOfTurnPhase {
                             .push(crate::sim::log::BattleLog::VolatileStatusEnd {
                                 target: ident,
                                 volatile_status: "Telekinesis".to_string(),
+                            });
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // Step 24: かいふくふうじの終了 (Heal Block end)
+        // =========================================================================
+        {
+            let ordered = Self::get_speed_ordered_active_pokemon(battle);
+            for ident in ordered {
+                if let Some(p) = battle.get_pokemon_mut(ident)
+                    && p.volatile_status.contains(&VolatileStatus::Healblock)
+                {
+                    if p.heal_block_turns > 0 {
+                        p.heal_block_turns -= 1;
+                    }
+                    if p.heal_block_turns == 0 {
+                        p.volatile_status
+                            .retain(|v| v != &VolatileStatus::Healblock);
+                        battle
+                            .log
+                            .push(crate::sim::log::BattleLog::VolatileStatusEnd {
+                                target: ident,
+                                volatile_status: "Heal Block".to_string(),
                             });
                     }
                 }

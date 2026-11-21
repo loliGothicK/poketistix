@@ -360,6 +360,8 @@ impl Battle {
                     t.magnet_rise_turns = 5;
                 } else if v_val == VolatileStatus::Telekinesis {
                     t.telekinesis_turns = 3;
+                } else if v_val == VolatileStatus::Healblock {
+                    t.heal_block_turns = 2;
                 } else if v_val == VolatileStatus::Syrupbomb {
                     t.syrup_bomb_turns = 3;
                     t.syrup_bomb_source = ctx.source;
