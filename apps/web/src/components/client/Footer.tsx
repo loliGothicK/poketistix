@@ -23,7 +23,7 @@ export function Footer() {
         mt: "auto",
         borderTop: "1px solid",
         borderColor: theme.palette.divider,
-        bgcolor: "transparent",
+        bgcolor: "background.paper",
       }}
     >
       <Container maxWidth="lg">

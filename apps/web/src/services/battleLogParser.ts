@@ -1,11 +1,5 @@
 /**
- * バトルログ（画面下部メッセージ枠・特性バナー）の OCR テキストだけから PBN イベントを組み立てる状態機械。
- *
- * 設計方針:
- * - イベントの根拠は「画面に表示されたメッセージ」のみ。HP バー等のピクセル値からイベントは作らない。
- * - 同一メッセージの多重検出は (1) 表示中の OCR 揺らぎを吸収する類似度判定、(2) 状態遷移の検査
- *   （既にひんし・既に同じ天候・同ターン同技 など）の二段で排除する。
- * - 判定できなかったメッセージは捨てずに PBN コメント行 (`# ...`) として残し、欠損を可視化する。
+ * バトルログ（画面下部メッセージ枠・特性バナー）の OCR テキスト PBN イベントを組み立てる State Machine
  */
 import {
   approxFind,
@@ -443,41 +437,13 @@ export class BattleLogParser {
       boosts: { ...this.statStages[slot] },
     });
 
-    let p1bSnap = snapshotSlot("p1b");
-    let p2bSnap = snapshotSlot("p2b");
-    if (turnNumber === 3 && p2bSnap.slug === "salamence" && p2bSnap.hp === "69%") {
-      p2bSnap = { ...p2bSnap, hp: "70%" };
-    }
-    if (turnNumber === 5 && p2bSnap.slug === "gardevoir-mega" && p2bSnap.hp === "100%") {
-      p2bSnap = { ...p2bSnap, hp: "99%" };
-    }
-    if (turnNumber === 9 && p2bSnap.slug === "tyranitar" && p2bSnap.hp === "100%") {
-      p2bSnap = { ...p2bSnap, hp: "99%" };
-    }
-    if (turnNumber === 5 && p1bSnap.slug === "incineroar" && p1bSnap.hp === "131/202") {
-      p1bSnap = { ...p1bSnap, hp: "180/202" };
-    }
-    const oppHpSnap: Record<string, string> = { ...this.lastKnownOppHp };
-    if (turnNumber === 5 && oppHpSnap["gardevoir-mega"] === "100%") {
-      oppHpSnap["gardevoir-mega"] = "99%";
-    }
-    if (turnNumber === 7 && oppHpSnap["excadrill"] === "6%") {
-      oppHpSnap["excadrill"] = "5%";
-    }
-    if (turnNumber === 9 && oppHpSnap["salamence-mega"] === "64%") {
-      oppHpSnap["salamence-mega"] = "70%";
-    }
-    if (turnNumber === 9 && oppHpSnap["tyranitar"] === "100%") {
-      oppHpSnap["tyranitar"] = "99%";
-    }
-
     const stateSnapshot: TurnStateSnapshot = {
       p1a: snapshotSlot("p1a"),
-      p1b: p1bSnap,
+      p1b: snapshotSlot("p1b"),
       p2a: snapshotSlot("p2a"),
-      p2b: p2bSnap,
+      p2b: snapshotSlot("p2b"),
       ownHpByTeamIdx: { ...this.lastKnownOwnHp },
-      oppHpBySlug: oppHpSnap,
+      oppHpBySlug: { ...this.lastKnownOppHp },
       ownMegaSlugByTeamIdx: Object.fromEntries(this.ownMegaSlugByTeamIdx),
       faintedOwnIndices: Array.from(this.faintedOwnTeamIndices),
       faintedOppSlugs: Array.from(this.faintedOppSlugs),
@@ -510,6 +476,24 @@ export class BattleLogParser {
   /** 指定スロットの現在の登録パーティインデックスを返す */
   getActiveSlotTeamIdx(slot: SlotIdent): number | null {
     return this.slots[slot]?.teamIdx ?? null;
+  }
+
+  /** 指定スロットが現在ひんし状態かどうかを返す */
+  isSlotFainted(slot: SlotIdent): boolean {
+    return this.fainted[slot];
+  }
+
+  /** 指定した自軍パーティインデックスが既にひんしになっているかを返す */
+  isOwnTeamIdxFainted(teamIdx: number): boolean {
+    return this.faintedOwnTeamIndices.has(teamIdx);
+  }
+
+  /** 指定した自軍パーティインデックスの最後に観測された実数値HP（分子）を返す */
+  getLastKnownOwnHpCurrent(teamIdx: number): number | null {
+    const str = this.lastKnownOwnHp[teamIdx];
+    if (!str) return null;
+    const m = /^(\d+)\/(\d+)$/.exec(str);
+    return m ? parseInt(m[1]!, 10) : null;
   }
 
   /** 指定スロットの現在のHP表記（"169/202" または "94%"）を返す */
@@ -1113,40 +1097,8 @@ export class BattleLogParser {
             if (val.toLowerCase() === "none") {
               break;
             }
-            let targetSlot = lastAbilitySlot;
-            if (!targetSlot) {
-              for (const sEv of switchEvents) {
-                const sSlot = sEv.args[0] ?? "";
-                const sSlug = sEv.args[1] ?? "";
-                if (
-                  (val === "Sandstorm" &&
-                    (sSlug === "tyranitar" || sSlug === "hippowdon" || sSlug === "gigalith")) ||
-                  (val === "Rain" &&
-                    (sSlug === "pelipper" || sSlug === "politoed" || sSlug === "kyogre")) ||
-                  (val === "Sun" &&
-                    (sSlug === "torkoal" ||
-                      sSlug === "ninetales" ||
-                      sSlug === "groudon" ||
-                      sSlug.includes("charizard"))) ||
-                  (val === "Snow" &&
-                    (sSlug.includes("ninetales") ||
-                      sSlug === "abomasnow" ||
-                      sSlug === "slowking-galar")) ||
-                  (val === "Grassy" && (sSlug === "rillaboom" || sSlug === "arboliva")) ||
-                  (val === "Psychic" &&
-                    (sSlug === "indeedee" || sSlug === "indeedee-f" || sSlug === "tapu-lele")) ||
-                  (val === "Electric" &&
-                    (sSlug === "miraidon" || sSlug === "pincurchin" || sSlug === "tapu-koko")) ||
-                  (val === "Misty" && (sSlug === "weezing-galar" || sSlug === "tapu-fini"))
-                ) {
-                  targetSlot = sSlot;
-                  break;
-                }
-              }
-            }
-            if (!targetSlot) {
-              targetSlot = switchEvents[switchEvents.length - 1]?.args[0] ?? "";
-            }
+            const targetSlot =
+              lastAbilitySlot ?? switchEvents[switchEvents.length - 1]?.args[0] ?? "";
             if (!fieldEventsBySlot.has(targetSlot)) {
               fieldEventsBySlot.set(targetSlot, []);
             }
@@ -1410,8 +1362,10 @@ export class BattleLogParser {
             continue;
           }
           if (
+            !isDefensive &&
             nextEv.verb === "status" &&
             nextEv.args[0] !== actor &&
+            nextEv.args[1]?.startsWith("+") &&
             (targetOrder.length === 0 || targetOrder.includes(nextEv.args[0]!))
           ) {
             absorbedStatusEvents.push(nextEv);
@@ -1524,7 +1478,15 @@ export class BattleLogParser {
         if (isSingleTargetProtected) {
           const baseStr = formatEvent({ ...ev, comment: undefined });
           lines.push(`  ${baseStr} { protected }`);
-        } else if (moveId === "close-combat" && targetOrder.length === 1) {
+        } else if (
+          moveId === "close-combat" &&
+          targetOrder.length === 1 &&
+          Boolean(targetMap.get(targetOrder[0]!)?.hp) &&
+          !targetMap.get(targetOrder[0]!)?.protected &&
+          targetMap.get(targetOrder[0]!)?.reactions.length === 0 &&
+          actorBoosts.length === 0 &&
+          absorbedFaintEvents.length === 0
+        ) {
           const target = targetOrder[0]!;
           const entry = targetMap.get(target)!;
           lines.push(`  move ${actor} close-combat -> ${target} {`);
@@ -1728,14 +1690,6 @@ export class BattleLogParser {
         lines.push("");
         lines.push(`  ${formatEvent(ev)}`);
         i++;
-      } else if (
-        ev.verb === "heal" &&
-        ev.args[0] === "p1a" &&
-        ev.args[1] === "46/203 -> 58/203" &&
-        ev.bracket === "grassy-terrain"
-      ) {
-        lines.push(`  heal p1b 46/203 -> 58/203 [grassy-terrain]`);
-        i++;
       } else {
         lines.push(`  ${formatEvent(ev)}`);
         i++;
@@ -1910,6 +1864,7 @@ export class BattleLogParser {
   ): void {
     if (this.pendingPerishFaint.has(target)) return;
     if (this.isPendingDestinyBondTarget(target)) return;
+    if (this.fainted[target]) return;
     if (hpBefore === "0%" || hpBefore.startsWith("0/")) return;
     if (!this.hasLead || !this.slots[target]) return;
 
@@ -1993,10 +1948,7 @@ export class BattleLogParser {
         }
       }
     }
-    const isCrit =
-      opts?.crit ||
-      this.pendingCrit ||
-      (target === "p1b" && resolvedBefore === "173/207" && resolvedAfter === "32/207");
+    const isCrit = Boolean(opts?.crit || this.pendingCrit);
     this.pendingCrit = false;
     const bracket = isCrit ? "crit" : undefined;
     const args = [target, `${resolvedBefore} -> ${resolvedAfter}`];
@@ -2011,6 +1963,7 @@ export class BattleLogParser {
     t: number,
     opts?: { effect?: string },
   ): void {
+    if (this.fainted[target]) return;
     if (hpBefore === "0%" || hpBefore.startsWith("0/")) return;
     if (!this.hasLead || !this.slots[target]) return;
 
@@ -2101,13 +2054,6 @@ export class BattleLogParser {
                 recoilEv.args[1] = `${recoilBefore} -> ${curr}/${maxHp}`;
                 effectiveBefore = `${curr}/${maxHp}`;
               }
-            } else if (recoilEv.args[1]?.endsWith(`-> ${curr}/${maxHp}`) && curr === 82) {
-              curr = 81;
-              const recoilBefore = recoilEv.args[1]?.split("->")[0]?.trim();
-              if (recoilBefore) {
-                recoilEv.args[1] = `${recoilBefore} -> ${curr}/${maxHp}`;
-                effectiveBefore = `${curr}/${maxHp}`;
-              }
             }
           }
           calculatedAfter = `${Math.min(maxHp, curr + healAmt)}/${maxHp}`;
@@ -2131,20 +2077,17 @@ export class BattleLogParser {
         this.lastKnownOppHp[mon.slug] = resolvedAfter;
       }
     }
-    let displayBefore = effectiveBefore;
+    const displayBefore = effectiveBefore;
     let displayAfter = resolvedAfter;
-    if (pendingBracket === "grassy-terrain" && !isOwn) {
-      if (target === "p2a" && effectiveBefore === "6%" && resolvedAfter === "12%") {
-        displayBefore = "5%";
-      } else if (
-        (target === "p2a" || target === "p2b") &&
-        (effectiveBefore === "93%" || effectiveBefore === "94%") &&
-        resolvedAfter === "99%"
-      ) {
-        displayAfter = "100%";
-        this.currentHp[target] = "100%";
-        if (mon) this.lastKnownOppHp[mon.slug] = "100%";
-      }
+    if (
+      pendingBracket === "grassy-terrain" &&
+      !isOwn &&
+      (effectiveBefore === "93%" || effectiveBefore === "94%") &&
+      resolvedAfter === "99%"
+    ) {
+      displayAfter = "100%";
+      this.currentHp[target] = "100%";
+      if (mon) this.lastKnownOppHp[mon.slug] = "100%";
     }
     const ev = this.emit("heal", [target, `${displayBefore} -> ${displayAfter}`], t, 1, {
       review: false,
@@ -2161,11 +2104,17 @@ export class BattleLogParser {
   private setAction(slot: SlotIdent, choice: string): void {
     const turn = this.currentTurn();
     if (!turn || (slot !== "p1a" && slot !== "p1b")) return;
-    if (this.lockedActions.has(`${turn.turnNumber}:${slot}`) && !choice.startsWith("switch ")) {
-      return;
-    }
     const idx = slotIndex(slot);
     const existing = turn.actions[idx];
+    if (this.lockedActions.has(`${turn.turnNumber}:${slot}`) && !choice.startsWith("switch ")) {
+      // ターゲット選択パネルで「技名 + ターゲットスロット」が既にロックされており、
+      // 同一技が実行された場合はターゲット情報を保持したままにする（別技が実行された場合は実イベントで上書き）
+      const lockedMove = existing?.choice.split(" ")[0];
+      const incomingMove = choice.split(" ")[0];
+      if (lockedMove && lockedMove === incomingMove) {
+        return;
+      }
+    }
     if (choice.startsWith("switch ")) {
       if (!turn.events.some((e) => e.verb === "move")) {
         turn.actions[idx] = { choice };
@@ -2438,11 +2387,27 @@ export class BattleLogParser {
     if (names.length >= 2) {
       targets = ["p2b", "p2a"];
     } else {
-      const preferred =
+      let preferred: SlotIdent | undefined =
         this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p2")
           ? this.pendingWithdrawSlot
-          : (OPP_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p2a");
-      targets = [preferred];
+          : OPP_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null);
+      if (!preferred) {
+        const turnEvents = this.currentEvents();
+        const pivotMoveEv = [...turnEvents]
+          .reverse()
+          .find(
+            (e) =>
+              e.verb === "move" &&
+              e.args[0]?.startsWith("p2") &&
+              /^(?:parting-shot|u-turn|volt-switch|flip-turn|baton-pass|chilly-reception|shed-tail|teleport)$/.test(
+                e.args[1] ?? "",
+              ),
+          );
+        if (pivotMoveEv?.args[0]) {
+          preferred = pivotMoveEv.args[0] as SlotIdent;
+        }
+      }
+      targets = [preferred ?? "p2a"];
       this.pendingWithdrawSlot = null;
     }
 
@@ -2459,9 +2424,15 @@ export class BattleLogParser {
     const slug =
       this.oppMegaSlugByBase.get(baseSlug) ?? this.oppMegaSlugByBase.get(rawSlug) ?? baseSlug;
     const current = this.slots[slot];
-    if (current?.slug === slug && !this.fainted[slot]) return;
+    if ((current?.slug === slug || current?.slug === baseSlug) && !this.fainted[slot]) return;
     const other = OPP_SLOTS.find((s) => s !== slot);
-    if (other && this.slots[other]?.slug === slug && !this.fainted[other]) return;
+    if (
+      other &&
+      (this.slots[other]?.slug === slug || this.slots[other]?.slug === baseSlug) &&
+      !this.fainted[other]
+    ) {
+      return;
+    }
     const wasFainted = this.fainted[slot];
 
     if (this.turns.length === 0) {
@@ -2471,6 +2442,12 @@ export class BattleLogParser {
       }
       this.contractState = deployRes.right;
     } else {
+      if (this.contractState.slots[slot].kind === "active") {
+        const withdrawRes = validateWithdraw(this.contractState, slot);
+        if (E.isRight(withdrawRes)) {
+          this.contractState = withdrawRes.right;
+        }
+      }
       const switchRes = validateSwitchIn(this.contractState, slot, { slug });
       if (E.isLeft(switchRes)) {
         return;
@@ -2525,11 +2502,54 @@ export class BattleLogParser {
     const hpStr = this.lastKnownOppHp[slug] ?? this.lastKnownOppHp[baseSlug] ?? "100%";
     this.currentHp[slot] = hpStr;
     this.lastKnownOppHp[slug] = hpStr;
-    if (slug === baseSlug) {
-      this.emit("switch", [slot, slug, hpStr], t, confidence, {
-        review: confidence < 0.85,
-      });
+    this.emit("switch", [slot, slug, hpStr], t, confidence, {
+      review: confidence < 0.85,
+    });
+  }
+
+  private resolveOwnSwitchSlot(): SlotIdent {
+    if (this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")) {
+      return this.pendingWithdrawSlot;
     }
+    const turnEvents = this.currentEvents();
+    const pivotMoveEv = [...turnEvents]
+      .reverse()
+      .find(
+        (e) =>
+          e.verb === "move" &&
+          e.args[0]?.startsWith("p1") &&
+          /^(?:parting-shot|u-turn|volt-switch|flip-turn|baton-pass|chilly-reception|shed-tail|teleport)$/.test(
+            e.args[1] ?? "",
+          ),
+      );
+    if (pivotMoveEv?.args[0]) {
+      const pivotSlot = pivotMoveEv.args[0] as SlotIdent;
+      const moveIdx = turnEvents.indexOf(pivotMoveEv);
+      const switchedSincePivot = turnEvents
+        .slice(moveIdx + 1)
+        .some((e) => e.verb === "switch" && e.args[0] === pivotSlot);
+      if (!switchedSincePivot) {
+        return pivotSlot;
+      }
+    }
+    const faintedOrEmpty = OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null);
+    if (faintedOrEmpty) return faintedOrEmpty;
+    const turn = this.currentTurn();
+    if (turn) {
+      if (
+        turn.actions[0]?.choice.startsWith("switch ") &&
+        !turn.actions[1]?.choice.startsWith("switch ")
+      ) {
+        return "p1a";
+      }
+      if (
+        turn.actions[1]?.choice.startsWith("switch ") &&
+        !turn.actions[0]?.choice.startsWith("switch ")
+      ) {
+        return "p1b";
+      }
+    }
+    return "p1a";
   }
 
   /** 自分の「ゆけっ! <A> と <B>!」 / 「ゆけっ! <A>!」 */
@@ -2583,10 +2603,7 @@ export class BattleLogParser {
       if (!names || names.length === 0) {
         if (isGoPhrase && detected.length >= 1) {
           const idx = detected[0]!.idx;
-          const preferred =
-            this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
-              ? this.pendingWithdrawSlot
-              : (OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p1a");
+          const preferred = this.resolveOwnSwitchSlot();
           this.pendingWithdrawSlot = null;
           this.placeOwn(preferred, idx, t, false);
           return true;
@@ -2606,10 +2623,7 @@ export class BattleLogParser {
       });
     } else {
       const idx = validIndices[0]!;
-      const preferred =
-        this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
-          ? this.pendingWithdrawSlot
-          : (OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p1a");
+      const preferred = this.resolveOwnSwitchSlot();
       this.pendingWithdrawSlot = null;
       this.placeOwn(preferred, idx, t, false);
     }
@@ -2628,6 +2642,16 @@ export class BattleLogParser {
       this.placeOwn("p1b", idxB, t, false);
     }
     this.markLead(t);
+  }
+
+  /** ターン開始時等にHUDで当該スロットの生存ポケモンが判明した場合、欠落していた交代を補完する */
+  reconcileOwnActiveSlot(slot: "p1a" | "p1b", teamIdx: number, t: number): void {
+    const current = this.slots[slot];
+    if (current?.teamIdx === teamIdx && !this.fainted[slot]) return;
+    const otherSlot = slot === "p1a" ? "p1b" : "p1a";
+    if (this.slots[otherSlot]?.teamIdx === teamIdx && !this.fainted[otherSlot]) return;
+    if (this.faintedOwnTeamIndices.has(teamIdx)) return;
+    this.placeOwn(slot, teamIdx, t, false);
   }
 
   private placeOwn(slot: SlotIdent, teamIdx: number, t: number, guessedSlot: boolean): void {
@@ -2652,6 +2676,12 @@ export class BattleLogParser {
       }
       this.contractState = deployRes.right;
     } else {
+      if (this.contractState.slots[slot].kind === "active") {
+        const withdrawRes = validateWithdraw(this.contractState, slot);
+        if (E.isRight(withdrawRes)) {
+          this.contractState = withdrawRes.right;
+        }
+      }
       const switchRes = validateSwitchIn(this.contractState, slot, {
         slug: activeSlug,
         teamIdx,
@@ -2807,7 +2837,6 @@ export class BattleLogParser {
         p.opposingPrefixes.some((prefix) => approxFind(head, prefix).score >= 0.8),
       );
     const cleanMovePart = match.movePart.replace(/[!！/7|"'”’].*$/, "").trim() || match.movePart;
-    const normMovePart = normalizeOcrToken(cleanMovePart);
 
     const matchedOwnActor = this.resolveSlots(head, OWN_SLOTS);
     const matchedOppActor = this.resolveSlots(head, OPP_SLOTS);
@@ -2818,9 +2847,6 @@ export class BattleLogParser {
     }
 
     let move = fuzzyMatchEntity(cleanMovePart, this.options.dictionaries.moves);
-    if ((!move || move.confidence < 72) && normMovePart.includes("iaintrary")) {
-      move = { slug: "hyper-voice", confidence: 85 };
-    }
     if (!isOpposing) {
       const p1ActiveMoveSlugs = new Set<string>();
       for (const s of matchedOwnActor.length > 0 ? matchedOwnActor : OWN_SLOTS) {
@@ -3545,7 +3571,7 @@ export class BattleLogParser {
         .find((ev) => ev.verb === "damage" && !ev.bracket && Math.abs(t - ev.t) <= 2000);
       slot = recentUnbracketed?.args[0] as SlotIdent | undefined;
     }
-    if (!slot || !this.slots[slot]) return false;
+    if (!slot || !this.slots[slot] || this.fainted[slot]) return false;
 
     if (
       matchedEffect === "sandstorm" ||
@@ -3592,12 +3618,7 @@ export class BattleLogParser {
         const m = /^(\d+)%$/.exec(bHp);
         if (m) {
           const currPct = parseInt(m[1]!, 10);
-          let dmgPct =
-            (mon.slug === "sinistcha" || mon.slug === "armarouge") &&
-            bHp === "100%" &&
-            matchedEffect === "sandstorm"
-              ? 7
-              : 6;
+          let dmgPct = 6;
           if (matchedEffect === "life-orb") dmgPct = 10;
           else if (matchedEffect === "curse") dmgPct = 25;
           else if (matchedEffect === "crash") dmgPct = 50;
@@ -3991,6 +4012,21 @@ export class BattleLogParser {
     if (res.count === 0) {
       this.pendingPerishFaint.add(slot);
       delete this.volatileStatus[slot].perish;
+      // 滅びカウント0演出中に先行して拾われた未帰属ダメージ（HPバー0化途中のノイズ）を除去
+      const events = this.currentEvents();
+      while (events.length > 0) {
+        const lastEv = events[events.length - 1]!;
+        if (
+          lastEv.verb === "damage" &&
+          lastEv.args[0] === slot &&
+          !lastEv.bracket &&
+          t - lastEv.t <= 8000
+        ) {
+          events.pop();
+        } else {
+          break;
+        }
+      }
     }
 
     this.emit("perish", [slot, String(res.count)], t, 0.98, { review: false });
@@ -4424,15 +4460,6 @@ export class BattleLogParser {
           def: Math.max(-6, Math.min(6, (this.statStages[slot].def ?? 0) + bestSuffix.delta)),
         };
       }
-      if (
-        this.turns.length === 8 &&
-        slot === "p2b" &&
-        statsFound.includes("atk") &&
-        statsFound.includes("spa") &&
-        bestSuffix.delta === -1
-      ) {
-        this.statStages.p2b = { atk: -1, spa: -1 };
-      }
     }
     return true;
   }
@@ -4463,25 +4490,34 @@ export class BattleLogParser {
     const lead0 = lead0Idx !== undefined ? this.options.myTeam[lead0Idx] : undefined;
     const lead1 = lead1Idx !== undefined ? this.options.myTeam[lead1Idx] : undefined;
 
-    // 2. 実機バトル中に画面上で実際に観測されたポケモン (observedOwnIndices)
-    // 画面に出た先発2体 + 画面に出た控えポケモンから真の選出 (最大4体) を確定
+    // 2. 実機バトル中に画面上で実際に観測されたポケモン (observedOwnIndices) を最優先し、
+    // 画面に出た先発2体 + 画面に出た控えポケモンから真の選出 (最大4体) を確定する。
+    // 見せ合い画面 (p1Selection) に含まれ、かつバトル中に一度も登場しなかったポケモンは、
+    // 画面登場数が4体未満のときのみ残り枠として補完する（Rule 5: 画面の確定事実が最優先）。
     const reconciledSelection: number[] = [];
     if (lead0Idx !== undefined && lead0Idx >= 0) reconciledSelection.push(lead0Idx);
     if (lead1Idx !== undefined && lead1Idx >= 0 && !reconciledSelection.includes(lead1Idx)) {
       reconciledSelection.push(lead1Idx);
     }
-    // 見せ合い画面の選出リストにある控えポケモン（登場が確認されたもの、または見せ合いで選出されたもの）の順序を優先維持
+    // まず実際にバトル画面に登場した控えポケモンを、見せ合い選出順があればその順で優先追加
     for (const selIdx of p1Selection) {
       if (reconciledSelection.length >= 4) break;
-      if (!reconciledSelection.includes(selIdx)) {
+      if (this.observedOwnIndices.includes(selIdx) && !reconciledSelection.includes(selIdx)) {
         reconciledSelection.push(selIdx);
       }
     }
-    // 実機バトル中に登場したが、見せ合い画面の選出リストから漏れていた控えポケモンを追加
+    // 実機バトル中に登場したが、見せ合い画面の選出リストに含まれていなかった控えポケモンを最優先で追加
     for (const obsIdx of this.observedOwnIndices) {
       if (reconciledSelection.length >= 4) break;
       if (!reconciledSelection.includes(obsIdx)) {
         reconciledSelection.push(obsIdx);
+      }
+    }
+    // 画面に登場したポケモンが3体以下の場合のみ、見せ合い選出リストの未登場枠で補完
+    for (const selIdx of p1Selection) {
+      if (reconciledSelection.length >= 4) break;
+      if (!reconciledSelection.includes(selIdx)) {
+        reconciledSelection.push(selIdx);
       }
     }
     this.p1Selection = reconciledSelection;
@@ -4561,32 +4597,6 @@ export class BattleLogParser {
         (e) => e.verb === "switch" && e.args[0] === "p1b",
       );
       this.leadEvents.splice(newIdxP1b, 0, evP1a!);
-    }
-
-    const hasSandstorm = this.leadEvents.some(
-      (e) => e.verb === "weather" && e.args[0] === "Sandstorm",
-    );
-    if (hasSandstorm) {
-      const hasSandStream = this.leadEvents.some(
-        (e) => e.verb === "ability" && e.args[1] === "sand-stream",
-      );
-      if (!hasSandStream) {
-        const sandSlot = this.leadEvents.find(
-          (e) => e.verb === "switch" && (e.args[1] === "tyranitar" || e.args[1] === "hippowdon"),
-        )?.args[0];
-        if (sandSlot) {
-          const wIdx = this.leadEvents.findIndex(
-            (e) => e.verb === "weather" && e.args[0] === "Sandstorm",
-          );
-          this.leadEvents.splice(wIdx, 0, {
-            verb: "ability",
-            args: [sandSlot, "sand-stream"],
-            t: leadTs,
-            confidence: 1,
-            review: false,
-          });
-        }
-      }
     }
 
     // Turn 1 開始時点の先発は、選出情報があれば確実に lead0, lead1 に解決
@@ -4681,11 +4691,24 @@ export class BattleLogParser {
           const slot = ev.args[0];
           const newSlug = ev.args[1];
           const newHp = ev.args[2] ?? "100%";
+          const baseNewSlug = newSlug?.replace(/-mega(-[xyz])?$/, "");
           if (slot === "p1a" && newSlug) {
-            const teamIdx = this.options.myTeam.findIndex((m) => m.slug === newSlug);
+            const teamIdx = this.options.myTeam.findIndex(
+              (m) =>
+                m.slug === newSlug ||
+                m.identifier === newSlug ||
+                m.slug === baseNewSlug ||
+                m.identifier === baseNewSlug,
+            );
             currentP1a = { slug: newSlug, teamIdx: teamIdx >= 0 ? teamIdx : 0, hp: newHp };
           } else if (slot === "p1b" && newSlug) {
-            const teamIdx = this.options.myTeam.findIndex((m) => m.slug === newSlug);
+            const teamIdx = this.options.myTeam.findIndex(
+              (m) =>
+                m.slug === newSlug ||
+                m.identifier === newSlug ||
+                m.slug === baseNewSlug ||
+                m.identifier === baseNewSlug,
+            );
             currentP1b = { slug: newSlug, teamIdx: teamIdx >= 0 ? teamIdx : 0, hp: newHp };
           } else if (slot === "p2a" && newSlug) {
             currentP2a = { slug: newSlug, hp: newHp };

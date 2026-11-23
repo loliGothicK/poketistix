@@ -38,6 +38,7 @@ import { useSeasons } from "@/hooks/useSeasons";
 import { useBattleRecords } from "@/hooks/useBattleRecords";
 import { useTeamsData } from "@/hooks/useTeamsData";
 import { saveTeamsToServer } from "@services/teams";
+import { saveKifuOnServer } from "@services/kifus";
 import { championsPokemonByIdentifier } from "@/data/champions-pokemon";
 import { typeIcon } from "@/lib/image";
 import { tally, winRatePercent } from "@/store/battle-record/analytics";
@@ -503,7 +504,11 @@ export default function BattleRecordPage() {
     }
   };
 
-  const handleRecordSubmit = async (draft: BattleRecordDraft, seasonId: string) => {
+  const handleRecordSubmit = async (
+    draft: BattleRecordDraft,
+    seasonId: string,
+    kifuPbn?: string | null,
+  ) => {
     if (isSubmittingRecordRef.current) return;
     isSubmittingRecordRef.current = true;
     setIsSubmittingRecord(true);
@@ -528,11 +533,20 @@ export default function BattleRecordPage() {
         }
       }
 
-      if (recordEditing) {
-        const { seasonId: _seasonId, ...update } = input;
-        await updateRecord(recordEditing.id, update);
-      } else {
-        await createRecord(input);
+      const savedRecord = recordEditing
+        ? await (async () => {
+            const { seasonId: _seasonId, ...update } = input;
+            return updateRecord(recordEditing.id, update);
+          })()
+        : await createRecord(input);
+
+      if (kifuPbn && kifuPbn.trim().length > 0) {
+        const seasonRegulation = seasons.find((s) => s.id === seasonId)?.ruleMark ?? null;
+        await saveKifuOnServer({
+          battleRecordId: savedRecord.id,
+          pbn: kifuPbn,
+          regulation: seasonRegulation,
+        });
       }
 
       // 現在と異なるシーズンに記録した場合は、表示中のシーズンを自動切り替え

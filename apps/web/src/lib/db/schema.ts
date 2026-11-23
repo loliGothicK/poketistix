@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { authUsers } from "drizzle-orm/supabase";
 import { ulidType } from "./ulid-type";
 import type { TrainedPokemon } from "@/store/team/team";
+import type { KifuDocument } from "@/store/kifu/kifu";
 import type { TeamDiff, TeamSnapshot } from "@/lib/team-diff";
 
 /** 対戦フォーマット */
@@ -225,6 +226,42 @@ export const battleRecordOpponents = pgTable(
       "battle_record_opponents_selection_role_valid",
       sql`${t.selectionRole} in ('lead', 'back')`,
     ),
+  ],
+);
+
+/**
+ * 棋譜（PBN 原文 + 構造化 JSONB）。対戦記録（battle_records）とは独立して正規化管理する。
+ * battle_record_id が null の単体棋譜も、対戦記録に紐づく棋譜も保存できる。
+ */
+export const kifus = pgTable(
+  "kifus",
+  {
+    id: ulidType("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** 紐づく対戦記録（任意。対戦記録削除時は null にして棋譜を残す） */
+    battleRecordId: ulidType("battle_record_id").references(() => battleRecords.id, {
+      onDelete: "set null",
+    }),
+    /** PBN テキスト本文（表示・編集・エクスポート用） */
+    pbn: text("pbn").notNull(),
+    /** PBN を構造化した JSONB（GIN インデックスで技・特性・ターン・盤面を直接集計・検索可能） */
+    data: jsonb("data").notNull().$type<KifuDocument>(),
+    /** レギュレーション識別子（例: "M-C"。任意） */
+    regulation: text("regulation"),
+    /** 総ターン数（集計・フィルタ用） */
+    turnCount: smallint("turn_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("kifus_pbn_not_empty", sql`char_length(${t.pbn}) > 0`),
+    check("kifus_data_is_object", sql`jsonb_typeof(${t.data}) = 'object'`),
+    check("kifus_turn_count_non_negative", sql`${t.turnCount} >= 0`),
+    index("kifus_user_created_idx").on(t.userId, t.createdAt),
+    index("kifus_battle_record_id_idx").on(t.battleRecordId),
+    index("kifus_data_gin").using("gin", t.data),
   ],
 );
 

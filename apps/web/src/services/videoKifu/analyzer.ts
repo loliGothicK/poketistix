@@ -306,11 +306,18 @@ export class VideoKifuAnalyzer {
     let prevMessageHash = 0;
     let prevAbilityHash = 0;
     let prevTargetHash = 0;
+    let prevResultRatingHash = 0;
     let sampledFrames = 0;
     let matchResult: "WIN" | "LOSS" | "UNKNOWN" = "UNKNOWN";
     let detectedRating: number | null = null;
-    let act0MoveIndices = new Set<number>();
-    let act0FrameCount = 0;
+    const turnSlotMoveIndices: Record<"p1a" | "p1b", Set<number>> = {
+      p1a: new Set<number>(),
+      p1b: new Set<number>(),
+    };
+    const turnSlotLastMoveIdx: Record<"p1a" | "p1b", number | null> = {
+      p1a: null,
+      p1b: null,
+    };
 
     onProgress?.({
       currentTimeSec: 0,
@@ -560,19 +567,25 @@ export class VideoKifuAnalyzer {
             .sort((a, b) => b[1] - a[1])
             .map(([idx]) => idx)
             .filter((idx) => !filled.includes(idx));
-          const remaining = myTeam
-            .map((_, idx) => idx)
-            .filter((idx) => !filled.includes(idx) && !selectedByTab.includes(idx));
-          const tentative = [...filled, ...selectedByTab, ...remaining].slice(0, 4);
+          const tentative = [...filled, ...selectedByTab].slice(0, 4);
           p1Selection.length = 0;
           p1Selection.push(...tentative);
           logParser.setP1Selection(p1Selection);
         }
       }
 
-      // 1. ターン開始: コマンド選択画面の「MOVE TIME 45」出現を厳格なトリガーとする
+      // 1. ターン開始: コマンド選択画面の「MOVE TIME 45」出現、または前ターンの技実行完了後にコマンド選択画面へ入った瞬間をトリガーとする
+      const isSubsequentCommandStart =
+        logParser.turnCount > 0 &&
+        logParser.currentTurnHasMove() &&
+        (frame.phase === "CommandSelect" || frame.phase === "MoveSelect") &&
+        frame.activeP1Slot !== null &&
+        frame.hpBars[0].visible &&
+        frame.hpBars[1].visible &&
+        (frame.commandTimerVisible || frame.isMoveTime45);
+
       const canStartTurn =
-        frame.isMoveTime45 &&
+        (frame.isMoveTime45 || isSubsequentCommandStart) &&
         timestampMs - lastTurnStartMs >= MIN_TURN_GAP_MS &&
         (logParser.hasLead || tSec >= 45);
 
@@ -605,17 +618,60 @@ export class VideoKifuAnalyzer {
           if (p1aIdx >= 0 && p1bIdx >= 0 && p1aIdx !== p1bIdx) {
             logParser.deployLeadsIfUnset([p1aIdx, p1bIdx], Math.max(0, timestampMs - 10000));
           }
+        } else if (logParser.turnCount > 0) {
+          // Turn 2 以降開始時: ひんしスロットや最大HP不整合スロットに生存HUDが表示されている場合、1sサンプリングで抜けた死に出し/交代を補完する
+          for (const slotIdx of [0, 1] as const) {
+            const slotIdent = slotIdx === 0 ? "p1a" : "p1b";
+            const otherIdent = slotIdx === 0 ? "p1b" : "p1a";
+            const bar = frame.hpBars[slotIdx];
+            const exactHp = bar.exactHp;
+            if (!bar.visible || exactHp === null || exactHp === undefined || exactHp <= 0) continue;
+            const currentTeamIdx = logParser.getActiveSlotTeamIdx(slotIdent);
+            const currentMaxHp = currentTeamIdx !== null ? getP1MaxHp(currentTeamIdx) : 0;
+            const needsReconcile =
+              logParser.isSlotFainted(slotIdent) ||
+              currentTeamIdx === null ||
+              exactHp > currentMaxHp;
+            if (!needsReconcile) continue;
+
+            const otherTeamIdx = logParser.getActiveSlotTeamIdx(otherIdent);
+            const candidateIndices = myTeam
+              .map((_, idx) => idx)
+              .filter(
+                (idx) =>
+                  idx !== otherTeamIdx &&
+                  !logParser.isOwnTeamIdxFainted(idx) &&
+                  exactHp <= getP1MaxHp(idx),
+              );
+            const matchedIdx =
+              candidateIndices.find((idx) => logParser.getLastKnownOwnHpCurrent(idx) === exactHp) ??
+              candidateIndices.find((idx) => getP1MaxHp(idx) === exactHp) ??
+              (candidateIndices.length === 1 ? candidateIndices[0] : undefined);
+            if (matchedIdx !== undefined) {
+              logParser.reconcileOwnActiveSlot(
+                slotIdent,
+                matchedIdx,
+                Math.max(0, timestampMs - 2000),
+              );
+            }
+          }
         }
 
         logParser.beginTurn(timestampMs);
-        act0MoveIndices = new Set<number>();
-        act0FrameCount = 0;
+        prevAbilityHash = 0;
+        prevMessageHash = 0;
+        prevTargetHash = 0;
+        turnSlotMoveIndices.p1a.clear();
+        turnSlotMoveIndices.p1b.clear();
+        turnSlotLastMoveIdx.p1a = null;
+        turnSlotLastMoveIdx.p1b = null;
       }
 
       // 1.5. コマンド選択・ターゲット選択UIの読み取り
-      // 技選択後にターゲット選択UI（画面右側に技名＋[B] Close ボタン）が表示された際、
-      // 実際に確定しようとしている対象技とポケモンを直接読み取る。
-      // ※ 技一覧（4ボタン）の過渡状態カーソルは一切読み取らない（誤判定・上書き防止）
+      // 技選択後にターゲット選択UI（画面中央〜右側に技名＋[B] Close ボタン）が表示された際、
+      // 実際に確定しようとしている対象技とターゲットスロットを直接読み取る。
+      // また、1秒サンプリングの間隙でターゲット選択UI（0.3〜0.5秒）を通過して「通信待機中」へ進み、
+      // ひるみ・眠り等で不発になったスロットについても、技選択メニューのハイライト位置をフォールバックとして保持する。
       const currentActiveSlot: "p1a" | "p1b" | null =
         frame.activeP1Slot === 0 ? "p1a" : frame.activeP1Slot === 1 ? "p1b" : null;
       if (currentActiveSlot !== null) {
@@ -623,19 +679,22 @@ export class VideoKifuAnalyzer {
       }
 
       if (
-        frame.phase === "MoveSelect" &&
-        frame.activeP1Slot === 0 &&
+        logParser.hasLead &&
+        !logParser.currentTurnHasMove() &&
+        currentActiveSlot !== null &&
         frame.selectedMoveIndex !== null
       ) {
-        act0MoveIndices.add(frame.selectedMoveIndex);
-        act0FrameCount++;
-        if (
-          logParser.turnCount === 2 &&
-          act0FrameCount >= 4 &&
-          act0MoveIndices.size === 1 &&
-          act0MoveIndices.has(3)
-        ) {
-          logParser.setDeclaredMove("p1a", "protect", true);
+        turnSlotMoveIndices[currentActiveSlot].add(frame.selectedMoveIndex);
+        turnSlotLastMoveIdx[currentActiveSlot] = frame.selectedMoveIndex;
+        const teamIdx = logParser.getActiveSlotTeamIdx(currentActiveSlot);
+        if (teamIdx !== null) {
+          const moveId = myTeam[teamIdx]?.moves[frame.selectedMoveIndex] ?? null;
+          const move = moveId !== null ? moveById.get(moveId) : undefined;
+          if (move) {
+            // 技カーソルが1つの技から動いていない（デフォルト1番目技の即押し等）、または最後の技選択フレームを暫定登録
+            // （実際に別の技や交代が実行された場合は onMoveUsed / placeOwn で上書きされ、ターゲット選択パネルが見えた場合は下で確定上書きされる）
+            logParser.setDeclaredMove(currentActiveSlot, move.identifier);
+          }
         }
       }
 
@@ -681,7 +740,12 @@ export class VideoKifuAnalyzer {
                 );
               });
               if (hit) {
-                logParser.setDeclaredMove(slot, move.identifier);
+                const declaredChoice =
+                  frame.selectedTargetSlot &&
+                  (move.range === "single-target" || move.range === "single-ally")
+                    ? `${move.identifier} ${frame.selectedTargetSlot}`
+                    : move.identifier;
+                logParser.setDeclaredMove(slot, declaredChoice, true);
                 matched = true;
                 break;
               }
@@ -829,91 +893,95 @@ export class VideoKifuAnalyzer {
       if (
         frame.phase !== "TeamPreview" &&
         (frame.p1AbilityBannerVisible || frame.p2AbilityBannerVisible) &&
-        frame.abilityRoiHash !== 0 &&
-        frame.abilityRoiHash !== prevAbilityHash
+        frame.abilityRoiHash !== 0
       ) {
-        prevAbilityHash = frame.abilityRoiHash;
-        const bannerSide = frame.p1AbilityBannerVisible ? "p1" : "p2";
-        const rawBanner = await frameSource.recognizeRoiText(
-          bannerSide === "p1"
-            ? DEFAULT_CHAMPIONS_ROI_LAYOUT.p1AbilityBanner
-            : DEFAULT_CHAMPIONS_ROI_LAYOUT.p2AbilityBanner,
-          "ability",
-        );
-        if (rawBanner) {
-          if (logParser.feedBanner(rawBanner, bannerSide, timestampMs)) {
-            syncHpStatesFromParser();
-            prevMessageHash = 0;
+        if (frame.abilityRoiHash !== prevAbilityHash) {
+          prevAbilityHash = frame.abilityRoiHash;
+          const bannerSide = frame.p1AbilityBannerVisible ? "p1" : "p2";
+          const rawBanner = await frameSource.recognizeRoiText(
+            bannerSide === "p1"
+              ? DEFAULT_CHAMPIONS_ROI_LAYOUT.p1AbilityBanner
+              : DEFAULT_CHAMPIONS_ROI_LAYOUT.p2AbilityBanner,
+            "ability",
+          );
+          if (rawBanner) {
+            if (logParser.feedBanner(rawBanner, bannerSide, timestampMs)) {
+              syncHpStatesFromParser();
+              prevMessageHash = 0;
+            }
           }
         }
+      } else {
+        prevAbilityHash = 0;
       }
 
       // 4. 下部メッセージ枠
-      if (
-        frame.phase !== "TeamPreview" &&
-        frame.messageBoxVisible &&
-        frame.messageRoiHash !== 0 &&
-        frame.messageRoiHash !== prevMessageHash
-      ) {
-        prevMessageHash = frame.messageRoiHash;
-        const rawMsg = await frameSource.recognizeRoiText(
-          DEFAULT_CHAMPIONS_ROI_LAYOUT.messageBox,
-          "message",
-        );
+      if (frame.phase !== "TeamPreview" && frame.messageBoxVisible && frame.messageRoiHash !== 0) {
+        if (frame.messageRoiHash !== prevMessageHash) {
+          prevMessageHash = frame.messageRoiHash;
+          const rawMsg = await frameSource.recognizeRoiText(
+            DEFAULT_CHAMPIONS_ROI_LAYOUT.messageBox,
+            "message",
+          );
 
-        if (rawMsg) {
-          const lower = rawMsg.toLowerCase();
-          const normMsg = normalizeOcrToken(rawMsg);
-          const isActionMessage =
-            logParser.shouldFlushPendingDamages(rawMsg) ||
-            /\b(used|sent out|go[l1I]?[!1lI]?|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
+          if (rawMsg) {
+            const lower = rawMsg.toLowerCase();
+            const normMsg = normalizeOcrToken(rawMsg);
+            const isActionMessage =
+              logParser.shouldFlushPendingDamages(rawMsg) ||
+              /\b(used|sent out|go[l1I]?[!1lI]?|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
+                rawMsg,
+              ) ||
+              /使[つっ]|繰り?出|くり出|くりだ|ゆけ|行け|戻れ|引っこめ|ひっこめ|たおれ|反応|メガシンカ|すなおこし|グラスメイカー/u.test(
+                normMsg,
+              );
+            const isMenuPrompt =
+              /what will|select a move|select a target|fight|pokémon|run|bag|move info/i.test(
+                rawMsg,
+              ) ||
+              /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(normMsg) ||
+              (!logParser.currentTurnHasMove() &&
+                (frame.commandTimerVisible ||
+                  frame.phase === "MoveSelect" ||
+                  frame.phase === "CommandSelect" ||
+                  frame.activeP1Slot !== null) &&
+                !isActionMessage);
+
+            const ratingMatch = /(?:rating|レート)[:\s：]*([0-9,]+\.[0-9]+|[0-9]{4})/iu.exec(
               rawMsg,
-            ) ||
-            /使[つっ]|繰り?出|くり出|くりだ|ゆけ|行け|戻れ|引っこめ|ひっこめ|たおれ|反応|メガシンカ|すなおこし|グラスメイカー/u.test(
-              normMsg,
             );
-          const isMenuPrompt =
-            /what will|select a move|select a target|fight|pokémon|run|bag|move info/i.test(
-              rawMsg,
-            ) ||
-            /どうする|技を選ぶ|対象を選ぶ|たたかう|ポケモン|にげる/u.test(normMsg) ||
-            (!logParser.currentTurnHasMove() &&
-              (frame.commandTimerVisible ||
-                frame.phase === "MoveSelect" ||
-                frame.phase === "CommandSelect" ||
-                frame.activeP1Slot !== null) &&
-              !isActionMessage);
-
-          const ratingMatch = /(?:rating|レート)[:\s：]*([0-9,]+\.[0-9]+|[0-9]{4})/iu.exec(rawMsg);
-          if (ratingMatch?.[1]) {
-            const parsed = Number.parseFloat(ratingMatch[1].replace(/,/g, ""));
-            if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 3000) {
-              detectedRating = parsed;
+            if (ratingMatch?.[1]) {
+              const parsed = Number.parseFloat(ratingMatch[1].replace(/,/g, ""));
+              if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 3000) {
+                detectedRating = parsed;
+              }
             }
-          }
 
-          if (
-            lower.includes("you defeated") ||
-            approxFind(normMsg, normalizeOcrToken("勝負に勝った")).score >= 0.75
-          ) {
-            matchResult = "WIN";
-          } else if (
-            lower.includes("you lost") ||
-            approxFind(normMsg, normalizeOcrToken("勝負に負けた")).score >= 0.75 ||
-            approxFind(normMsg, normalizeOcrToken("目の前が真っ暗になった")).score >= 0.75
-          ) {
-            matchResult = "LOSS";
-          }
-
-          if (!isMenuPrompt) {
-            if (isActionMessage) {
-              flushPendingDamages(timestampMs);
+            if (
+              lower.includes("you defeated") ||
+              approxFind(normMsg, normalizeOcrToken("勝負に勝った")).score >= 0.75
+            ) {
+              matchResult = "WIN";
+            } else if (
+              lower.includes("you lost") ||
+              approxFind(normMsg, normalizeOcrToken("勝負に負けた")).score >= 0.75 ||
+              approxFind(normMsg, normalizeOcrToken("目の前が真っ暗になった")).score >= 0.75
+            ) {
+              matchResult = "LOSS";
             }
-            if (logParser.feedMessage(rawMsg, timestampMs)) {
-              syncHpStatesFromParser();
+
+            if (!isMenuPrompt) {
+              if (isActionMessage) {
+                flushPendingDamages(timestampMs);
+              }
+              if (logParser.feedMessage(rawMsg, timestampMs)) {
+                syncHpStatesFromParser();
+              }
             }
           }
         }
+      } else {
+        prevMessageHash = 0;
       }
 
       if (logParser.hasLead) {
@@ -921,6 +989,32 @@ export class VideoKifuAnalyzer {
           resultScreenWinVotes++;
         } else if (frame.resultScreenOutcome === "LOSS") {
           resultScreenLossVotes++;
+        }
+
+        // 試合後のリザルトカード（マスターボール級・大会リザルト）から試合後レートを読み取る
+        // アニメーション中に値が変動するため、リザルト表示中の最新（最後）の検出値で上書きする
+        if (frame.resultRatingBoxVisible && frame.resultRatingRoiHash) {
+          if (frame.resultRatingRoiHash !== prevResultRatingHash) {
+            prevResultRatingHash = frame.resultRatingRoiHash;
+            const ratingText = await frameSource.recognizeRoiText(
+              DEFAULT_CHAMPIONS_ROI_LAYOUT.resultRatingBox,
+              "message",
+            );
+            if (ratingText) {
+              const compact = ratingText.replace(/\s+/g, "");
+              const ratingMatch = /(?:rating|レート)[:：]?([0-9][0-9,]*(?:\.[0-9]+)?)/iu.exec(
+                compact,
+              );
+              if (ratingMatch?.[1]) {
+                const parsed = Number.parseFloat(ratingMatch[1].replace(/,/g, ""));
+                if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 3000) {
+                  detectedRating = parsed;
+                }
+              }
+            }
+          }
+        } else {
+          prevResultRatingHash = 0;
         }
       }
 
@@ -975,12 +1069,9 @@ export class VideoKifuAnalyzer {
         .sort((a, b) => b[1] - a[1])
         .map(([idx]) => idx)
         .filter((idx) => !assignedSelection.includes(idx));
-      const remaining = myTeam
-        .map((_, idx) => idx)
-        .filter((idx) => !assignedSelection.includes(idx) && !selectedByTab.includes(idx));
 
       p1Selection.length = 0;
-      p1Selection.push(...assignedSelection, ...selectedByTab, ...remaining);
+      p1Selection.push(...assignedSelection, ...selectedByTab);
       p1Selection.splice(4);
       logParser.setP1Selection(p1Selection);
     }
@@ -1018,16 +1109,13 @@ export class VideoKifuAnalyzer {
       else if (p1AllZero && !p2AllZero) matchResult = "LOSS";
     }
 
-    // PBN テキストの組み立て
+    // PBN テキストの組み立て（レートは PBN 仕様外のため PBN 本文には含めず summary.detectedRating のみで返す）
     const pbnLines: string[] = [
       '[PBN "1.0"]',
       `[Regulation "${regulation}"]`,
       '[Sheet "CTS"]',
       `[Result "${matchResult}"]`,
     ];
-    if (detectedRating !== null) {
-      pbnLines.push(`[Rating "${detectedRating}"]`);
-    }
     pbnLines.push("");
 
     // 登録パーティの完全な情報から @p1 を出力
@@ -1072,6 +1160,7 @@ export class VideoKifuAnalyzer {
 
     return {
       ...summary,
+      detectedRating: detectedRating ?? summary.detectedRating,
       totalSampledFrames: sampledFrames,
     };
   }

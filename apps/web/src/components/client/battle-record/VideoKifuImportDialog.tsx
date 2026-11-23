@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   alpha,
+  Badge,
   Box,
   Button,
   Chip,
@@ -43,7 +44,7 @@ interface VideoKifuImportDialogProps {
   readonly teamId: string | null;
   readonly teamMembers: readonly TrainedPokemon[];
   readonly regulation?: string;
-  readonly onApplyDraft: (draft: BattleRecordDraft) => void;
+  readonly onApplyDraft: (draft: BattleRecordDraft, pbnText: string) => void;
 }
 
 const formatTimestampMs = (ms: number): string => {
@@ -73,6 +74,7 @@ export function VideoKifuImportDialog({
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState<VideoAnalysisProgress | null>(null);
   const [pbnText, setPbnText] = useState("");
+  const [detectedRating, setDetectedRating] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [validationWarnings, setValidationWarnings] = useState<readonly string[] | null>(null);
 
@@ -94,10 +96,14 @@ export function VideoKifuImportDialog({
     );
   }, [i18n]);
 
-  const parsedSummary = useMemo(
-    () => (pbnText.trim().length > 0 ? parsePbnToAnalysisSummary(pbnText) : null),
-    [pbnText],
-  );
+  const parsedSummary = useMemo(() => {
+    if (pbnText.trim().length === 0) return null;
+    const base = parsePbnToAnalysisSummary(pbnText);
+    return {
+      ...base,
+      detectedRating: detectedRating ?? base.detectedRating,
+    };
+  }, [pbnText, detectedRating]);
 
   const handleSelectFile = (file: File | null) => {
     if (!file) return;
@@ -108,6 +114,7 @@ export function VideoKifuImportDialog({
     previewUrlRef.current = nextUrl;
     setVideoPreviewUrl(nextUrl);
     setVideoFile(file);
+    setDetectedRating(null);
     setErrorMessage(null);
     setValidationWarnings(null);
   };
@@ -134,6 +141,7 @@ export function VideoKifuImportDialog({
         onProgress: (p) => setProgress(p),
       });
       setPbnText(summary.pbnText);
+      setDetectedRating(summary.detectedRating);
       setValidationWarnings(summary.validationErrors ?? null);
     } catch (err: unknown) {
       if (!controller.signal.aborted) {
@@ -157,7 +165,7 @@ export function VideoKifuImportDialog({
       teamId,
       myTeam: teamMembers,
     });
-    onApplyDraft(draft);
+    onApplyDraft(draft, parsedSummary.pbnText);
   };
 
   const progressPct =
@@ -180,6 +188,18 @@ export function VideoKifuImportDialog({
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
               {t("battleRecord.videoImport.title")}
             </Typography>
+            <Badge
+              badgeContent={t("common.preview")}
+              color="primary"
+              sx={{
+                "& .MuiBadge-badge": {
+                  position: "static",
+                  transform: "none",
+                  padding: "0 6px",
+                  height: 20,
+                },
+              }}
+            />
           </Stack>
           <IconButton
             size="small"

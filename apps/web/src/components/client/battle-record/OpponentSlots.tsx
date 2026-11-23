@@ -241,7 +241,10 @@ export function OpponentSlots({ opponents, onChange, format }: OpponentSlotsProp
           }
 
           const color = roleColor(opponent.selectionRole);
-          const hasDetail = Boolean(opponent.itemSlug) || opponent.moves.length > 0;
+          const hasDetail =
+            Boolean(opponent.itemSlug) ||
+            Boolean(opponent.abilitySlug) ||
+            opponent.moves.length > 0;
 
           return (
             <Box

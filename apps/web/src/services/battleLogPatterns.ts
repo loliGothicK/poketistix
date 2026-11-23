@@ -134,7 +134,7 @@ export interface BattleMessageTemplates {
   readonly residualDamagePhrases?: readonly ResidualDamagePhraseDef[];
   readonly statusPhrases?: readonly StatusPhraseDef[];
   readonly curePhrases?: readonly CurePhraseDef[];
-  readonly perishCountRegex?: RegExp;
+  readonly perishCountPhrase?: string;
   readonly perishStartPhrases?: readonly string[];
   readonly destinyBondTriggerPhrases?: readonly string[];
   readonly forfeitPhrases?: readonly string[];
@@ -299,9 +299,7 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
     ? normalizeOcrToken(templates.megaEvolvedPhrase)
     : null;
 
-  const perishCountRegex =
-    templates.perishCountRegex ??
-    /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+([0-3OoIl０-３])[!.]?$/i;
+  const perishCountToken = normalizeOcrToken(templates.perishCountPhrase ?? "perishcountfellto");
   const perishStartPhrases = (
     templates.perishStartPhrases ?? ["allpokemonthatheardthesongwillfaintinthreeturns"]
   ).map((s) => normalizeOcrToken(s));
@@ -492,18 +490,42 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
       };
     },
     matchPerishCount: (rawText: string) => {
-      const trimmed = rawText.trim();
-      const m = perishCountRegex.exec(trimmed);
-      if (!m || !m[1] || !m[2]) return null;
-      const isOpposing = /^(?:The\s+opposing\s+|相手の\s*)/i.test(trimmed);
-      const digitRaw = m[2]
-        .replace(/[Oo０]/g, "0")
-        .replace(/[Il１]/g, "1")
-        .replace(/２/g, "2")
-        .replace(/３/g, "3");
+      const key = normalizeOcrToken(rawText);
+      const found = approxFind(key, perishCountToken);
+      if (found.score < 0.72) return null;
+      const tail = key.slice(found.end);
+      const digitMatch = /([0-3oOIl|])/i.exec(tail);
+      if (!digitMatch?.[1]) return null;
+      const digitRaw = digitMatch[1].replace(/[oO]/g, "0").replace(/[iIl|]/g, "1");
       const count = parseInt(digitRaw, 10);
       if (Number.isNaN(count)) return null;
-      return { mon: m[1].trim(), count, isOpposing };
+      const headKey = key.slice(0, Math.max(0, found.end - perishCountToken.length));
+      const isOpposing = opposingPrefixes.some(
+        (prefix) => approxFind(headKey, prefix).score >= 0.8,
+      );
+
+      // Extract clean original-case mon substring from rawText when possible (preserving test expectations),
+      // falling back to normalized headKey if OCR text is heavily garbled.
+      let mon = headKey.replace(/(?:ノ|s)$/i, "");
+      const rawEn = /(?:The\s+opposing\s+)?([^\n]+?)['’]s\s+/i.exec(rawText);
+      const rawJa = /(?:相手の\s*)?([^\n]+?)の/u.exec(rawText);
+      if (templates.lang === "en" && rawEn?.[1]) {
+        mon = rawEn[1].replace(/^The\s+opposing\s+/i, "").trim();
+      } else if (templates.lang === "ja" && rawJa?.[1]) {
+        mon = rawJa[1].replace(/^相手の\s*/u, "").trim();
+      } else {
+        for (const prefix of opposingPrefixes) {
+          if (mon.startsWith(prefix)) {
+            mon = mon.slice(prefix.length);
+            break;
+          }
+        }
+      }
+      return {
+        mon,
+        count,
+        isOpposing,
+      };
     },
     matchPerishStart: (_rawText: string, textKey: string) => {
       return perishStartPhrases.some((phrase) => approxFind(textKey, phrase).score >= 0.75);
@@ -1046,8 +1068,7 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "calmeddown", status: "uproar", isVolatile: true },
     { phrase: "wasfreedfrom", status: "bound", isVolatile: true },
   ],
-  perishCountRegex:
-    /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+([0-3OoIl０-３])[!.]?$/i,
+  perishCountPhrase: "perish count fell to",
   perishStartPhrases: ["allpokemonthatheardthesongwillfaintinthreeturns"],
   destinyBondTriggerPhrases: ["tookitsattackerdownwithit"],
   forfeitPhrases: ["thebattlehasendedduetoaforfeit"],
@@ -1652,8 +1673,7 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "おとなしくなった", status: "uproar", isVolatile: true },
     { phrase: "から解放された", status: "bound", isVolatile: true },
   ],
-  perishCountRegex:
-    /^(?:相手の\s*)?(.+?)の\s*滅びのカウントが\s*([0-3OoIl０-３])に\s*なった[!！.]?$/u,
+  perishCountPhrase: "滅びのカウントが",
   perishStartPhrases: ["ほろびのうたを聴いたポケモンは3ターン後に滅びてしまう"],
   destinyBondTriggerPhrases: ["相手を道連れにした", "攻撃相手を道連れにした"],
   forfeitPhrases: ["降参が選ばれました"],

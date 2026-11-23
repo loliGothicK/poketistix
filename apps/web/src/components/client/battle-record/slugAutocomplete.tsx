@@ -91,7 +91,7 @@ export const useDamageCalcItemOptions = (): readonly SlugOption[] => {
 
 /**
  * 指定ポケモンが持ちうる特性の選択肢。
- * championsPokemon.abilities（そのポケモンの特性ID）を参照する。
+ * championsPokemon.abilities（通常形態の特性ID）を参照する。
  */
 export const usePokemonAbilityOptions = (pokemonSlug: string): readonly SlugOption[] => {
   const { t } = useTranslation();
@@ -112,27 +112,30 @@ export const usePokemonAbilityOptions = (pokemonSlug: string): readonly SlugOpti
 /**
  * 指定ポケモンが覚えられる技の選択肢。
  * championsPokemon.moves（そのポケモンの技ID）を参照する。
+ * ダメージ計算では攻撃技のみ、戦績記録の相手詳細では変化技も含めて表示する。
  */
 export const usePokemonMoveOptions = (
   pokemonSlug: string,
+  options?: { readonly includeStatus?: boolean },
 ): readonly SlugOption<{
-  category: "physical" | "special";
+  category: "physical" | "special" | "status";
 }>[] => {
   const { t } = useTranslation();
+  const includeStatus = options?.includeStatus ?? false;
   return useMemo(() => {
     const pokemon = championsPokemonByIdentifier.get(pokemonSlug);
     if (!pokemon) return [];
     return pokemon.moves
       .map((id) => moveById.get(id))
       .filter((move) => move !== undefined)
-      .filter((move) => move.category !== "status")
+      .filter((move) => includeStatus || move.category !== "status")
       .map((move) => ({
         slug: move.identifier,
         label: t(`moves.${move.identifier}.name`),
         category: move.category,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [pokemonSlug, t]);
+  }, [pokemonSlug, includeStatus, t]);
 };
 
 interface SlugAutocompleteProps {
@@ -158,6 +161,7 @@ export function SlugAutocomplete({
 
   return (
     <Autocomplete
+      fullWidth
       options={options}
       value={selected}
       onChange={(_, next) => onChange(next?.slug ?? null)}
@@ -165,6 +169,7 @@ export function SlugAutocomplete({
       getOptionLabel={(option) => option.label}
       isOptionEqualToValue={(option, val) => option.slug === val.slug}
       size="small"
+      sx={{ flex: 1, minWidth: 0 }}
       renderInput={(params) => <TextField {...params} label={label} placeholder={placeholder} />}
     />
   );
@@ -187,6 +192,7 @@ export function MovesAutocomplete({ options, value, onChange, label }: MovesAuto
   return (
     <Autocomplete
       multiple
+      fullWidth
       options={options}
       value={selected}
       onChange={(_, next) => onChange(next.map((option) => option.slug))}

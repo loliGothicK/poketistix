@@ -64,7 +64,7 @@ function OpponentDetailContent({
   const pokemonSlug = opponent.pokemonSlug;
   const itemOptions = useItemOptions();
   const abilityOptions = usePokemonAbilityOptions(pokemonSlug);
-  const moveOptions = usePokemonMoveOptions(pokemonSlug);
+  const moveOptions = usePokemonMoveOptions(pokemonSlug, { includeStatus: true });
   const [draft, setDraft] = useState<OpponentDraft>(opponent);
   const [changeSpeciesOpen, setChangeSpeciesOpen] = useState(false);
 

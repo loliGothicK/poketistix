@@ -1,535 +1,425 @@
 ---
-title: "PKF / PBN 棋譜フォーマット仕様"
-description: "公式ダブルバトル（Pokémon Champions）に特化した棋譜記述フォーマット PBN と超高圧縮バイナリ PKF の仕様書・公式リファレンスです。"
+title: "PBN (Pokémon Battle Notation) 仕様"
+description: "『Pokémon Champions』向けの人間可読な対戦棋譜フォーマット PBN（.pbn）の公式仕様書・リファレンスです。"
 order: 9
 group: "Analytics"
 ---
 
-本書は、『Pokémon Champions』（公式ダブルバトル / VGC形式）における対戦の記録・動画OCR抽出・AI評価値解析・Web共有を一貫して扱うための **棋譜フォーマット体系「PKF (Poké Kifu Format) / PBN (Pokémon Battle Notation)」** の公式リファレンスです。
+本書は、『Pokémon Champions』の対戦経過をテキストで記録・共有・解析するための棋譜フォーマット **PBN（Pokémon Battle Notation, `.pbn`）** の公式リファレンスです。
 
-## 1. なぜ新しい棋譜フォーマットが必要なのか？
+## 1. PBN とは
 
-### 既存フォーマット（Showdown Replay / バトルビデオログ）の課題
+PBN は、人間がエディタ上でそのまま読み書き・手修正できることを最優先に設計された、行指向の対戦棋譜 DSL（ドメイン固有言語）です。
 
-1. **『Pokémon Champions』独自のメタゲーム規約**:
-   - 努力値スケールが従来の 0〜252 ではなく **0〜32段階（合計上限66）**。
-   - オープンチームシート（OTS）とクローズドチームシート（CTS）の情報の非対称性。
-   - 過去世代のメガシンカ要素と現代ダブル仕様の融合。
-2. **動画キャプチャOCRとAI評価値解析の統合**:
-   実機の対戦録画からOCRで自動抽出した証跡（動画タイムスタンプ `@t=...ms`、認識信頼度 `@conf=...`、要目視確認フラグ `@review`）や、MCTS/GTOソルバーによる各ターンの推奨最善手・ミス分類（`@best`, `@quality`）を単一の棋譜に注釈として保持できる標準規格が存在しませんでした。
-
-## 2. 3層同型アーキテクチャ (3-Tier Isomorphic Architecture)
-
-PKFフォーマット体系は、用途の異なる3つの表現形式が同一の抽象構文木（AST: `BattleKifu`）を介して **完全に可逆（Lossless）に相互変換** できるように設計されています。
+- **『Pokémon Champions』準拠の表現**:
+  - 努力値（EV）は各能力 **0〜32・合計上限 66** の Champions 独自スケールに対応しています。
+  - オープンチームシート（OTS）とクローズドチームシート（CTS）の情報の非対称性（判明済みの相手ポケモンのみ記録し、未判明枠は `?` で表現）を自然に記述できます。
+- **因果関係スコープ（`{ ... }`）**:
+  - 技のダメージ・追加効果・被弾リアクション（オボンのみ・特性発動など）や、繰り出し時の入場特性・天候／フィールド展開を波括弧ブロックで構造化します。
+- **動画棋譜解析との統合**:
+  - 対戦録画からの自動抽出タイムスタンプ（`@t=...ms`）を各ターンに保持でき、動画シークと棋譜の照合・手修正をシームレスに行えます。
 
 ```mermaid
 flowchart LR
-    PBN["PBN (.pbn)<br/>Pokémon Battle Notation<br/>人間可読・編集用テキストDSL"] <-->|to_pbn / from_pbn| AST["PKF-JSON (.pkf.json)<br/>Canonical AST (BattleKifu)<br/>Web UI / TypeScript / WASM"]
-    AST <-->|to_pkf_bytes / from_pkf_bytes| PKF["PKF (.pkf)<br/>Poké Kifu Format<br/>超高圧縮バイナリ (350〜550B/試合)"]
-    PKF <-->|Base64URL エンコード| URL["URL パラメータ<br/>?pkf=UEtGARI...<br/>DB不要の1手軽シェア"]
+    Video["対戦録画 (.mp4 / .webm)"] -->|動画から棋譜解析| PBN["PBN テキスト (.pbn)"]
+    Manual["手入力・テキスト編集"] --> PBN
+    PBN -->|戦績フォーム反映| Record["戦績記録・振り返り"]
+    PBN -->|パーサー / 分析| Analytics["選出・勝率・盤面分析"]
 ```
-
-| フォーマット                          | 拡張子 / MIME                               | 主な用途                                              | 特徴                                                                                      |
-| :------------------------------------ | :------------------------------------------ | :---------------------------------------------------- | :---------------------------------------------------------------------------------------- |
-| **PBN**<br/>(Pokémon Battle Notation) | `.pbn`<br/>`text/x-pbn`                     | 人間による閲覧・手修正・Git管理・SNS共有・動画OCR出力 | 1行1イベントの行指向テキストDSL。将棋の棋譜のように直感的に読め、エディタで直接編集可能。 |
-| **PKF**<br/>(Poké Kifu Format)        | `.pkf`<br/>`application/vnd.poketistix.pkf` | ファイル保存・DB格納・URLパラメータ埋め込み           | 数値辞書と1バイトOpcodeで極限まで圧縮。1試合が **約350〜550バイト** に収まる。            |
-| **PKF-JSON**                          | `.pkf.json`<br/>`application/json`          | Webフロントエンド・API・WASM入出力                    | Rust (`kifu.rs`) と TypeScript (`tsify`) で相互運用される標準データ構造。                 |
 
 ---
 
-## 3. PBN (Pokémon Battle Notation, `.pbn`) 実践ガイド
+## 2. ファイル全体構成
 
-PBNは、テキストエディタで人間が読む・書く・編集することを最優先にしたフォーマットです。空行および `#` から始まる行はコメントとして無視されます。
+空行および `#` から始まる行はコメントとして扱われます。PBN ドキュメントは以下の順序で構成されます。
 
-### 3.1 PBN ファイルの全体構成
-
-```text
-[PBN "1.0"]                      <- ヘッダ: メタデータ（レギュレーション、シート形式、勝敗等）
+```pbn
+[PBN "1.0"]                         # 1. ヘッダ（仕様バージョン・レギュレーション・勝敗等）
 [Regulation "M-C"]
 [Sheet "CTS"]
 [Result "WIN"]
 
-@p1 0 raichu @ raichunite-y ...   <- 自軍パーティ（完全情報: 努力値・実数値・技4つ）
+@p1 0 gengar @ gengarite | ...      # 2. 自軍パーティ（6体）
 ...
-@select 5, 1, 2, 4               <- 選出4匹（先発2匹 + 後発2匹の登録インデックス）
+@select 0, 1, 3, 2                  # 3. 自軍選出（先発2体, 控え2体）
 
-@p2 0 golisopod                  <- 相手見せ合いパーティ（CTSなら種族のみ、OTSなら持ち物等も記述）
+@p2 0 torkoal                       # 4. 相手見せ合いパーティ（6体）
 ...
 
-@lead @t=106000ms                <- ターン0: 先発繰り出しと入場時特性
-  switch p2b farigiraf 100%
-  ...
+@lead @t=62000ms                    # 5. 先発繰り出し（Turn 0）
+  switch p2b torkoal 100%
+  switch p2a trevenant 100%
+  switch p1a gengar 165/165
+  switch p1b incineroar 202/202 {
+    ability p1b intimidate
+  }
 
-@turn 1 @t=115000ms              <- ターン1: ターン開始時情報
-  @field Rain 1/5                <- ターン開始時に有効な天候・フィールド（経過/最大）
+@turn 1 @t=75000ms                  # 6. ターンセクション（1ターンごと）
+  @field Sandstorm 5/5 | Grassy 4/5
   @state
   p1:
-    | active: salamence 172/172, incineroar 234/234
-    | bench: rillaboom 209/209, volcarona 224/224
+    | active:
+        p1a: gengar 165/165
+        p1b: incineroar 202/202
+    | bench: rillaboom 207/207, hippowdon 215/215
   p2:
-    | active: garchomp 100%, farigiraf 100%
-    | bench: 2 alive
-  @cmd p1a: protect | p1b: snarl <- プレイヤーの入力コマンド
-  move p1a protect ...           <- ターン内に発生したアクション・イベント
+    | active:
+        p2a: trevenant 100%
+        p2b: torkoal 100%
+    | bench: ? 100%, ? 100%
+  @cmd p1a: shadow-ball p2b +mega | p1b: fake-out p2a
+  mega p1a gengar-mega
+  move p1b fake-out {
+    p2a: 100% -> 93%
+  }
   ...
+
+  # the battle has ended due to all pokemon fainting
 ```
 
 ---
 
-### 3.2 実戦棋譜による逐行ウォークスルー
+## 3. ヘッダ・メタデータ
 
-以下は、実機対戦録画のOCR解析から生成された PBN の実例と各セクションの解説です。
+ファイル先頭に `[Tag "Value"]` 形式で記述します。
 
-```text
+| タグ         | 必須 | 値の例                                      | 説明                                                             |
+| :----------- | :--- | :------------------------------------------ | :--------------------------------------------------------------- |
+| `PBN`        | 必須 | `"1.0"`                                     | PBN フォーマットのバージョン。                                   |
+| `Regulation` | 必須 | `"M-A"`, `"M-B"`, `"M-C"`                   | 公式レギュレーション識別子。                                     |
+| `Sheet`      | 必須 | `"CTS"` / `"OTS"`                           | クローズドチームシート（CTS）またはオープンチームシート（OTS）。 |
+| `Result`     | 必須 | `"WIN"` / `"LOSS"` / `"DRAW"` / `"UNKNOWN"` | 対戦結果（P1 視点）。                                            |
+| `Rating`     | 任意 | `"1845.181"`                                | 対戦終了後に表示されたレート値。                                 |
+
+---
+
+## 4. パーティ・選出ディレクティブ
+
+### 4.1 自軍パーティ (`@p1`)
+
+登録インデックス `0`〜`5` に対して、種族・もちもの・特性・性格と努力値・Lv.50 実数値・技構成を `|` 区切りで記述します。
+
+```pbn
+@p1 <idx> <species> [@ <item>] | <ability> | <Nature> [<EVs>] | <H,A,B,C,D,S> | <move1, move2, move3, move4>
+```
+
+- **識別子（スラッグ）**: 種族・もちもの・特性・技はすべて小文字ハイフン区切りの正規スラッグ（例: `sitrus-berry`, `grassy-surge`, `parting-shot`）を使用します。
+- **努力値（Champions 32/66 形式）**: `H`, `A`, `B`, `C`, `D`, `S` に `0`〜`32` の数値を付けて記述します。性格の上昇補正は `+`、下降補正は `-` を末尾に付与します（例: `Timid H30 C5 D24 S7+`）。
+
+### 4.2 自軍選出 (`@select`)
+
+`@p1` の登録インデックスを **先発2体（`p1a`, `p1b`）→ 控え2体** の順にカンマ区切りで記述します。
+
+```pbn
+@select 0, 1, 3, 2
+```
+
+### 4.3 相手見せ合いパーティ (`@p2`)
+
+CTS では種族スラッグのみを記述します。OTS や判明情報を追記する場合は `@p1` と同様に `@ item | ability | moves` を併記できます。
+
+```pbn
+@p2 0 torkoal
+@p2 1 snorlax
+@p2 2 trevenant
+@p2 3 sinistcha
+@p2 4 swampert
+@p2 5 pelipper
+```
+
+---
+
+## 5. リード・ターン構造
+
+### 5.1 スロット識別子と HP 表記
+
+| スロット      | 意味                 | HP 表記                                          |
+| :------------ | :------------------- | :----------------------------------------------- |
+| `p1a` / `p1b` | 自軍 左 / 右スロット | 実数値 `現在HP/最大HP`（例: `165/165`、`0/165`） |
+| `p2a` / `p2b` | 相手 左 / 右スロット | 割合 `0%`〜`100%`（例: `93%`、`0%`）             |
+
+### 5.2 リード (`@lead`)
+
+ターン 1 開始前の先発繰り出しと入場時特性・天候／フィールド発動を記述します。
+
+```pbn
+@lead @t=62000ms
+  switch p2b torkoal 100%
+  switch p2a trevenant 100%
+  switch p1a gengar 165/165
+  switch p1b incineroar 202/202 {
+    ability p1b intimidate
+  }
+```
+
+### 5.3 ターンヘッダと状態スナップショット (`@turn`, `@field`, `@state`, `@cmd`)
+
+各ターンの先頭では、有効な場の状態（`@field`）、盤面スナップショット（`@state`）、プレイヤーの入力コマンド（`@cmd`）を記述します。
+
+- **`@field`**: ターン開始時点で有効な天候・フィールド・場の効果と、**残りターン / 最大ターン** を `|` 区切りで記述します（例: `Sandstorm 5/5 | Grassy 4/5 | Trick Room 3/5`）。ターン経過ごとに `5/5` → `4/5` → … → `1/5` とカウントダウンします。なお、死に出し（ターン終了時のひんし交代）で展開された天候・フィールドは、次のターン開始時に `5/5`（またはアイテム延長時 `8/8`）から始まります。
+- **`@state`**:
+  - `active:` に場の各スロットの種族・HP・状態異常（`[brn]`, `[par]`, `[slp]`, `[psn]`, `[tox]`, `[frz]`）・能力ランク変化（`(atk -1, spd +1)`）を記述します。
+  - `bench:` に控えポケモンを記述します。ひんし済みは `fnt`、相手の未登場枠は `? 100%` と表記します。
+- **`@cmd`**: 自軍 2 体の選択行動を `|` 区切りで記述します。
+  - 技使用: `<move_id> [<target_slot>] [+mega]`（例: `shadow-ball p2b +mega`）
+  - 交代: `switch <species>`（例: `switch incineroar`）
+  - 未確定 / パス: `?` / `pass`
+
+```pbn
+@turn 4 @t=320000ms
+  @field Sandstorm 4/5 | Grassy 3/5 | Trick Room 2/5
+  @state
+  p1:
+    | active:
+        p1a: hippowdon 215/215
+        p1b: rillaboom 183/207
+    | bench: gengar-mega fnt, incineroar 120/202
+  p2:
+    | active:
+        p2a: trevenant 98%
+        p2b: torkoal 90%
+    | bench: ? 100%, ? 100%
+  @cmd p1a: high-horsepower p2b | p1b: switch incineroar
+```
+
+---
+
+## 6. イベント構文リファレンス
+
+ターン内に発生したアクションと結果は、実機での発生順に 1 行 1 イベントで記述します。因果関係のある付随イベントは `{ ... }` ブロックでネストします。
+
+### 6.1 イベント一覧
+
+| コマンド  | 構文                                          | 説明・例                                                                                                                            |
+| :-------- | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `mega`    | `mega <slot> <species>`                       | メガシンカ。例: `mega p1a gengar-mega`                                                                                              |
+| `move`    | `move <slot> <move_id> [{ ... }]`             | 技の発動。単行結果（`{ protected }`, `{ missed }`, `{ failed }`, `{ immune }`）または複数行ブロックで対象ダメージ・追加効果を内包。 |
+| `switch`  | `switch <slot> <species> <hp> [{ ... }]`      | 交代・繰り出し。入場時特性や天候・フィールド変化を `{ ... }` に内包。                                                               |
+| `ability` | `ability <slot> <ability_id>`                 | 特性の発動。例: `ability p1b intimidate`                                                                                            |
+| `item`    | `item <slot> <item_id>`                       | もちものの発動・消費。例: `item p1a occa-berry`                                                                                     |
+| `damage`  | `damage <slot> <before> -> <after> [<cause>]` | 定数ダメージ・反動・スリップダメージ等。例: `damage p1b 110/202 -> 60/202 [recoil]`、`damage p2b 90% -> 84% [sandstorm]`            |
+| `heal`    | `heal <slot> <before> -> <after> [<cause>]`   | HP 回復。例: `heal p1b 84/202 -> 134/202 [sitrus-berry]`、`heal p1a 146/215 -> 159/215 [leftovers]`                                 |
+| `boost`   | `boost <slot> <stat> <+N\|-N>`                | 能力ランク変化（`atk`, `def`, `spa`, `spd`, `spe`, `accuracy`, `evasion`）。例: `boost p2b atk -1`                                  |
+| `status`  | `status <slot> <+status\|-status>`            | 状態異常・状態変化の付与または解除。例: `status p1a +brn`、`status p2a +destiny-bond`                                               |
+| `cant`    | `cant <slot> <reason>`                        | 行動不能。例: `cant p2b flinch`、`cant p1a par`                                                                                     |
+| `perish`  | `perish <slot> <count> [{ faint <slot> }]`    | ほろびのうたの残りカウント（`3` / `2` / `1` / `0`）。`0` 到達時は `{ faint <slot> }` でひんしを内包。                               |
+| `faint`   | `faint <slot> [<cause>]`                      | 戦闘不能。みちづれ等の直接要因がある場合は `[destiny-bond]` を付与。                                                                |
+| `weather` | `weather <Weather>`                           | 天候変化（`Rain`, `HarshSunlight`, `Sandstorm`, `Snow`, `None`）。                                                                  |
+| `terrain` | `terrain <Terrain>`                           | フィールド変化（`Electric`, `Grassy`, `Misty`, `Psychic`, `None`）。                                                                |
+| `field`   | `field <condition> <on\|off>`                 | 全体場の変化（`trick-room`, `gravity`, `wonder-room`, `magic-room` 等）。                                                           |
+| `side`    | `side <p1\|p2> <condition> <on\|off>`         | サイド条件の変化（`tailwind`, `reflect`, `light-screen`, `aurora-veil`, `wide-guard` 等）。                                         |
+
+### 6.2 `move` ブロック内の対象行とリアクション
+
+`move` ブロック内では、各対象への HP 変化を `<slot>: <before> -> <after>` で簡潔に記述します。被弾時にオボンのみや特性が発動した場合は、さらに入れ子の `{ ... }` ブロックにまとめます。
+
+```pbn
+  move p2a eruption {
+    p1a: 215/215 -> 133/215
+    p1b: 120/202 -> 84/202 {
+      heal p1b 84/202 -> 134/202 [sitrus-berry]
+    }
+  }
+```
+
+### 6.3 ほろびのうた (`perish`) とみちづれ (`faint ... [destiny-bond]`)
+
+- **ほろびのうた**: 残りカウントは単一数値（`3` / `2` / `1` / `0`）で記述し、`0` によるひんしは `{ faint <slot> }` ブロックに内包します。
+
+```pbn
+  perish p1a 1
+  perish p2a 0 {
+    faint p2a
+  }
+```
+
+- **みちづれ**: 攻撃によって倒されたポケモンのみちづれで攻撃側がひんしになった場合、`faint <slot> [destiny-bond]` として原因を明示します。
+
+```pbn
+  move p1a shadow-ball {
+    p2a: 93% -> 0%
+    faint p2a
+    faint p1a [destiny-bond]
+  }
+```
+
+### 6.4 対戦終了コメント
+
+棋譜の末尾には、対戦が終了したこととその理由を示すコメント行を必ず記述します（勝敗そのものはヘッダの `[Result "..."]` で表すため、コメントには終了理由のみを記述します）。
+
+| 終了理由           | コメント行                                                             |
+| :----------------- | :--------------------------------------------------------------------- |
+| 全ポケモンひんし   | `# the battle has ended due to all pokemon fainting`                   |
+| 降参               | `# the battle has ended due to a forfeit`                              |
+| 相手の持ち時間切れ | `# the battle has ended due to the opposing player's time running out` |
+| 自分の持ち時間切れ | `# the battle has ended due to your time running out`                  |
+| 総合時間切れ       | `# the battle has ended due to time running out`                       |
+| 理由不明           | `# the battle has ended`                                               |
+
+---
+
+## 7. 実戦棋譜サンプル
+
+```pbn
 [PBN "1.0"]
 [Regulation "M-C"]
 [Sheet "CTS"]
-[Result "WIN"]
+[Result "LOSS"]
 
-# ==============================================================================
-# P1（自軍）パーティ登録情報 (6匹)
-# 書式: @p1 <idx> <slug> @ <item> | <ability> | <性格・努力値> | <実数値> | <技構成>
-# ==============================================================================
-@p1 0 raichu @ raichunite-y | lightning-rod | Timid H24 B10 S32+ | 183,99,95,110,100,213 | zap-cannon, focus-blast, encore, protect
-@p1 1 incineroar @ sitrus-berry | intimidate | Impish H32 A3 B10+ D11 S10 | 234,141,143,90,132,100 | flare-blitz, snarl, parting-shot, fake-out
-@p1 2 rillaboom @ miracle-seed | grassy-surge | Adamant H17 A26+ S23 | 209,216,110,72,90,151 | grassy-glide, wood-hammer, high-horsepower, fake-out
-@p1 3 basculegion-male @ choice-scarf | adaptability | Jolly H1 A32 B1 S32+ | 197,196,87,90,95,178 | last-respects, wave-crash, flip-turn, icy-wind
-@p1 4 volcarona @ grassy-seed | flame-body | Modest H32 B29 C5+ | 224,72,143,181,125,120 | overheat, struggle-bug, rage-powder, tailwind
-@p1 5 salamence @ salamencite | intimidate | Mild H1 C32+ D1 S32 | 172,155,90,213,102,184 | hyper-voice, double-edge, tailwind, protect
+@p1 0 gengar @ gengarite | cursed-body | Timid H30 C5 D24 S7+ | 165,76,80,155,119,150 | shadow-ball, sludge-bomb, perish-song, protect
+@p1 1 incineroar @ sitrus-berry | intimidate | Sassy H32 B18 D16+ | 202,135,128,100,138,72 | flare-blitz, parting-shot, fake-out, protect
+@p1 2 rillaboom @ miracle-seed | grassy-surge | Sassy H32 B13 D21+ | 207,145,123,80,122,94 | grassy-glide, u-turn, fake-out, protect
+@p1 3 hippowdon @ leftovers | sand-stream | Sassy H32 B6 D28+ | 215,132,144,88,132,60 | high-horsepower, stone-edge, yawn, protect
+@p1 4 kingambit @ life-orb | defiant | Adamant H30 A32+ D3 S1 | 205,205,140,72,108,71 | kowtow-cleave, sucker-punch, swords-dance, protect
+@p1 5 sneasler @ grassy-seed | unburden | Jolly A32 B2 S32+ | 155,182,82,54,100,189 | close-combat, dire-claw, acrobatics, protect
+@select 0, 1, 3, 2
 
-# 選出4匹: 先発(ボーマンダ#5, ガオガエン#1), 後発(ゴリランダー#2, ウルガモス#4)
-@select 5, 1, 2, 4
+@p2 0 torkoal
+@p2 1 snorlax
+@p2 2 trevenant
+@p2 3 sinistcha
+@p2 4 swampert
+@p2 5 pelipper
 
-# ==============================================================================
-# P2（相手）見せ合い情報 (6匹)
-# CTS（クローズド）時は判明種族のみ。OTS（オープン）時は @ item | ability | moves を併記可
-# ==============================================================================
-@p2 0 golisopod
-@p2 1 rillaboom
-@p2 2 farigiraf
-@p2 3 pelipper
-@p2 4 garchomp
-@p2 5 archaludon
-
-# ==============================================================================
-# リード（Turn 0）: 先発の繰り出しと入場時特性の発動順序
-# ==============================================================================
-@lead @t=106000ms
-  switch p2b farigiraf 100%
-  switch p2a garchomp 100%
-  switch p1a salamence 172/172
-  switch p1b incineroar 234/234
-  ability p1a intimidate {
-    p2a: atk -1
-    p2b: atk -1
-  }
-  ability p1b intimidate {
-    p2a: atk -1
-    p2b: atk -1
+@lead @t=62000ms
+  switch p2b torkoal 100%
+  switch p2a trevenant 100%
+  switch p1a gengar 165/165
+  switch p1b incineroar 202/202 {
+    ability p1b intimidate
   }
 
-# ==============================================================================
-# Turn 1: 相手メガシンカ + てだすけ + まもる（竜の波動遮断）+ バークアウト
-# ==============================================================================
-@turn 1 @t=120000ms
-  @cmd p1a: protect | p1b: snarl
-  mega p2a garchomp-mega-z
-  move p2b helping-hand -> p2a
-  move p1a protect
-  move p2a dragon-pulse -> p1a { protected }
-  move p1b snarl {
-    p2a: 100% -> 88%, spa -1
-    p2b: 100% -> 80%, spa -1
+@turn 1 @t=75000ms
+  @state
+  p1:
+    | active:
+        p1a: gengar 165/165
+        p1b: incineroar 202/202
+    | bench: hippowdon 215/215, rillaboom 207/207
+  p2:
+    | active:
+        p2a: trevenant 100%
+        p2b: torkoal 100%
+    | bench: ? 100%, ? 100%
+  @cmd p1a: shadow-ball p2b +mega | p1b: fake-out p2a
+  mega p1a gengar-mega
+  move p1b fake-out {
+    p2a: 100% -> 93%
   }
-
-# ==============================================================================
-# Turn 2: 交代 + グラスメイカー + トリックルーム始動
-# ==============================================================================
-@turn 2 @t=174000ms
-  @cmd p1a: switch rillaboom | p1b: snarl
-  switch p2a archaludon 100%
-  switch p1a rillaboom 209/209 {
-    ability p1a grassy-surge
-    terrain Grassy
+  move p1a shadow-ball {
+    p2b: 100% -> 6%
   }
-  move p1b snarl {
-    p2a: 100% -> 92% {
-      ability p2a stamina
-      boost p2a def +1
-      boost p2a spa -1
-    }
-    p2b: 80% -> 62%, spa -1
-  }
-  move p2b trick-room {
+  move p2a trick-room {
     field trick-room on
   }
 
-# ==============================================================================
-# Turn 3: ターン開始時にグラスフィールドとトリックルームが有効 (2/5ターン目)
-# ==============================================================================
-@turn 3 @t=391000ms
-  @field
-    | entire: Grassy 2/5, Trick Room 2/5
-    | p1: Tailwind 2/4
+@turn 2 @t=132000ms
+  @field Trick Room 4/5
   @state
   p1:
-    | active: rillaboom 209/209, incineroar 234/234
-    | bench: volcarona 224/224, salamence fnt
+    | active:
+        p1a: gengar-mega 165/165
+        p1b: incineroar 202/202
+    | bench: hippowdon 215/215, rillaboom 207/207
   p2:
-    | active: archaludon 92% (def +1, spa -1), farigiraf 62% [par] (spa -1)
-    | bench: golisopod 100%, ? 100%
-  @cmd p1a: wood-hammer -> p2b | p1b: flare-blitz -> p2b
-  move p2b electro-shot {
-    p1b: 234/234 -> 126/234
+    | active:
+        p2a: trevenant 93%
+        p2b: torkoal 6%
+    | bench: ? 100%, ? 100%
+  @cmd p1a: shadow-ball p2a | p1b: parting-shot
+  move p2a destiny-bond
+  move p1b parting-shot
+  switch p1b rillaboom 207/207 {
+    ability p1b grassy-surge
+    terrain Grassy
   }
+  move p1a shadow-ball {
+    p2a: 93% -> 0%
+    faint p2a
+    faint p1a [destiny-bond]
+  }
+  switch p1a hippowdon 215/215 {
+    ability p1a sand-stream
+    weather Sandstorm
+  }
+
+  # the battle has ended due to a forfeit
 ```
 
 ---
 
-## 4. PBN 形式文法仕様 (Formal EBNF Grammar v1.0 Revised)
-
-PBN は行指向のドメイン固有言語（DSL）です。
-波括弧 `{ ... }` により技の対象、対象リアクション（特性・もちもの等の連鎖効果）、入場時特性等の因果関係スコープが明示的に閉じられます。
+## 8. 形式文法 (EBNF)
 
 ```ebnf
-/* ========================================================================== */
-/* PBN ドキュメント全体構造 (v1.0 Revised)                                    */
-/* ========================================================================== */
-<pbn_document>        ::= { <blank_or_comment> }*
-                          { <header_line> { <blank_or_comment> }* }*
-                          { <team_directive> { <blank_or_comment> }* }*
-                          [ <select_directive> { <blank_or_comment> }* ]
-                          { <preview_directive> { <blank_or_comment> }* }*
-                          [ <lead_section> { <blank_or_comment> }* ]
-                          { <turn_section> { <blank_or_comment> }* }*
+<pbn_document>       ::= { <blank_or_comment> }*
+                         { <header_line> { <blank_or_comment> }* }*
+                         { <p1_directive> { <blank_or_comment> }* }*
+                         [ <select_directive> { <blank_or_comment> }* ]
+                         { <p2_directive> { <blank_or_comment> }* }*
+                         [ <lead_section> { <blank_or_comment> }* ]
+                         { <turn_section> { <blank_or_comment> }* }*
 
-<blank_or_comment>    ::= [<indent>] [ "#" <any_text> ] <newline>
+<blank_or_comment>   ::= [<indent>] [ "#" <any_text> ] <newline>
 
-/* -------------------------------------------------------------------------- */
-/* 1. ヘッダ・メタデータ ([Tag "Value"])                                      */
-/* -------------------------------------------------------------------------- */
-<header_line>         ::= [<indent>] "[" <tag_name> <ws> '"' <tag_value> '"' "]" [<ws>] <newline>
-<tag_name>            ::= "PBN" | "Regulation" | "Sheet" | "Result" | "Rating" | <ident>
-<tag_value>           ::= <any_char_except_quote>*
+<header_line>        ::= "[" <tag_name> <ws> '"' <tag_value> '"' "]" <newline>
+<tag_name>           ::= "PBN" | "Regulation" | "Sheet" | "Result" | "Rating" | <ident>
 
-/* -------------------------------------------------------------------------- */
-/* 2. パーティ登録・見せ合いディレクティブ (@p1, @p2, @select)                */
-/* -------------------------------------------------------------------------- */
-<team_directive>      ::= [<indent>] "@p1" <ws> <idx> <ws> <species> [ <ws> "@" <ws> <item_id> ]
-                          <ws> "|" <ws> <ability_id>
-                          <ws> "|" <ws> <nature_spread>
-                          <ws> "|" <ws> <stats_six>
-                          <ws> "|" <ws> <moves_list> [<ws>] <newline>
+<p1_directive>       ::= "@p1" <ws> <idx> <ws> <species> [ <ws> "@" <ws> <item_id> ]
+                         <ws> "|" <ws> <ability_id>
+                         <ws> "|" <ws> <nature_spread>
+                         <ws> "|" <ws> <stats_six>
+                         <ws> "|" <ws> <moves_list> <newline>
+<select_directive>   ::= "@select" <ws> <idx> { "," [<ws>] <idx> }* <newline>
+<p2_directive>       ::= "@p2" <ws> <idx> <ws> <species>
+                         [ <ws> "@" <ws> <item_id> ]
+                         [ <ws> "|" <ws> <ability_id> ]
+                         [ <ws> "|" <ws> <moves_list> ] <newline>
 
-<select_directive>    ::= [<indent>] "@select" <ws> <idx> { [<ws>] "," [<ws>] <idx> }* [<ws>] <newline>
+<lead_section>       ::= "@lead" { <ws> <turn_meta> }* <newline>
+                         { <turn_event> | <blank_or_comment> }*
+<turn_section>       ::= "@turn" <ws> <number> { <ws> <turn_meta> }* <newline>
+                         { <blank_or_comment> }*
+                         [ <field_line> { <blank_or_comment> }* ]
+                         [ <state_section> { <blank_or_comment> }* ]
+                         [ <cmd_line> { <blank_or_comment> }* ]
+                         { <turn_event> | <blank_or_comment> }*
 
-<preview_directive>   ::= [<indent>] "@p2" <ws> <idx> <ws> <species>
-                          [ <ws> "@" <ws> <item_id> ]
-                          [ <ws> "|" <ws> <ability_id> ]
-                          [ <ws> "|" <ws> <nature_spread> ]
-                          [ <ws> "|" <ws> <stats_six> ]
-                          [ <ws> "|" <ws> <moves_list> ] [<ws>] <newline>
+<turn_meta>          ::= "@t=" <number> "ms"
+                       | "@eval=" [ "+" | "-" ] <float> "%"
+                       | "@best=" '"' <any_char_except_quote>* '"'
+                       | "@quality=" ("Best" | "Good" | "Inaccuracy" | "Blunder")
 
-<nature_spread>       ::= <nature_name> { <ws> <ev_alloc> }*
-<ev_alloc>            ::= ("H" | "A" | "B" | "C" | "D" | "S") <number> [ "+" | "-" ]
-<stats_six>           ::= <stat_val> "," [<ws>] <stat_val> "," [<ws>] <stat_val> "," [<ws>] <stat_val> "," [<ws>] <stat_val> "," [<ws>] <stat_val>
-<stat_val>            ::= <number> | "?"
-<moves_list>          ::= <move_id> { [<ws>] "," [<ws>] <move_id> }*
+<field_line>         ::= [<indent>] "@field" <ws> <field_item> { <ws> "|" <ws> <field_item> }* <newline>
+<field_item>         ::= <condition_name> <ws> <number> "/" <number>
 
-/* -------------------------------------------------------------------------- */
-/* 3. ターンセクション (@lead, @turn)                                         */
-/* -------------------------------------------------------------------------- */
-<lead_section>        ::= [<indent>] "@lead" { <ws> <turn_meta> }* [<ws>] <newline>
-                          { <lead_event> | <blank_or_comment> }*
+<cmd_line>           ::= [<indent>] "@cmd" <ws> "p1a:" <ws> <slot_action> <ws> "|" <ws> "p1b:" <ws> <slot_action> <newline>
+<slot_action>        ::= "switch" <ws> <species>
+                       | <move_id> [ <ws> <slot> ] [ <ws> "+mega" ]
+                       | "pass"
+                       | "?"
 
-<turn_section>        ::= [<indent>] "@turn" <ws> <number> { <ws> <turn_meta> }* [<ws>] <newline>
-                          { <blank_or_comment> }*
-                          [ <field_state_section> { <blank_or_comment> }* ]
-                          [ <team_state_section> { <blank_or_comment> }* ]
-                          [ <cmd_line> { <blank_or_comment> }* ]
-                          [ <p2cmd_line> { <blank_or_comment> }* ]
-                          { <turn_event> | <blank_or_comment> }*
+<turn_event>         ::= <mega_line>
+                       | <move_block>
+                       | <switch_block>
+                       | <ability_block>
+                       | <item_block>
+                       | <damage_line>
+                       | <heal_line>
+                       | <boost_line>
+                       | <status_line>
+                       | <cant_line>
+                       | <perish_block>
+                       | <faint_line>
+                       | <field_event>
 
-<turn_meta>           ::= "@t=" <number> "ms"
-                        | "@eval=" [ "+" | "-" ] <float> "%"
-                        | "@best=" '"' <any_char_except_quote>* '"'
-                        | "@quality=" ("Best" | "Good" | "Inaccuracy" | "Blunder")
-                        | <meta_token>
+<move_block>         ::= [<indent>] "move" <ws> <slot> <ws> <move_id> [ <ws> <event_scope> ] <newline>
+<switch_block>       ::= [<indent>] "switch" <ws> <slot> <ws> <species> <ws> <hp_val> [ <ws> <event_scope> ] <newline>
+<perish_block>       ::= [<indent>] "perish" <ws> <slot> <ws> ("3" | "2" | "1" | "0") [ <ws> <event_scope> ] <newline>
+<faint_line>         ::= [<indent>] "faint" <ws> <slot> [ <ws> <cause_id> ] <newline>
+<damage_line>        ::= [<indent>] "damage" <ws> <slot> <ws> <hp_val> " -> " <hp_val> [ <ws> <cause_id> ] <newline>
+<heal_line>          ::= [<indent>] "heal" <ws> <slot> <ws> <hp_val> " -> " <hp_val> [ <ws> <cause_id> ] <newline>
+<cause_id>           ::= "[" <slug> "]"
 
-<field_state_section> ::= [<indent>] "@field" [ <ws> <field_scope_line> ] [<ws>] <newline>
-                          { [<indent>] "|" <ws> <field_scope_line> [<ws>] <newline> }*
-
-<field_scope_line>    ::= [ "|" <ws> ] <field_scope_item> { [<ws>] "|" <ws> <field_scope_item> }*
-
-<field_scope_item>    ::= <field_scope> ":" <ws> <cond_item_list>
-<field_scope>         ::= "entire" | "p1" | "p2"
-
-<cond_item_list>      ::= <field_cond_item> { [<ws>] "," <ws> <field_cond_item> }*
-<field_cond_item>     ::= <condition_name> <ws> <number> "/" <number>
-
-<team_state_section>  ::= [<ws_opt>] "@state" [<ws_opt>] <newline>
-                          { [<ws_opt>] <side_header> [<ws_opt>] <newline>
-                            { [<ws_opt>] "|" [<ws_opt>] <side_item> [<ws_opt>] <newline> }* }*
-
-<side_header>         ::= "p1:" | "p2:"
-<side_item>           ::= "active:" <ws> <active_poke_list>
-                        | "bench:" <ws> <bench_poke_list>
-<active_poke_list>    ::= <poke_entry> { [<ws_opt>] "," [<ws_opt>] <poke_entry> }*
-<bench_poke_list>     ::= <bench_entry> { [<ws_opt>] "," [<ws_opt>] <bench_entry> }*
-
-<poke_entry>          ::= [ <slot> <ws> ] <species> <ws> <hp_val> [ <ws> "[" <status_id> "]" ] [ <ws> "(" <stat_boost_list> ")" ]
-<stat_boost_list>     ::= <stat_boost> { [<ws>] "," [<ws>] <stat_boost> }*
-
-<bench_entry>         ::= ( <species> | "?" ) [ <ws> ( <hp_val> | "fnt" ) ] [ <ws> "[" <status_id> "]" ]
-                        | <number> <ws> ("alive" | "remaining")
-
-<cmd_line>            ::= [<indent>] "@cmd" <ws> "p1a:" <ws> <slot_action> <ws> "|" <ws> "p1b:" <ws> <slot_action> [<ws>] <newline>
-<p2cmd_line>          ::= [<indent>] "@p2cmd" <ws> "p2a:" <ws> <slot_action> <ws> "|" <ws> "p2b:" <ws> <slot_action> [<ws>] <newline>
-<slot_action>         ::= "switch" <ws> <species>
-                        | <move_id> [ <ws> "->" <ws> <slot> ] [ <ws> "+mega" ]
-                        | "pass"
-                        | "?"
-
-/* -------------------------------------------------------------------------- */
-/* 4. イベントブロック構文 (Event Hierarchy & Outcomes)                       */
-/* -------------------------------------------------------------------------- */
-<lead_event>          ::= <switch_block>
-                        | <ability_block>
-                        | <item_block>
-                        | <field_event>
-
-<turn_event>          ::= <mega_line>
-                        | <move_block>
-                        | <cant_line>
-                        | <switch_block>
-                        | <ability_block>
-                        | <item_block>
-                        | <field_event>
-                        | <damage_line>
-                        | <heal_line>
-                        | <boost_line>
-                        | <status_line>
-                        | <faint_line>
-
-/* メガシンカ・行動不能 */
-<mega_line>           ::= [<indent>] "mega" <ws> <slot> <ws> <species> [ <ws> <item_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-<cant_line>           ::= [<indent>] "cant" <ws> <slot> <ws> <reason_id> [ <ws> <move_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-
-/* 技の実行ブロック (1行ブロック `{ protected }` と複数行ブロックの両対応) */
-<move_block>          ::= <move_header> [ <ws> <move_scope> ] [<ws>] <newline>
-<move_header>         ::= [<indent>] "move" <ws> <slot> <ws> <move_id> [ <ws> "->" <ws> <slot> ] { <ws> <meta_token> }*
-<move_scope>          ::= "{" [<ws>] <inline_move_outcome> [<ws>] "}"
-                        | "{" [<ws>] <newline> { <move_child_event> | <blank_or_comment> }* [<indent>] "}"
-
-<inline_move_outcome> ::= "protected" | "missed" | "failed" | "immune"
-<move_child_event>    ::= <target_block>
-                        | [<indent>] <inline_move_outcome> { <ws> <meta_token> }* [<ws>] <newline>
-                        | <field_event>
-                        | <switch_block>
-                        | <ability_block>
-                        | <item_block>
-                        | <damage_line>
-                        | <heal_line>
-                        | <boost_line>
-                        | <faint_line>
-
-/* 対象ごとの結果と被弾リアクション */
-<target_block>        ::= [<indent>] ("target" <ws> | "->" <ws>) <slot> ":" <ws> <outcome_list> { <ws> <meta_token> }* [ <ws> <reaction_scope> ] [<ws>] <newline>
-<outcome_list>        ::= <outcome_item> { [<ws>] "," [<ws>] <outcome_item> }*
-<outcome_item>        ::= <damage_hp>
-                        | <stat_boost>
-                        | <status_change>
-                        | "protected" | "missed" | "immune" | "crit" | "super-effective" | "resisted" | "fainted"
-
-<damage_hp>           ::= <hp_val> <ws> "->" <ws> <hp_val>
-<stat_boost>          ::= <stat_name> <ws> <stat_delta>
-<stat_delta>          ::= ("+" | "-") ("1" | "2" | "3" | "4" | "5" | "6" | "12")
-<status_change>       ::= ("+" | "-") <status_id>
-
-/* 被弾・登場・特性リアクションスコープ */
-<reaction_scope>      ::= "{" [<ws>] <newline> { <reaction_event> | <blank_or_comment> }* [<indent>] "}"
-<reaction_event>      ::= <target_block>
-                        | <ability_block>
-                        | <item_block>
-                        | <boost_line>
-                        | <status_line>
-                        | <damage_line>
-                        | <heal_line>
-                        | <switch_block>
-                        | <field_event>
-                        | <faint_line>
-
-/* 交代ブロック (Switch Block) */
-<switch_block>        ::= <switch_header> [ <ws> <reaction_scope> ] [<ws>] <newline>
-<switch_header>       ::= [<indent>] "switch" <ws> <slot> <ws> <species> <ws> <hp_val> { <ws> <meta_token> }*
-
-/* 特性・持ち物ブロック (単一行でも `{ ... }` 付き複合効果でも記述可能) */
-<ability_block>       ::= <ability_header> [ <ws> <reaction_scope> ] [<ws>] <newline>
-<ability_header>      ::= [<indent>] "ability" <ws> <slot> <ws> <ability_id> { <ws> <meta_token> }*
-
-<item_block>          ::= <item_header> [ <ws> <reaction_scope> ] [<ws>] <newline>
-<item_header>         ::= [<indent>] "item" <ws> <slot> <ws> <item_id> [ <ws> ("consumed" | "activated" | "revealed") ] { <ws> <meta_token> }*
-
-/* 単一行プリミティブイベント */
-<boost_line>          ::= [<indent>] "boost" <ws> <slot> <ws> <stat_name> <ws> <stat_delta> { <ws> <meta_token> }* [<ws>] <newline>
-<status_line>         ::= [<indent>] "status" <ws> <slot> <ws> <status_change> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-<damage_line>         ::= [<indent>] "damage" <ws> <slot> <ws> <damage_hp> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-<heal_line>           ::= [<indent>] "heal" <ws> <slot> <ws> <damage_hp> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-<faint_line>          ::= [<indent>] "faint" <ws> <slot> { <ws> <meta_token> }* [<ws>] <newline>
-
-/* 場の変化 (Field Events) */
-<field_event>         ::= <weather_line> | <terrain_line> | <field_change_line> | <side_line>
-<weather_line>        ::= [<indent>] "weather" <ws> ("Rain" | "HarshSunlight" | "Sandstorm" | "Snow" | "None") { <ws> <meta_token> }* [<ws>] <newline>
-<terrain_line>        ::= [<indent>] "terrain" <ws> ("Electric" | "Grassy" | "Misty" | "Psychic" | "None") { <ws> <meta_token> }* [<ws>] <newline>
-<field_change_line>   ::= [<indent>] "field" <ws> <field_condition> <ws> ("on" | "off") { <ws> <meta_token> }* [<ws>] <newline>
-<side_line>           ::= [<indent>] "side" <ws> ("p1" | "p2") <ws> <side_condition> <ws> ("on" | "off" | <number>) { <ws> <meta_token> }* [<ws>] <newline>
-
-/* -------------------------------------------------------------------------- */
-/* 5. 終端記号・トークン定義 (Terminals & Tokens)                             */
-/* -------------------------------------------------------------------------- */
-<slot>                ::= "p1a" | "p1b" | "p2a" | "p2b"
-<stat_name>           ::= "atk" | "def" | "spa" | "spd" | "spe" | "accuracy" | "evasion"
-<status_id>           ::= "brn" | "par" | "slp" | "frz" | "psn" | "tox" | "confusion" | "taunt" | "encore" | <ident>
-<hp_val>              ::= <percentage> | <exact_hp> | "0" | "fnt" | "?"
-<percentage>          ::= <number> "%"
-<exact_hp>            ::= <number> "/" <number>
-
-<condition_name>      ::= "Trick Room" | "Gravity" | "Rain" | "HarshSunlight" | "Sandstorm" | "Snow"
-                        | "Electric" | "Grassy" | "Misty" | "Psychic"
-                        | "Tailwind" | "Reflect" | "Light Screen" | "Aurora Veil" | "Safeguard" | "Mist"
-                        | "Stealth Rock" | "Spikes" | "Toxic Spikes" | "Sticky Web"
-                        | <ident>
-<field_condition>     ::= "trick-room" | "gravity" | "fairy-lock" | "wonder-room" | "magic-room" | <ident>
-<side_condition>      ::= "tailwind" | "reflect" | "light-screen" | "aurora-veil" | "safeguard" | "mist"
-                        | "stealth-rock" | "spikes" | "toxic-spikes" | "sticky-web" | "wide-guard" | "quick-guard" | <ident>
-
-<idx>                 ::= "0" | "1" | "2" | "3" | "4" | "5"
-<species>             ::= <slug>
-<item_id>             ::= <slug>
-<ability_id>          ::= <slug>
-<move_id>             ::= <slug>
-<reason_id>           ::= <slug>
-<cause_id>            ::= "[" <slug> "]" | <slug>
-<nature_name>         ::= "Hardy" | "Lonely" | "Brave" | "Adamant" | "Naughty"
-                        | "Bold" | "Docile" | "Relaxed" | "Impish" | "Lax"
-                        | "Timid" | "Hasty" | "Serious" | "Jolly" | "Naive"
-                        | "Modest" | "Mild" | "Quiet" | "Bashful" | "Rash"
-                        | "Calm" | "Gentle" | "Sassy" | "Careful" | "Quirky"
-
-<slug>                ::= [a-z0-9]+ { "-" [a-z0-9]+ }*
-<ident>               ::= [A-Za-z0-9_-]+
-<number>              ::= [0-9]+
-<float>               ::= [0-9]+ [ "." [0-9]+ ]
-
-<indent>              ::= [ \t]*
-<ws>                  ::= [ \t]+
-<newline>             ::= [ "\r" ] "\n"
-
-<meta_token>          ::= "@review"
-                        | "@t=" <number> "ms"
-                        | "@conf=" <float> [ "%" ]
-                        | "@note=" '"' <any_char_except_quote>* '"'
-                        | "[" <any_char_except_bracket>* "]"
+<slot>               ::= "p1a" | "p1b" | "p2a" | "p2b"
+<hp_val>             ::= <number> "%" | <number> "/" <number> | "0" | "fnt" | "?"
 ```
-
----
-
-## 5. PBN 構文リファレンス
-
-### 5.1 ディレクティブ（ターン管理・コマンド・場の状態）
-
-ディレクティブは `@` で始まる行です。
-
-| ディレクティブ          | 構文例                                                                                                                                                                                                                          | 説明                                                                                                                                                                                                                         |
-| :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@turn`                 | `@turn 1 @t=12000ms [@eval=64.2%] [@best="..."] [@quality=Best]`                                                                                                                                                                | ターンの開始。タイムスタンプやAI評価値・着手分類を付与可能。                                                                                                                                                                 |
-| `@field`                | `@field entire: Grassy 2/5, Trick Room 2/5 \| p1: Tailwind 2/4`                                                                                                                                                                 | **ターン開始時に有効な場の状態**。全体（`entire`）・自陣（`p1`）・敵陣（`p2`）のスコープごとにカンマ区切りで集約し、スコープ間をパイプ `\|` で区切る。改行して `\|` から始まる継続行（パターンスタイル B）としても記述可能。 |
-| `@state`                | `@state\n  p1:\n    \| active: rillaboom 209/209, incineroar 234/234\n    \| bench: volcarona 224/224, salamence fnt\n  p2:\n    \| active: archaludon 92% (def +1), farigiraf 62% [par]\n    \| bench: golisopod 100%, ? 100%` | **ターン開始時のお互い（p1/p2）のポケモンの状態**。陣営（`p1:` / `p2:`）を親ブロックとし、インデント階層で `\| active: <場のポケモン>` と `\| bench: <控えの生存状況>` を記述。                                              |
-| `@cmd`                  | `@cmd p1a: hyper-voice +mega \| p1b: flare-blitz`                                                                                                                                                                               | 自軍プレイヤーが選択した入力行動（技名、交代先、メガシンカの有無）。                                                                                                                                                         |
-| `@p2cmd`                | `@p2cmd p2a: protect \| p2b: trick-room`                                                                                                                                                                                        | 相手の選択行動（リプレイ等で判明している場合のみ任意で記述）。                                                                                                                                                               |
-| `@note="..."` / `[...]` | `@note="相手のねこだましをケアしつつメガシンカ"`                                                                                                                                                                                | ターンまたはイベントに対するメタ情報・注釈コメント（旧 `{ ... }` から分離）。                                                                                                                                                |
-
-> [!NOTE]
-> **スロット識別子 (`PokemonIdent`)**:
->
-> - `p1a`: 自軍（プレイヤー1）の左スロット
-> - `p1b`: 自軍（プレイヤー1）の右スロット
-> - `p2a`: 相手（プレイヤー2）の左スロット（画面向かって中央〜右寄り）
-> - `p2b`: 相手（プレイヤー2）の右スロット（画面向かって右端）
-
----
-
-### 5.2 主要命令一覧
-
-| 命令             | 書式                                                   | 役割                                                                                                                     |
-| :--------------- | :----------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `switch`         | `switch <slot> <slug> <hp>`                            | 登場（交代・先発）。自軍は実数値 `curr/max`、相手は `XX%` で表記。`{ ... }` で入場時効果や交代理由スコープを持てる。     |
-| `move`           | `move <attacker> <move_id> [-> <target>]`              | 技の使用宣言。単体技の場合は `->` で対象を指定。全体技の場合は対象を省略。`{ ... }` で対象結果や被弾リアクションを囲む。 |
-| `target:` / `->` | `target <slot>: <damage_hp>, <stat_boost>`             | 対象ごとの効果・解決結果行。全体技・拡散技のダメージや能力変化、状態異常を対象ごとに集約。                               |
-| `ability`        | `ability <slot> <ability_id>`                          | 特性の発動宣言。単一行または `{ ... }` スコープで連鎖効果（じきゅうりょく等）を表現。                                    |
-| `item`           | `item <slot> <item_id> [consumed]`                     | 持ち物の発動・消費宣言。単一行または `{ ... }` スコープで表現。                                                          |
-| `boost`          | `boost <slot> <stat> <delta>`                          | 能力ランク変動（例: `boost p2a def +1`）。                                                                               |
-| `status`         | `status <slot> <+\|-<status_id>> [<cause>]`            | 状態異常・状態変化の付与・解除（例: `status p1a +par`, `status p1b -slp [lum-berry]`）。                                 |
-| `damage`         | `damage <slot> <damage_hp> [<cause>]`                  | 定数・スリップダメージ（天候、火傷、命の珠、ゴツゴツメット等）。                                                         |
-| `cant`           | `cant <slot> <reason> [<move>]`                        | 行動不能（麻痺、睡眠、氷、怯み、挑発等）。                                                                               |
-| `mega`           | `mega <slot> <mega_species>`                           | メガシンカの発動。                                                                                                       |
-| `terrain`        | `terrain <Electric\|Grassy\|Misty\|Psychic\|None>`     | フィールドの展開・終了。                                                                                                 |
-| `weather`        | `weather <Rain\|HarshSunlight\|Sandstorm\|Snow\|None>` | 天候の発生・終了。                                                                                                       |
-| `field`          | `field <trick-room\|gravity\|fairy-lock> <on\|off>`    | トリックルーム等の全体場効果の開始/終了。                                                                                |
-| `side`           | `side <p1\|p2> <tailwind\|reflect> <on\|off>`          | おいかぜ・壁等の陣地効果の開始/終了。                                                                                    |
-| `heal`           | `heal <target> <damage_hp> [<cause>]`                  | HP回復（フィールド、残飯、きのみ、回復技等）。推移と原因を記録。                                                         |
-| `faint`          | `faint <target>`                                       | 戦闘不能。                                                                                                               |
-
----
-
-## 6. PKF (Poké Kifu Format, `.pkf`) バイナリ仕様
-
-`.pkf` は、DBストレージやURL共有パラメータに最適化された **超高圧縮リトルエンディアン・バイナリフォーマット** です。
-
-### 6.1 ファイルヘッダ (8 bytes)
-
-```
-0                   1                   2                   3
-0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|       'P'     |       'K'     |       'F'     |  Version (1)  |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-| Regulation ID |  Flags Bitset |          Turn Count           |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-```
-
-- **`Magic (3B)` + `Version (1B)`**: `0x50, 0x4B, 0x46, 0x01` (`"PKF\x01"`)
-- **`Regulation ID (1B)`**: `0` = Champions M-A, `1` = M-B, `2` = M-C
-- **`Flags Bitset (1B)`**:
-  - `Bit 0`: `is_open_team_sheet` (0=CTS, 1=OTS)
-  - `Bit 1`: `has_provenance` (動画タイムスタンプ・OCR信頼度フラグを含む)
-  - `Bit 2`: `has_annotations` (AI評価値・最善手キャッシュを含む)
-  - `Bit 3..4`: `result` (`00`=Unknown, `01`=P1Win, `10`=P2Win, `11`=Draw)
-- **`Turn Count (2B, u16-LE)`**: ターン数
-
-### 6.2 文字列テーブル (String Table)
-
-1試合に登場するポケモン種族名・技名・特性名・アイテム名は高々30〜40種類です。ファイルの先頭にユニークなスラグ配列を一度だけ記録し、以降の全イベントではすべて **1バイト (`u8`) のインデックス** で参照します。
-
-### 6.3 イベント Opcode のビットパッキング (1 byte + ペイロード)
-
-スロット識別子 `PokemonIdent` はわずか **2 bit**（`00`=p1a, `01`=p1b, `10`=p2a, `11`=p2b）に収まるため、上位4bitを Opcode、下位4bitをスロットやフラグにパックします。
-
-| Opcode (上位4bit) | 命令                | ペイロード                                                               | 合計サイズ |
-| :---------------- | :------------------ | :----------------------------------------------------------------------- | :--------- |
-| `0x1_`            | `SwitchIn`          | `(player:1b, slot:1b)` + `team_idx:u8` + `species_idx:u8` + `ObservedHp` | 4〜6 B     |
-| `0x2_`            | `MegaEvolve`        | `target:2b` + `mega_species_idx:u8` + `item_idx:u8`                      | 3 B        |
-| `0x3_`            | `MoveUsed`          | `attacker:2b` + `has_target:1b` + `target:2b` + `move_idx:u8`            | 2 B        |
-| `0x4_`            | `Damage`            | `target:2b` + `flags:u8` + `hp_after` + 条件付き差分                     | 3〜7 B     |
-| `0x5_`            | `Heal`              | `target:2b` + `hp_after` + `effect_idx:Option<u8>`                       | 2〜4 B     |
-| `0x6_`            | `AbilityTriggered`  | `source:2b` + `ability_idx:u8`                                           | 2 B        |
-| `0x7_`            | `ItemTriggered`     | `source:2b` + `consumed:1b` + `item_idx:u8`                              | 2 B        |
-| `0x8_`            | `StatStageChanged`  | `target:2b` + `(stat:3b, delta+6:4b)`                                    | 2 B        |
-| `0x9_`            | `StatusChanged`     | `target:2b` + `status_code:u8`                                           | 2 B        |
-| `0xA_`            | `Weather / Terrain` | `kind:2b` + `id:4b`                                                      | 1 B        |
-| `0xB_`            | `Field / SideCond`  | `field_id:3b` + `active:1b`                                              | 1 B        |
-| `0xC_`            | `Faint`             | `target:2b`                                                              | 1 B        |
-
-> [!TIP]
-> **圧倒的な軽量性**:
-> 1試合（約10ターン、60〜80イベント）のバイナリ全体サイズは **わずか 350〜550 バイト** です。これを Base64URL 化すると約 470〜730 文字となり、サーバーに保存することなく **URLクエリパラメータ単体（`https://poketistix.com/ja/battle-record?pkf=...`）で対戦譜・AI解析結果を丸ごと共有可能** です。

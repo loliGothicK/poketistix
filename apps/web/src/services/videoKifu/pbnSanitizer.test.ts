@@ -4,6 +4,7 @@ import { BattleLogParser, type LogEvent, type TurnRecord } from "@/services/batt
 import { ENGLISH_LOG_PATTERNS, JAPANESE_LOG_PATTERNS } from "@/services/battleLogPatterns";
 import { normalizeOcrToken } from "@/services/ocrText";
 import { detectResultScreenOutcome } from "./frameSampling";
+import { analysisSummaryToBattleRecordDraft, parsePbnToAnalysisSummary } from "./kifuSummary";
 import { sanitizeAndValidateBattleLog, validateNoSelfAttack } from "./pbnSanitizer";
 
 function makeSlot(slug: string, teamIdx: number | null) {
@@ -457,5 +458,180 @@ describe("BattleLogParser weather/terrain countdown on faint replacement", () =>
     fillRect(lossBuf, 0.64, 0.86, 0.56, 0.72, 220, 230, 60);
     fillRect(lossBuf, 0.66, 0.84, 0.74, 0.82, 200, 20, 40);
     expect(detectResultScreenOutcome(lossBuf, w, h)).toBe("LOSS");
+  });
+
+  it("extracts opponent items, abilities, and legal moves (including status moves) into BattleRecordDraft", () => {
+    const pbn = [
+      '[PBN "1.0"]',
+      '[Regulation "M-C"]',
+      '[Sheet "CTS"]',
+      '[Result "LOSS"]',
+      "@select 0, 1, 3, 2",
+      "@p2 0 torkoal",
+      "@p2 1 trevenant",
+      "@p2 2 sinistcha",
+      "@p2 3 snorlax @ leftovers | thick-fat | protect, facade",
+      "@lead @t=10000ms",
+      "  switch p2b torkoal 100% {",
+      "    ability p2b drought",
+      "  }",
+      "  switch p2a trevenant 100%",
+      "@turn 1 @t=20000ms",
+      "  move p2a trick-room {",
+      "    field trick-room on",
+      "  }",
+      "  move p2a destiny-bond",
+      "  move p2a eruption {",
+      "    p1a: 100% -> 50%",
+      "  }",
+      "  item p2b charcoal",
+      "  move p2b eruption {",
+      "    p1a: 50% -> 10%",
+      "  }",
+      "@turn 2 @t=40000ms",
+      "  switch p2b sinistcha 100% {",
+      "    ability p2b hospitality",
+      "  }",
+      "  move p2b rage-powder",
+      "  move p2b matcha-gotcha {",
+      "    p1a: 10% -> 0%",
+      "  }",
+      "  heal p2b 40% -> 65% [sitrus-berry]",
+      "  damage p2b 65% -> 59% [sandstorm]",
+      "@turn 3 @t=60000ms",
+      "  @state",
+      "  p2:",
+      "    | active:",
+      "        p2a: salamence-mega 70%",
+      "        p2b: torkoal 100%",
+      "  move p2a protect",
+      "  ability p2a aerilate",
+      "  item p2b life-orb off",
+      "  # the battle has ended due to a forfeit",
+    ].join("\n");
+
+    const summary = parsePbnToAnalysisSummary(pbn);
+    const draft = analysisSummaryToBattleRecordDraft(summary, { teamId: "team-1", myTeam: [] });
+
+    expect(draft.result).toBe("loss");
+    const bySlug = new Map(draft.opponents.map((o) => [o.pokemonSlug, o]));
+
+    // item p2b life-orb off (Knock Off) must NOT overwrite torkoal's charcoal
+    expect(bySlug.get("torkoal")?.itemSlug).toBe("charcoal");
+    expect(bySlug.get("torkoal")?.abilitySlug).toBe("drought");
+    expect(bySlug.get("torkoal")?.moves).toEqual(["eruption"]);
+    expect(bySlug.get("torkoal")?.selectionRole).toBe("lead");
+
+    // Trevenant cannot learn eruption (filtered out), but legal status moves trick-room & destiny-bond are kept
+    expect(bySlug.get("trevenant")?.moves).toEqual(["trick-room", "destiny-bond"]);
+    expect(bySlug.get("trevenant")?.selectionRole).toBe("lead");
+
+    // Sinistcha item comes from [sitrus-berry] bracket, sandstorm is ignored as non-item
+    expect(bySlug.get("sinistcha")?.itemSlug).toBe("sitrus-berry");
+    expect(bySlug.get("sinistcha")?.abilitySlug).toBe("hospitality");
+    expect(bySlug.get("sinistcha")?.moves).toEqual(["rage-powder", "matcha-gotcha"]);
+    expect(bySlug.get("sinistcha")?.selectionRole).toBe("back");
+
+    // OTS @p2 entry preserves item, ability, and moves
+    expect(bySlug.get("snorlax")?.itemSlug).toBe("leftovers");
+    expect(bySlug.get("snorlax")?.abilitySlug).toBe("thick-fat");
+    expect(bySlug.get("snorlax")?.moves).toEqual(["protect", "facade"]);
+
+    // Mega form in @state syncs slot, resolves Mega Stone (salamencite), ignores Mega-only ability (aerilate), and keeps move
+    expect(summary.revealedItemByOpponent.salamence).toBe("salamencite");
+    expect(summary.revealedAbilityByOpponent.salamence).toBeUndefined();
+    expect(summary.revealedMovesByOpponent.salamence).toEqual(["protect"]);
+    // Notes must NOT be populated with PBN text
+    expect(draft.notes).toBe("");
+  });
+
+  it("matches multi-line Japanese perish count with furigana, prioritizes screen-observed @select, emits switch for Mega-evolved opponents, and avoids absorbing status cures into protect", () => {
+    // 1. Multi-line Japanese perish count with furigana ("あいて", "ほろ") and Tesseract OCR noise
+    const perishMatch = JAPANESE_LOG_PATTERNS.matchPerishCount(
+      "あいて\n相手の リザードンの\nほろ\n滅びのカウントが 3になった！",
+    );
+    expect(perishMatch?.count).toBe(3);
+    expect(perishMatch?.isOpposing).toBe(true);
+    expect(perishMatch?.mon).toContain("リザードン");
+
+    const perishNoisy = JAPANESE_LOG_PATTERNS.matchPerishCount(
+      "相手の ブリジュラスの 減びのカウントが _2に なった /",
+    );
+    expect(perishNoisy?.count).toBe(2);
+    expect(perishNoisy?.isOpposing).toBe(true);
+    expect(perishNoisy?.mon).toContain("ブリジュラス");
+
+    const parser = new BattleLogParser({
+      myTeam: [
+        { identifier: "gengar", slug: "gengar" },
+        { identifier: "incineroar", slug: "incineroar" },
+        { identifier: "rillaboom", slug: "rillaboom" },
+        { identifier: "hippowdon", slug: "hippowdon" },
+        { identifier: "kingambit", slug: "kingambit" },
+        { identifier: "sneasler", slug: "sneasler" },
+      ],
+      dictionaries: {
+        species: [
+          { slug: "gengar", alias: "ゲンガー" },
+          { slug: "incineroar", alias: "ガオガエン" },
+          { slug: "rillaboom", alias: "ゴリランダー" },
+          { slug: "hippowdon", alias: "カバルドン" },
+          { slug: "kingambit", alias: "ドドゲザン" },
+          { slug: "sneasler", alias: "オオニューラ" },
+          { slug: "charizard", alias: "リザードン" },
+          { slug: "venusaur", alias: "フシギバナ" },
+        ],
+        moves: [
+          { slug: "protect", alias: "まもる" },
+          { slug: "parting-shot", alias: "すてゼリフ" },
+          { slug: "perish-song", alias: "ほろびのうた" },
+        ],
+        abilities: [],
+        items: [{ slug: "charizardite-y", alias: "リザードナイトY" }],
+      },
+      p2Roster: ["charizard", "venusaur", "sneasler"],
+      p1MaxHp: (idx) => [165, 202, 207, 215, 205, 155][idx] ?? 200,
+      p1ItemSlug: (idx) => (idx === 0 ? "gengarite" : null),
+      patternSets: [JAPANESE_LOG_PATTERNS],
+    });
+
+    parser.feedMessage("相手は リザードンと フシギバナを くりだした！", 10_000);
+    parser.feedMessage("ゆけっ！ ゲンガー！ ガオガエン！", 12_000);
+
+    // Turn 1: Charizard mega-evolves into Mega Charizard Y, then switches out
+    parser.beginTurn(20_000);
+    parser.feedMessage("相手の リザードンの リザードナイトYと キーストーンが 反応した！", 21_000);
+    parser.feedMessage("相手の リザードンは メガリザードンYに メガシンカした！", 22_000);
+    parser.feedMessage("相手は リザードンを 引っ込めた！", 24_000);
+    parser.feedMessage("相手は オオニューラを くりだした！", 25_000);
+    // p1a switches to Hippowdon even if withdraw message was missed between 1s frames
+    parser.feedMessage("ゆけっ！ カバルドン！", 26_000);
+    // p1b uses parting-shot and switches to Sneasler without withdraw message
+    parser.feedMessage("ガオガエンの すてゼリフ！", 27_000);
+    parser.feedMessage("ゆけっ！ オオニューラ！", 28_000);
+
+    // Turn 2: Mega Charizard Y switches back in after Venusaur faints
+    parser.beginTurn(40_000);
+    parser.feedDamage("p2a", "100%", "0%", "100%", 42_000);
+    parser.feedMessage("相手の フシギバナは たおれた！", 43_000);
+    parser.feedMessage("相手は リザードンを くりだした！", 45_000);
+
+    // Turn 3: Perish song, sleep cure after protect, and fainted slot must not take damage/heal
+    parser.beginTurn(60_000);
+    parser.feedMessage("相手の リザードンは 眠ってしまった！", 61_000);
+    parser.feedMessage("カバルドンの まもる！", 62_000);
+    parser.feedMessage("相手の リザードンは 目を 覚ました！", 63_000);
+    parser.feedMessage("あいて\n相手の リザードンの\nほろ\n滅びのカウントが 3になった！", 64_000);
+
+    // Even if TeamPreview passed noisy [0, 1, 2, 3], observedOwnIndices [0, 1, 3, 5] must win
+    parser.finalizeLeadAndSlots([0, 1, 2, 3]);
+    expect(parser.getP1Selection()).toEqual([0, 1, 3, 5]);
+
+    const rendered = parser.render().join("\n");
+    // Mega Charizard Y re-entry emits switch p2a charizard-mega-y
+    expect(rendered).toContain("switch p2a charizard-mega-y 100%");
+    // Status cure (-slp) is NOT absorbed into move p1a protect
+    expect(rendered).toContain("  move p1a protect\n  status p2a -slp");
+    expect(rendered).toContain("  perish p2a 3");
   });
 });

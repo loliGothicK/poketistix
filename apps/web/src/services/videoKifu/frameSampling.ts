@@ -296,24 +296,24 @@ export function analyzeVideoFrameRgba(
   }
 
   let selectedTargetSlot: "p2a" | "p2b" | "p1a" | "p1b" | null = null;
-  if (activeP1Slot !== null && !isCommandMenu && selectedMoveIndex === null) {
+  if (!isCommandMenu && selectedMoveIndex === null) {
     let bestTarget: "p2a" | "p2b" | "p1a" | "p1b" | null = null;
     let bestTargetCount = 0;
     const targetCenters: readonly ["p2a" | "p2b" | "p1a" | "p1b", number, number][] = [
-      ["p2a", 650, 420],
-      ["p2b", 1020, 420],
-      ["p1a", 650, 560],
-      ["p1b", 1020, 560],
+      ["p2a", 720, 330],
+      ["p2b", 1210, 330],
+      ["p1a", 720, 670],
+      ["p1b", 1210, 670],
     ];
     for (const [slotName, cx, cy] of targetCenters) {
       let limePixels = 0;
-      for (let y1080 = cy - 55; y1080 <= cy + 55; y1080 += 6) {
-        for (let x1080 = cx - 150; x1080 <= cx + 150; x1080 += 8) {
+      for (let y1080 = cy - 90; y1080 <= cy + 90; y1080 += 8) {
+        for (let x1080 = cx - 220; x1080 <= cx + 220; x1080 += 12) {
           const [r, g, b] = sampleRgba(rgba, width, height, x1080 / 1920, y1080 / 1080);
           if (isSoftLime(r, g, b)) limePixels += 1;
         }
       }
-      if (limePixels >= 80 && limePixels > bestTargetCount) {
+      if (limePixels >= 40 && limePixels > bestTargetCount) {
         bestTargetCount = limePixels;
         bestTarget = slotName;
       }
@@ -450,6 +450,16 @@ export function analyzeVideoFrameRgba(
   }
 
   const resultScreenOutcome = detectResultScreenOutcome(rgba, width, height);
+  const resultRatingBoxVisible =
+    visibleHudCount === 0 &&
+    !isSelectingUi &&
+    previewP1Cards < 4 &&
+    previewP2Cards < 4 &&
+    resultScreenOutcome === null &&
+    detectPostMatchResultCard(rgba, width, height, roi.resultRatingBox);
+  const resultRatingRoiHash = resultRatingBoxVisible
+    ? computeRoiLumaHash(rgba, width, height, roi.resultRatingBox)
+    : 0;
 
   return {
     timestampMs,
@@ -468,7 +478,44 @@ export function analyzeVideoFrameRgba(
     abilityRoiHash,
     targetSelectionRoiHash,
     resultScreenOutcome,
+    resultRatingBoxVisible,
+    resultRatingRoiHash,
   };
+}
+
+/**
+ * 試合後のリザルトカード（ランクバトル・マスターボール級／インターネット大会）の青いパネル内に
+ * 白文字が表示されているかを解像度非依存の比率で検出する。
+ */
+export function detectPostMatchResultCard(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  rect: NormalizedRect = DEFAULT_CHAMPIONS_ROI_LAYOUT.resultRatingBox,
+): boolean {
+  if (width <= 0 || height <= 0) return false;
+  const [x0, y0, x1, y1] = toPixelBounds(rect, width, height);
+  if (x1 <= x0 || y1 <= y0) return false;
+  let blueBg = 0;
+  let whiteText = 0;
+  let total = 0;
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 4) {
+      total += 1;
+      const idx = (y * width + x) * 4;
+      const r = rgba[idx] ?? 0;
+      const g = rgba[idx + 1] ?? 0;
+      const b = rgba[idx + 2] ?? 0;
+      const maxDiff = Math.max(Math.abs(r - g), Math.abs(r - b), Math.abs(g - b));
+      if (r > 175 && g > 175 && b > 175 && maxDiff <= 50) {
+        whiteText += 1;
+      } else if (b >= 110 && b >= r + 25 && b >= g + 25) {
+        blueBg += 1;
+      }
+    }
+  }
+  if (total < 40) return false;
+  return blueBg / total >= 0.45 && whiteText / total >= 0.015;
 }
 
 /**

@@ -41,6 +41,8 @@ export interface ChampionsRoiLayout {
   readonly targetSelectionPanel: NormalizedRect;
   readonly communicatingBox: NormalizedRect;
   readonly commandTimerBox: NormalizedRect;
+  /** 試合後リザルトカード内のレート表示領域（マスターボール級・大会リザルト共通） */
+  readonly resultRatingBox: NormalizedRect;
 }
 
 export type VideoScreenPhase =
@@ -86,6 +88,9 @@ export interface VideoFrameAnalysis {
   readonly targetSelectionRoiHash?: number;
   /** 対戦終了後の左右分割 WIN / LOSE リザルト画面の検出結果（言語非依存） */
   readonly resultScreenOutcome?: "WIN" | "LOSS" | null;
+  /** 試合後のリザルトカード（レート表示領域）が画面に出ているか */
+  readonly resultRatingBoxVisible?: boolean;
+  readonly resultRatingRoiHash?: number;
 }
 
 export interface ChampionsEntityDictionaries {
@@ -121,6 +126,7 @@ export interface VideoKifuAnalysisSummary {
   readonly opponentBackSlugs: readonly string[];
   readonly revealedMovesByOpponent: Readonly<Record<string, readonly string[]>>;
   readonly revealedAbilityByOpponent: Readonly<Record<string, string>>;
+  readonly revealedItemByOpponent: Readonly<Record<string, string>>;
   readonly reviewEvents: readonly VideoReviewEventItem[];
   readonly turnTimestamps: Readonly<Record<number, number>>;
   readonly totalSampledFrames: number;

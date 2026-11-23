@@ -4,6 +4,7 @@ import { useMemo, useState, useRef } from "react";
 import {
   Alert,
   alpha,
+  Badge,
   Box,
   Button,
   CircularProgress,
@@ -51,7 +52,11 @@ interface BattleRecordFormDialogProps {
   readonly teamId: string | null;
   readonly seasons: readonly Season[];
   readonly defaultSeasonId: string | null;
-  readonly onSubmit: (draft: BattleRecordDraft, seasonId: string) => Promise<void>;
+  readonly onSubmit: (
+    draft: BattleRecordDraft,
+    seasonId: string,
+    kifuPbn?: string | null,
+  ) => Promise<void>;
   readonly submitting: boolean;
 }
 
@@ -161,6 +166,7 @@ function BattleRecordFormContent({
   );
   const [resultChosen, setResultChosen] = useState(!!editing);
   const [videoImportOpen, setVideoImportOpen] = useState(false);
+  const [pendingKifuPbn, setPendingKifuPbn] = useState<string | null>(null);
   const [localSubmitting, setLocalSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -185,7 +191,7 @@ function BattleRecordFormContent({
     setLocalSubmitting(true);
     setSubmitError(null);
     try {
-      await onSubmit(draft, seasonId);
+      await onSubmit(draft, seasonId, pendingKifuPbn);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("battleRecord.saveFailed");
       setSubmitError(msg);
@@ -229,7 +235,22 @@ function BattleRecordFormContent({
           disabled={isPending}
           onClick={() => setVideoImportOpen(true)}
         >
-          {t("battleRecord.videoImport.button")}
+          <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+            {t("battleRecord.videoImport.button")}
+            <Badge
+              badgeContent={t("common.preview")}
+              color="primary"
+              sx={{
+                "& .MuiBadge-badge": {
+                  position: "static",
+                  transform: "none",
+                  padding: "0 6px",
+                  height: 18,
+                  fontSize: "0.65rem",
+                },
+              }}
+            />
+          </Box>
         </Button>
         <Typography
           variant="caption"
@@ -254,8 +275,15 @@ function BattleRecordFormContent({
         teamId={draft.teamId}
         teamMembers={draft.myTeam}
         regulation={seasons.find((s) => s.id === seasonId)?.ruleMark ?? "M-C"}
-        onApplyDraft={(importedDraft) => {
-          setDraft(importedDraft);
+        onApplyDraft={(importedDraft, pbnText) => {
+          setDraft((prev) => ({
+            ...prev,
+            result: importedDraft.result,
+            selection: importedDraft.selection,
+            opponents: importedDraft.opponents,
+            rating: importedDraft.rating || prev.rating,
+          }));
+          setPendingKifuPbn(pbnText.trim().length > 0 ? pbnText : null);
           setResultChosen(true);
           setVideoImportOpen(false);
         }}

@@ -16,6 +16,11 @@ import {
 } from "@/components/client/content/TableOfContents";
 import type { BreadcrumbItem } from "@/components/client/content/ContentLayoutContext";
 import { DocsSearchBar } from "@/components/client/content/DocsSearchBar";
+import { MdxPre } from "@/components/client/content/MdxCodeBlock";
+
+const docMdxComponents = {
+  pre: MdxPre,
+};
 
 type LocalizedSidebar = {
   readonly en: readonly ContentSidebarItem[];
@@ -118,16 +123,18 @@ export function DocPageClient({ localizedSidebar, localizedContent }: Props) {
                 ml: 0,
                 color: "text.secondary",
               },
-              "& code": {
+              "& :not(pre) > code": {
                 bgcolor: "action.hover",
-                px: 0.5,
-                py: 0.25,
-                borderRadius: 1,
+                px: 0.75,
+                py: 0.2,
+                borderRadius: "4px",
                 fontSize: "0.875em",
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
               },
             }}
           >
-            <MDXContent code={activeContent.mdx} />
+            <MDXContent code={activeContent.mdx} components={docMdxComponents} />
           </Box>
         </Stack>
       </Container>
