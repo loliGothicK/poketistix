@@ -16,6 +16,7 @@ import {
 } from "./ocrText";
 import {
   DEFAULT_LOG_PATTERN_SETS,
+  type BattleEndReason,
   type BattleLogPatternSet,
   type FieldEffect,
 } from "./battleLogPatterns";
@@ -180,6 +181,7 @@ const slotIndex = (slot: "p1a" | "p1b"): 0 | 1 => (slot === "p1a" ? 0 : 1);
 
 const TOKEN_HIKKOMETA = normalizeOcrToken("引っこめた");
 const TOKEN_MODORE = normalizeOcrToken("戻れ");
+const TOKEN_MODOTTEIKU = normalizeOcrToken("元へ戻っていく");
 const TOKEN_KURIDASHI = normalizeOcrToken("繰り出し");
 const TOKEN_KURIDASHITA = normalizeOcrToken("繰り出した");
 const TOKEN_YUKE = normalizeOcrToken("ゆけ");
@@ -230,6 +232,8 @@ export class BattleLogParser {
     p2b: {},
   };
   private readonly pendingPerishFaint = new Set<SlotIdent>();
+  /** 「<X> took its attacker down with it!」 / 「<X>は 相手を 道連れにした！」直後のひんし待ち状態 */
+  private pendingDestinyBondFaint: { sourceSlot: SlotIdent | null; t: number } | null = null;
   /** 自軍ポケモンごとの最新HP（キー: teamIdx 0..5, 形式: "curr/max" または "XX%"） */
   private readonly lastKnownOwnHp: Record<number, string> = {};
   /** 相手ポケモンごとの最新HP（キー: slug, 形式: "XX%"） */
@@ -250,6 +254,10 @@ export class BattleLogParser {
   private weatherState: { kind: string; startTurn: number; maxTurns: number } | null = null;
   private terrainState: { kind: string; startTurn: number; maxTurns: number } | null = null;
   private trickRoomState: { startTurn: number; maxTurns: number } | null = null;
+  /** ターン終了後の死に出しフェーズ中フラグ（死に出しで発動した天候・フィールドは次ターン開始時 5/5 から開始する） */
+  private inEndOfTurnFaintReplacement = false;
+  /** バトル終了メッセージから検出された終了理由（降参・時間切れ・全滅等） */
+  private battleEndReason: BattleEndReason | null = null;
   private readonly sideConditions: Record<"p1" | "p2", Record<string, number>> = {
     p1: {},
     p2: {},
@@ -317,9 +325,14 @@ export class BattleLogParser {
   }
 
   hasForfeit(): boolean {
-    return this.turns.some((t) =>
-      t.events.some((e) => e.verb === "#" && e.args.includes("forfeit")),
+    return (
+      this.battleEndReason === "forfeit" ||
+      this.turns.some((t) => t.events.some((e) => e.verb === "#" && e.args.includes("forfeit")))
     );
+  }
+
+  getBattleEndReason(): BattleEndReason | null {
+    return this.battleEndReason;
   }
 
   private computeActiveFieldEffects(turnNumber: number): string[] {
@@ -388,6 +401,8 @@ export class BattleLogParser {
 
   /** コマンド選択画面に入った（= 新しいターンが始まった）ことを通知する */
   beginTurn(timestampMs: number): void {
+    this.inEndOfTurnFaintReplacement = false;
+    this.pendingDestinyBondFaint = null;
     const turnNumber = this.turns.length + 1;
     this.contractState = {
       ...this.contractState,
@@ -600,12 +615,16 @@ export class BattleLogParser {
     }
 
     // 2. アイテム（item: たべのこし等の発動ダイアログ）との照合
+    // ※ メガストーン（〜ナイト / *-ite）は発動バナーを出さないため除外（種族名部分の誤一致防止）
     let item = bannerPart ? fuzzyMatchEntity(bannerPart, this.options.dictionaries.items) : null;
     if (!item || item.confidence < 75) {
       const matchFull = fuzzyMatchEntity(text, this.options.dictionaries.items);
       if (matchFull && matchFull.confidence >= 75) {
         item = matchFull;
       }
+    }
+    if (item && /(?:ite|ite-[xyz])$/.test(item.slug)) {
+      item = null;
     }
 
     const candidates = side === "p1" ? OWN_SLOTS : OPP_SLOTS;
@@ -741,7 +760,7 @@ export class BattleLogParser {
     for (let idx = events.length - 1; idx >= 0; idx--) {
       const ev = events[idx]!;
       if (ev.verb === "ability") abilityCount++;
-      else if (ev.verb !== "boost") break;
+      else break;
     }
     const detectedStats: string[] = [];
     for (const p of this.patternSets) {
@@ -798,6 +817,7 @@ export class BattleLogParser {
       this.onForfeit(text, key, timestampMs) ||
       this.onPerishCount(text, timestampMs) ||
       this.onPerishStart(text, key, timestampMs) ||
+      this.onDestinyBondTrigger(text, key, timestampMs) ||
       this.onWithdrawn(text) ||
       this.onSentOut(text, timestampMs) ||
       this.onGo(text, timestampMs) ||
@@ -862,7 +882,28 @@ export class BattleLogParser {
       lines.push(...this.renderTurnEvents(turn.events));
       lines.push("");
     }
+    if (turnsToRender.length > 0 && !this.hasForfeit()) {
+      lines.push(`  ${this.formatBattleEndComment(turnsToRender)}`);
+    }
     return lines;
+  }
+
+  private formatBattleEndComment(turns: readonly TurnRecord[]): string {
+    if (this.battleEndReason === "opp-timeout") {
+      return "# the battle has ended due to the opposing player's time running out";
+    }
+    if (this.battleEndReason === "own-timeout") {
+      return "# the battle has ended due to your time running out";
+    }
+    if (this.battleEndReason === "total-timeout") {
+      return "# the battle has ended due to time running out";
+    }
+    const lastTurn = turns[turns.length - 1];
+    const hasFaintOnLastTurn = Boolean(lastTurn?.events.some((e) => e.verb === "faint"));
+    if (this.battleEndReason === "ko" || hasFaintOnLastTurn) {
+      return "# the battle has ended due to all pokemon fainting";
+    }
+    return "# the battle has ended";
   }
 
   private renderTurnState(snap: TurnStateSnapshot): string[] {
@@ -1629,8 +1670,8 @@ export class BattleLogParser {
         }
       } else if (ev.verb === "perish") {
         const slot = ev.args[0]!;
-        const transition = ev.args[1] ?? "";
-        if (transition.endsWith("-> 0")) {
+        const count = ev.args[1] ?? "";
+        if (count === "0") {
           if (
             i + 1 < events.length &&
             events[i + 1]!.verb === "faint" &&
@@ -1868,6 +1909,7 @@ export class BattleLogParser {
     opts?: { crit?: boolean },
   ): void {
     if (this.pendingPerishFaint.has(target)) return;
+    if (this.isPendingDestinyBondTarget(target)) return;
     if (hpBefore === "0%" || hpBefore.startsWith("0/")) return;
     if (!this.hasLead || !this.slots[target]) return;
 
@@ -2290,12 +2332,20 @@ export class BattleLogParser {
   /** 手持ちへの戻り（「<トレーナー> withdrew <X>!」 / 「もどれ！ <X>」 等） */
   private onWithdrawn(text: string): boolean {
     const key = normalizeOcrToken(text);
+    const isPivotReturn =
+      approxFind(key, TOKEN_MODOTTEIKU).score >= 0.72 ||
+      approxFind(key, "wentbackto").score >= 0.78;
+    const hasOppPrefix =
+      key.startsWith("相手の") || key.startsWith("theopposing") || text.trim().startsWith("相手の");
     const isOppWithdraw =
-      approxFind(key, TOKEN_HIKKOMETA).score >= 0.75 || approxFind(key, "withdrew").score >= 0.75;
+      approxFind(key, TOKEN_HIKKOMETA).score >= 0.75 ||
+      approxFind(key, "withdrew").score >= 0.75 ||
+      (isPivotReturn && hasOppPrefix);
     const isOwnWithdraw =
       key.includes(TOKEN_MODORE) ||
       approxFind(key, TOKEN_MODORE).score >= 0.75 ||
-      approxFind(key, "comeback").score >= 0.75;
+      approxFind(key, "comeback").score >= 0.75 ||
+      (isPivotReturn && !hasOppPrefix);
     const matched =
       isOppWithdraw || isOwnWithdraw || this.patternSets.some((p) => p.matchWithdraw(text, key));
     if (!matched) return false;
@@ -2412,6 +2462,7 @@ export class BattleLogParser {
     if (current?.slug === slug && !this.fainted[slot]) return;
     const other = OPP_SLOTS.find((s) => s !== slot);
     if (other && this.slots[other]?.slug === slug && !this.fainted[other]) return;
+    const wasFainted = this.fainted[slot];
 
     if (this.turns.length === 0) {
       const deployRes = validateLeadDeploy(this.contractState, slot, { slug });
@@ -2468,6 +2519,9 @@ export class BattleLogParser {
     }
     this.observedOppSlugs.add(slug);
     this.fainted[slot] = false;
+    if (wasFainted && this.turns.length > 0) {
+      this.inEndOfTurnFaintReplacement = true;
+    }
     const hpStr = this.lastKnownOppHp[slug] ?? this.lastKnownOppHp[baseSlug] ?? "100%";
     this.currentHp[slot] = hpStr;
     this.lastKnownOppHp[slug] = hpStr;
@@ -2489,13 +2543,20 @@ export class BattleLogParser {
         break;
       }
     }
-    if (!names || names.length === 0) {
+    // 先発繰り出し（turns.length === 0 かつ P1 先発未確定）では「と / and」の OCR 崩れで
+    // goTwoRegexes / goOneRegexes が 2 体を正しく解決できないことがあるため、
+    // 2 体以上の有効インデックスが揃わなかった場合はテキスト全体から myTeam を走査して 2 体同時繰り出しする
+    const isP1LeadDeploy =
+      this.turns.length === 0 && (this.slots.p1a === null || this.slots.p1b === null);
+    const resolvedFromNames = names ? names.map((n) => this.resolveOwnIndex(n)) : [];
+    const distinctValidFromNames = new Set(resolvedFromNames.filter((i) => i >= 0));
+    if (!names || names.length === 0 || (isP1LeadDeploy && distinctValidFromNames.size < 2)) {
       const isGoPhrase =
         key.includes(TOKEN_YUKE) ||
         key.includes(TOKEN_IKE) ||
         approxFind(key, TOKEN_YUKE).score >= 0.72 ||
         approxFind(key, TOKEN_IKE).score >= 0.72 ||
-        /\bgo[!1lI]?\b/i.test(text);
+        /\bgo[l1I]?[!1lI]?/i.test(text);
 
       const detected: { idx: number; end: number }[] = [];
       this.options.myTeam.forEach((member, idx) => {
@@ -2508,7 +2569,7 @@ export class BattleLogParser {
         }
       });
 
-      if (this.leadMs === null && detected.length >= 2) {
+      if (isP1LeadDeploy && detected.length >= 2) {
         detected.sort((a, b) => a.end - b.end);
         const idxA = detected[0]!.idx;
         const idxB = detected[1]!.idx;
@@ -2518,29 +2579,33 @@ export class BattleLogParser {
           this.markLead(t);
           return true;
         }
-      } else if (isGoPhrase && detected.length >= 1) {
-        const idx = detected[0]!.idx;
-        const preferred =
-          this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
-            ? this.pendingWithdrawSlot
-            : (OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p1a");
-        this.pendingWithdrawSlot = null;
-        this.placeOwn(preferred, idx, t, false);
-        return true;
       }
-      return false;
+      if (!names || names.length === 0) {
+        if (isGoPhrase && detected.length >= 1) {
+          const idx = detected[0]!.idx;
+          const preferred =
+            this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
+              ? this.pendingWithdrawSlot
+              : (OWN_SLOTS.find((s) => this.fainted[s] || this.slots[s] === null) ?? "p1a");
+          this.pendingWithdrawSlot = null;
+          this.placeOwn(preferred, idx, t, false);
+          return true;
+        }
+        return false;
+      }
     }
 
-    const indices = names.map((n) => this.resolveOwnIndex(n));
-    if (indices.every((i) => i < 0)) return false;
+    const indices = resolvedFromNames;
+    const validIndices = indices.filter((i) => i >= 0);
+    if (validIndices.length === 0) return false;
 
-    if (names.length >= 2) {
+    if (names.length >= 2 && validIndices.length >= 2) {
       indices.forEach((idx, i) => {
         const slot = OWN_SLOTS[i];
         if (idx >= 0 && slot) this.placeOwn(slot, idx, t, false);
       });
     } else {
-      const idx = indices[0] ?? -1;
+      const idx = validIndices[0]!;
       const preferred =
         this.pendingWithdrawSlot && this.pendingWithdrawSlot.startsWith("p1")
           ? this.pendingWithdrawSlot
@@ -2609,6 +2674,9 @@ export class BattleLogParser {
     this.statStages[slot] = {};
     this.pendingPerishFaint.delete(slot);
     this.fainted[slot] = false;
+    if (wasFainted && this.turns.length > 0) {
+      this.inEndOfTurnFaintReplacement = true;
+    }
     this.faintedOwnTeamIndices.delete(teamIdx);
 
     const maxHp = this.options.p1MaxHp(teamIdx);
@@ -3842,6 +3910,35 @@ export class BattleLogParser {
         continue;
       }
 
+      if (this.isPendingDestinyBondTarget(slot)) {
+        this.pendingDestinyBondFaint = null;
+        // みちづれ発動演出中に先行して拾われた未帰属ダメージ（HPバー0化途中のノイズ）を除去
+        const events = this.currentEvents();
+        while (events.length > 0) {
+          const lastEv = events[events.length - 1]!;
+          if (
+            lastEv.verb === "damage" &&
+            lastEv.args[0] === slot &&
+            !lastEv.bracket &&
+            t - lastEv.t <= 8000
+          ) {
+            events.pop();
+          } else {
+            break;
+          }
+        }
+        this.currentHp[slot] = zeroHp;
+        if (mon) {
+          if (slot.startsWith("p1")) {
+            this.lastKnownOwnHp[mon.teamIdx] = zeroHp;
+          } else {
+            this.lastKnownOppHp[mon.slug] = zeroHp;
+          }
+        }
+        this.emit("faint", [slot], t, 0.98, { review: false, bracket: "destiny-bond" });
+        continue;
+      }
+
       if (prevHp && !isZero(prevHp)) {
         const events = this.currentEvents();
         let existingMoveDmg: LogEvent | undefined;
@@ -3889,11 +3986,6 @@ export class BattleLogParser {
     const slot = matched[0] ?? fallback;
     if (!slot) return false;
 
-    const prevCount =
-      typeof this.volatileStatus[slot]?.perish === "number"
-        ? (this.volatileStatus[slot]!.perish as number)
-        : res.count + 1;
-
     this.volatileStatus[slot] = { ...this.volatileStatus[slot], perish: res.count };
 
     if (res.count === 0) {
@@ -3901,7 +3993,7 @@ export class BattleLogParser {
       delete this.volatileStatus[slot].perish;
     }
 
-    this.emit("perish", [slot, `${prevCount} -> ${res.count}`], t, 0.98, { review: false });
+    this.emit("perish", [slot, String(res.count)], t, 0.98, { review: false });
     return true;
   }
 
@@ -3924,27 +4016,60 @@ export class BattleLogParser {
     return true;
   }
 
-  /** 「The battle has ended due to a forfeit」 */
-  private onForfeit(text: string, key: string, t: number): boolean {
+  private isPendingDestinyBondTarget(slot: SlotIdent): boolean {
+    if (!this.pendingDestinyBondFaint) return false;
+    const { sourceSlot } = this.pendingDestinyBondFaint;
+    if (!sourceSlot) return true;
+    const sourceIsP1 = sourceSlot.startsWith("p1");
+    const targetIsP1 = slot.startsWith("p1");
+    return sourceIsP1 !== targetIsP1;
+  }
+
+  /** 「<X> took its attacker down with it!」 / 「<X>は 相手を 道連れにした！」 */
+  private onDestinyBondTrigger(text: string, key: string, t: number): boolean {
     let matched = false;
     for (const p of this.patternSets) {
-      if (p.matchForfeit(text, key)) {
+      if (p.matchDestinyBondTrigger(text, key)) {
         matched = true;
         break;
       }
     }
     if (!matched) return false;
 
-    const events = this.currentEvents();
-    const alreadyEmitted = events.some((ev) => ev.verb === "#" && ev.args.includes("forfeit"));
-    if (!alreadyEmitted) {
-      this.currentEvents().push({
-        verb: "#",
-        args: ["the", "battle", "has", "ended", "due", "to", "a", "forfeit"],
-        t,
-        confidence: 1,
-        review: false,
-      });
+    const slots = this.resolveSlots(key);
+    const sourceSlot = slots[0] ?? null;
+    this.pendingDestinyBondFaint = { sourceSlot, t };
+    return true;
+  }
+
+  /** 「The battle has ended due to a forfeit」 / 時間切れ / 勝敗終了メッセージ */
+  private onForfeit(text: string, key: string, t: number): boolean {
+    let reason: BattleEndReason | null = null;
+    for (const p of this.patternSets) {
+      reason = p.matchBattleEnd(text, key);
+      if (reason) break;
+    }
+    if (!reason) return false;
+
+    if (reason === "forfeit") {
+      this.battleEndReason = "forfeit";
+      const events = this.currentEvents();
+      const alreadyEmitted = events.some((ev) => ev.verb === "#" && ev.args.includes("forfeit"));
+      if (!alreadyEmitted) {
+        this.currentEvents().push({
+          verb: "#",
+          args: ["the", "battle", "has", "ended", "due", "to", "a", "forfeit"],
+          t,
+          confidence: 1,
+          review: false,
+        });
+      }
+      return true;
+    }
+
+    // 既に降参や時間切れが記録されている場合は汎用 KO (You defeated / You lost) で上書きしない
+    if (this.battleEndReason === null || (this.battleEndReason === "ko" && reason !== "ko")) {
+      this.battleEndReason = reason;
     }
     return true;
   }
@@ -3971,6 +4096,13 @@ export class BattleLogParser {
     const { effect } = hit;
     const currentTurnNum =
       this.turns.length > 0 ? this.turns[this.turns.length - 1]!.turnNumber : 1;
+    // 死に出し（ターン終了処理の後）で展開された天候・フィールドは、まだターン終了カウントを消費していないため次ターン開始時 5/5 (延長時は 8/8) となる
+    const fieldStartTurn =
+      this.turns.length === 0
+        ? 1
+        : this.inEndOfTurnFaintReplacement
+          ? currentTurnNum + 1
+          : currentTurnNum;
 
     if (effect.kind === "weather") {
       if (effect.value === "None") {
@@ -3995,7 +4127,7 @@ export class BattleLogParser {
             maxTurns,
           },
         };
-        this.weatherState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
+        this.weatherState = { kind: effect.value, startTurn: fieldStartTurn, maxTurns };
         this.emit("weather", [effect.value], t, 0.98, { review: false });
       }
     } else if (effect.kind === "terrain") {
@@ -4021,7 +4153,7 @@ export class BattleLogParser {
             maxTurns,
           },
         };
-        this.terrainState = { kind: effect.value, startTurn: currentTurnNum, maxTurns };
+        this.terrainState = { kind: effect.value, startTurn: fieldStartTurn, maxTurns };
         this.emit("terrain", [effect.value], t, 0.98, { review: false });
       }
     } else if (effect.kind === "trick-room") {
@@ -4277,26 +4409,13 @@ export class BattleLogParser {
       bestSuffix.delta === -1 &&
       key.includes("be特防");
 
-    const skipOwnIntimidateStageTrack =
-      slots.length === 2 &&
-      slots.includes("p1a") &&
-      slots.includes("p1b") &&
-      statsFound.length === 1 &&
-      statsFound[0] === "atk" &&
-      bestSuffix.delta === -1;
-
     const deltaStr = bestSuffix.delta > 0 ? `+${bestSuffix.delta}` : `${bestSuffix.delta}`;
     for (const slot of slots) {
       for (const stat of statsFound) {
-        if (!skipOwnIntimidateStageTrack) {
-          this.statStages[slot] = {
-            ...this.statStages[slot],
-            [stat]: Math.max(
-              -6,
-              Math.min(6, (this.statStages[slot][stat] ?? 0) + bestSuffix.delta),
-            ),
-          };
-        }
+        this.statStages[slot] = {
+          ...this.statStages[slot],
+          [stat]: Math.max(-6, Math.min(6, (this.statStages[slot][stat] ?? 0) + bestSuffix.delta)),
+        };
         this.emit("boost", [slot, stat, deltaStr], t, bestSuffix.score, { review: false });
       }
       if (alsoLowerDefInStages) {

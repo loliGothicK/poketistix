@@ -449,6 +449,8 @@ export function analyzeVideoFrameRgba(
     phase = "BattleAnimation";
   }
 
+  const resultScreenOutcome = detectResultScreenOutcome(rgba, width, height);
+
   return {
     timestampMs,
     phase,
@@ -465,5 +467,87 @@ export function analyzeVideoFrameRgba(
     messageRoiHash,
     abilityRoiHash,
     targetSelectionRoiHash,
+    resultScreenOutcome,
   };
+}
+
+/**
+ * 対戦終了後の左右分割 WIN / LOSE リザルト画面を言語非依存で検出する。
+ * - 左側下部: P1 青色ネームプレート (x: 0.16..0.38, y: 0.86..0.95)
+ * - 右側下部: P2 ピンク色ネームプレート (x: 0.62..0.84, y: 0.86..0.95)
+ * - 勝者側のみ中央下部に黄緑〜金色の「WIN」＋月桂冠および赤いリボンが表示される
+ */
+export function detectResultScreenOutcome(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+): "WIN" | "LOSS" | null {
+  if (width <= 0 || height <= 0) return null;
+
+  const yPlate0 = Math.round(0.86 * height);
+  const yPlate1 = Math.round(0.95 * height);
+  const xP1_0 = Math.round(0.16 * width);
+  const xP1_1 = Math.round(0.38 * width);
+  const xP2_0 = Math.round(0.62 * width);
+  const xP2_1 = Math.round(0.84 * width);
+
+  let p1Blue = 0;
+  let p1Tot = 0;
+  for (let y = yPlate0; y < yPlate1; y += 2) {
+    for (let x = xP1_0; x < xP1_1; x += 2) {
+      const idx = (y * width + x) * 4;
+      const r = rgba[idx] ?? 0;
+      const b = rgba[idx + 2] ?? 0;
+      if (b >= 110 && b - r >= 40) p1Blue++;
+      p1Tot++;
+    }
+  }
+  if (p1Tot === 0 || p1Blue / p1Tot < 0.65) return null;
+
+  let p2Pink = 0;
+  let p2Tot = 0;
+  for (let y = yPlate0; y < yPlate1; y += 2) {
+    for (let x = xP2_0; x < xP2_1; x += 2) {
+      const idx = (y * width + x) * 4;
+      const r = rgba[idx] ?? 0;
+      const g = rgba[idx + 1] ?? 0;
+      const b = rgba[idx + 2] ?? 0;
+      if (r >= 120 && r - g >= 60 && b >= 40) p2Pink++;
+      p2Tot++;
+    }
+  }
+  if (p2Tot === 0 || p2Pink / p2Tot < 0.4) return null;
+
+  const measureWinBadge = (xFrac0: number, xFrac1: number) => {
+    const x0 = Math.round(xFrac0 * width);
+    const x1 = Math.round(xFrac1 * width);
+    const y0 = Math.round(0.52 * height);
+    const y1 = Math.round(0.84 * height);
+    let yg = 0;
+    let red = 0;
+    let tot = 0;
+    for (let y = y0; y < y1; y += 2) {
+      for (let x = x0; x < x1; x += 2) {
+        const idx = (y * width + x) * 4;
+        const r = rgba[idx] ?? 0;
+        const g = rgba[idx + 1] ?? 0;
+        const b = rgba[idx + 2] ?? 0;
+        if (r >= 170 && g >= 170 && b <= 110 && g >= r - 60) yg++;
+        if (r >= 160 && g <= 65 && b <= 80 && r - g >= 110) red++;
+        tot++;
+      }
+    }
+    return tot === 0 ? { yg: 0, red: 0 } : { yg: yg / tot, red: red / tot };
+  };
+
+  const left = measureWinBadge(0.12, 0.38);
+  const right = measureWinBadge(0.62, 0.88);
+
+  if (left.yg >= 0.12 && left.red >= 0.03 && left.yg > right.yg * 3) {
+    return "WIN";
+  }
+  if (right.yg >= 0.12 && right.red >= 0.03 && right.yg > left.yg * 3) {
+    return "LOSS";
+  }
+  return null;
 }

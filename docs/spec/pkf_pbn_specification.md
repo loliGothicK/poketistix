@@ -377,7 +377,7 @@ PBN は行指向のドメイン固有言語（DSL）です。
 <status_line>         ::= [<indent>] "status" <ws> <slot> <ws> <status_change> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
 <damage_line>         ::= [<indent>] "damage" <ws> <slot> <ws> <damage_hp> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
 <heal_line>           ::= [<indent>] "heal" <ws> <slot> <ws> <damage_hp> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
-<faint_line>          ::= [<indent>] "faint" <ws> <slot> { <ws> <meta_token> }* [<ws>] <newline>
+<faint_line>          ::= [<indent>] "faint" <ws> <slot> [ <ws> <cause_id> ] { <ws> <meta_token> }* [<ws>] <newline>
 
 /* 場の変化 (Field Events) */
 <field_event>         ::= <weather_line> | <terrain_line> | <field_change_line> | <side_line>
@@ -479,8 +479,8 @@ PBN は行指向のドメイン固有言語（DSL）です。
 | `field` | `field <trick-room\|gravity\|fairy-lock> <on\|off>` | トリックルーム等の全体場効果の開始/終了。 |
 | `side` | `side <p1\|p2> <tailwind\|reflect> <on\|off>` | おいかぜ・壁等の陣地効果の開始/終了。 |
 | `heal` | `heal <target> <damage_hp> [<cause>]` | HP回復（フィールド、残飯、きのみ、回復技等）。推移と原因を記録。 |
-| `perish` | `perish <slot> <before> -> <after> [{ faint <slot> }]` | ほろびのうたのカウント減少。0到達時は `{ faint <slot> }` スコープで瀕死を内包。 |
-| `faint` | `faint <target>` | 戦闘不能。 |
+| `perish` | `perish <slot> <count> [{ faint <slot> }]` | ほろびのうたの残りカウント（`3` / `2` / `1` / `0`）。0到達時は `{ faint <slot> }` スコープで瀕死を内包。 |
+| `faint` | `faint <target> [cause]` | 戦闘不能。`destiny-bond` 等の直接要因がある場合は `[destiny-bond]` を付与。 |
 
 ---
 

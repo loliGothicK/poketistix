@@ -96,6 +96,13 @@ export interface StatResetPhraseDef {
 }
 
 /** 全9言語（ja, en, es, fr, de, it, ko, zh-Hant, zh-Hans）のメッセージテンプレート定義 */
+export type BattleEndReason = "forfeit" | "ko" | "opp-timeout" | "own-timeout" | "total-timeout";
+
+export interface BattleEndPhraseDef {
+  readonly phrase: string;
+  readonly reason: BattleEndReason;
+}
+
 export interface BattleMessageTemplates {
   readonly lang: string;
   readonly withdraw?: readonly string[];
@@ -129,7 +136,9 @@ export interface BattleMessageTemplates {
   readonly curePhrases?: readonly CurePhraseDef[];
   readonly perishCountRegex?: RegExp;
   readonly perishStartPhrases?: readonly string[];
+  readonly destinyBondTriggerPhrases?: readonly string[];
   readonly forfeitPhrases?: readonly string[];
+  readonly battleEndPhrases?: readonly BattleEndPhraseDef[];
   readonly statCapPhrases?: readonly string[];
   readonly statResetPhrases?: readonly string[];
   readonly statResetDefs?: readonly StatResetPhraseDef[];
@@ -189,7 +198,9 @@ export interface BattleLogPatternSet {
     rawText: string,
   ) => { mon: string; count: number; isOpposing: boolean } | null;
   readonly matchPerishStart: (rawText: string, textKey: string) => boolean;
+  readonly matchDestinyBondTrigger: (rawText: string, textKey: string) => boolean;
   readonly matchForfeit: (rawText: string, textKey: string) => boolean;
+  readonly matchBattleEnd: (rawText: string, textKey: string) => BattleEndReason | null;
 }
 
 function escapeTemplateLiteral(part: string): string {
@@ -290,13 +301,21 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
 
   const perishCountRegex =
     templates.perishCountRegex ??
-    /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+(\d+)[!.]?$/i;
+    /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+([0-3OoIl０-３])[!.]?$/i;
   const perishStartPhrases = (
     templates.perishStartPhrases ?? ["allpokemonthatheardthesongwillfaintinthreeturns"]
   ).map((s) => normalizeOcrToken(s));
+  const destinyBondTriggerPhrases = (
+    templates.destinyBondTriggerPhrases ?? ["tookitsattackerdownwithit"]
+  ).map((s) => normalizeOcrToken(s));
+  const destinyBondSetupGuardJa = normalizeOcrToken("しようとして");
   const forfeitPhrases = (templates.forfeitPhrases ?? ["thebattlehasendedduetoaforfeit"]).map((s) =>
     normalizeOcrToken(s),
   );
+  const battleEndPhrases = (templates.battleEndPhrases ?? []).map((d) => ({
+    phrase: normalizeOcrToken(d.phrase),
+    reason: d.reason,
+  }));
 
   const statCapPhrases = (templates.statCapPhrases ?? ["wontgoanyhigher", "wontgoanylower"]).map(
     (s) => normalizeOcrToken(s),
@@ -477,14 +496,38 @@ export function compileMessagePatternSet(templates: BattleMessageTemplates): Bat
       const m = perishCountRegex.exec(trimmed);
       if (!m || !m[1] || !m[2]) return null;
       const isOpposing = /^(?:The\s+opposing\s+|相手の\s*)/i.test(trimmed);
-      const count = parseInt(m[2], 10);
+      const digitRaw = m[2]
+        .replace(/[Oo０]/g, "0")
+        .replace(/[Il１]/g, "1")
+        .replace(/２/g, "2")
+        .replace(/３/g, "3");
+      const count = parseInt(digitRaw, 10);
+      if (Number.isNaN(count)) return null;
       return { mon: m[1].trim(), count, isOpposing };
     },
     matchPerishStart: (_rawText: string, textKey: string) => {
       return perishStartPhrases.some((phrase) => approxFind(textKey, phrase).score >= 0.75);
     },
+    matchDestinyBondTrigger: (_rawText: string, textKey: string) => {
+      // 「相手を道連れにしようとしている」「is hoping to take its attacker down with it」との誤マッチを防ぐ
+      if (textKey.includes(destinyBondSetupGuardJa) || textKey.includes("hoping")) {
+        return false;
+      }
+      return destinyBondTriggerPhrases.some((phrase) => approxFind(textKey, phrase).score >= 0.8);
+    },
     matchForfeit: (_rawText: string, textKey: string) => {
       return forfeitPhrases.some((phrase) => approxFind(textKey, phrase).score >= 0.75);
+    },
+    matchBattleEnd: (_rawText: string, textKey: string): BattleEndReason | null => {
+      if (forfeitPhrases.some((phrase) => approxFind(textKey, phrase).score >= 0.75)) {
+        return "forfeit";
+      }
+      for (const { phrase, reason } of battleEndPhrases) {
+        if (approxFind(textKey, phrase).score >= 0.78) {
+          return reason;
+        }
+      }
+      return null;
     },
   };
 }
@@ -1003,9 +1046,19 @@ export const ENGLISH_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "calmeddown", status: "uproar", isVolatile: true },
     { phrase: "wasfreedfrom", status: "bound", isVolatile: true },
   ],
-  perishCountRegex: /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+(\d+)[!.]?$/i,
+  perishCountRegex:
+    /^(?:The\s+opposing\s+)?(.+?)['’]s\s+perish\s+count\s+fell\s+to\s+([0-3OoIl０-３])[!.]?$/i,
   perishStartPhrases: ["allpokemonthatheardthesongwillfaintinthreeturns"],
+  destinyBondTriggerPhrases: ["tookitsattackerdownwithit"],
   forfeitPhrases: ["thebattlehasendedduetoaforfeit"],
+  battleEndPhrases: [
+    { phrase: "theopposingplayerstimehasrunout", reason: "opp-timeout" },
+    { phrase: "yourtimehasrunout", reason: "own-timeout" },
+    { phrase: "timehasrunoutthebattleisover", reason: "total-timeout" },
+    { phrase: "timehasrunout", reason: "total-timeout" },
+    { phrase: "youdefeated", reason: "ko" },
+    { phrase: "youlost", reason: "ko" },
+  ],
   statCapPhrases: [
     "wontgoanyhigher",
     "wontgoanylower",
@@ -1599,9 +1652,23 @@ export const JAPANESE_MESSAGE_TEMPLATES: BattleMessageTemplates = {
     { phrase: "おとなしくなった", status: "uproar", isVolatile: true },
     { phrase: "から解放された", status: "bound", isVolatile: true },
   ],
-  perishCountRegex: /^(?:相手の\s*)?(.+?)の\s*滅びのカウントが\s*(\d+)に\s*なった[!！.]?$/u,
+  perishCountRegex:
+    /^(?:相手の\s*)?(.+?)の\s*滅びのカウントが\s*([0-3OoIl０-３])に\s*なった[!！.]?$/u,
   perishStartPhrases: ["ほろびのうたを聴いたポケモンは3ターン後に滅びてしまう"],
+  destinyBondTriggerPhrases: ["相手を道連れにした", "攻撃相手を道連れにした"],
   forfeitPhrases: ["降参が選ばれました"],
+  battleEndPhrases: [
+    { phrase: "相手の持ち時間がなくなりました", reason: "opp-timeout" },
+    { phrase: "相手の持ち時間が切れました", reason: "opp-timeout" },
+    { phrase: "自分の持ち時間がなくなりました", reason: "own-timeout" },
+    { phrase: "自分の持ち時間が切れました", reason: "own-timeout" },
+    { phrase: "持ち時間がなくなりました", reason: "own-timeout" },
+    { phrase: "時間切れです", reason: "total-timeout" },
+    { phrase: "対戦時間が終了しました", reason: "total-timeout" },
+    { phrase: "勝負に勝った", reason: "ko" },
+    { phrase: "勝負に負けた", reason: "ko" },
+    { phrase: "目の前が真っ暗になった", reason: "ko" },
+  ],
   statCapPhrases: [
     "もう上がらない",
     "もう下がらない",

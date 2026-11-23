@@ -3,7 +3,8 @@ import { getApplicativeValidation } from "fp-ts/lib/Either";
 import { getSemigroup } from "fp-ts/lib/ReadonlyArray";
 import { sequenceT } from "fp-ts/lib/Apply";
 import { MitamaError, ValidateResult, anyhow } from "@/errors/anyhow/error";
-import type { TurnRecord, LogEvent } from "@/services/battleLogParser";
+import { moveByIdentifier } from "@/data/moves";
+import { isMultiTargetMove, type TurnRecord, type LogEvent } from "@/services/battleLogParser";
 
 const ap = getApplicativeValidation(getSemigroup<MitamaError>());
 
@@ -117,6 +118,16 @@ export function validateLeadActiveSlots(
   return right(turns);
 }
 
+const SELF_DAMAGE_REACTION_EFFECTS = new Set<string>([
+  "life-orb",
+  "rocky-helmet",
+  "rough-skin",
+  "iron-barbs",
+  "aftermath",
+  "innards-out",
+  "liquid-ooze",
+]);
+
 /**
  * 2. 自己攻撃の検証
  * 単体攻撃技において、攻撃スロット自身を対象として直接ダメージを与えている異常を検出する。
@@ -136,22 +147,29 @@ export function validateNoSelfAttack(
       if (ev.verb === "move") {
         currentActor = ev.args[0] ?? null;
         currentMove = ev.args[1] ?? null;
-        if (currentMove && NON_ATTACKING_MOVES.test(currentMove)) {
+        const isStatusMove = currentMove
+          ? moveByIdentifier.get(currentMove)?.category === "status"
+          : false;
+        const isNonAttacking =
+          isStatusMove || (currentMove ? NON_ATTACKING_MOVES.test(currentMove) : false);
+        const isBlockedSingleTarget = Boolean(
+          ev.protectedSlots &&
+          ev.protectedSlots.length > 0 &&
+          currentMove &&
+          !isMultiTargetMove(currentMove),
+        );
+        if (isNonAttacking || isBlockedSingleTarget) {
           currentActor = null;
           currentMove = null;
         }
         continue;
       }
 
-      if (ev.verb === "switch" || ev.verb === "weather" || ev.verb === "terrain") {
-        currentActor = null;
-        currentMove = null;
-        continue;
-      }
-
       if (ev.verb === "damage" && currentActor && currentMove) {
         const target = ev.args[0] ?? null;
-        const isResidual = Boolean(ev.bracket && RESIDUAL_BRACKETS.has(ev.bracket));
+        const isResidual = Boolean(
+          ev.bracket && (ev.bracket !== "crit" || RESIDUAL_BRACKETS.has(ev.bracket)),
+        );
         const isSelfHurtMove = /curse|belly-drum|substitute|pain-split/i.test(currentMove);
 
         if (target === currentActor && !isResidual && !isSelfHurtMove) {
@@ -163,7 +181,22 @@ export function validateNoSelfAttack(
         }
         currentActor = null;
         currentMove = null;
+        continue;
       }
+
+      // 技発動と直接ダメージの間に合法的に割り込み得るイベント（タイプ半減きのみ・特性発動等）以外は
+      // 技の直接ダメージ受付ウィンドウを終了する（ターン終了時の回復・滅び・ひんし等で誤検知しないため）
+      if (ev.verb === "item" || ev.verb === "ability") {
+        const effectSlug = ev.args[1] ?? "";
+        if (SELF_DAMAGE_REACTION_EFFECTS.has(effectSlug)) {
+          currentActor = null;
+          currentMove = null;
+        }
+        continue;
+      }
+
+      currentActor = null;
+      currentMove = null;
     }
   }
 

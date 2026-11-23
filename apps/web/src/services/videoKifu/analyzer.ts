@@ -4,6 +4,11 @@ import { abilityById } from "@/data/abilities";
 import { itemById } from "@/data/items";
 import { moveById } from "@/data/moves";
 import { BattleLogParser } from "@/services/battleLogParser";
+import {
+  DEFAULT_LOG_PATTERN_SETS,
+  ENGLISH_LOG_PATTERNS,
+  JAPANESE_LOG_PATTERNS,
+} from "@/services/battleLogPatterns";
 import { approxFind, fuzzyMatchEntity, normalizeOcrToken } from "@/services/ocrText";
 import type {
   AnalyzeBattleVideoOptions,
@@ -99,6 +104,9 @@ export class VideoKifuAnalyzer {
     };
 
     const p1Selection: number[] = [];
+    let lastCompleteSelection: number[] | null = null;
+    let resultScreenWinVotes = 0;
+    let resultScreenLossVotes = 0;
     const p2PreviewSlugs: string[] = [];
     const p1SelectedCardVotes = new Map<number, number>();
     const p1CardDigitVotes: Map<1 | 2 | 3 | 4, number>[] = [
@@ -142,6 +150,14 @@ export class VideoKifuAnalyzer {
         .filter((s): s is string => Boolean(s));
     };
 
+    const detectedLanguage = frameSource.detectedLanguage ?? this.options.language ?? null;
+    const patternSets =
+      detectedLanguage === "ja"
+        ? [JAPANESE_LOG_PATTERNS]
+        : detectedLanguage === "en"
+          ? [ENGLISH_LOG_PATTERNS]
+          : DEFAULT_LOG_PATTERN_SETS;
+
     const logParser = new BattleLogParser({
       myTeam,
       dictionaries,
@@ -151,6 +167,7 @@ export class VideoKifuAnalyzer {
       p1AbilitySlug: getP1AbilitySlug,
       p1Moves: getP1MoveSlugs,
       p1Speed: getP1Speed,
+      patternSets,
     });
 
     const MIN_TURN_GAP_MS = 15_000;
@@ -489,7 +506,7 @@ export class VideoKifuAnalyzer {
 
         // (c) P1 選出確定番号（1..4）の高精度検出
         // 見せ合い画面の白背景ボックス内（18x24 テンプレート）から正確に 1..4 を検出
-        const frameDigits = new Map<number, 1 | 2 | 3 | 4>();
+        const frameDigits = new Map<number, { digit: 1 | 2 | 3 | 4; score: number }>();
         for (let cardI = 0; cardI < Math.min(6, myTeam.length); cardI++) {
           const res = detectTeamPreviewDigitFromRgba(
             captured.rgba,
@@ -498,7 +515,7 @@ export class VideoKifuAnalyzer {
             cardI,
           );
           if (res !== null) {
-            frameDigits.set(cardI, res.digit);
+            frameDigits.set(cardI, res);
             p1CardDigitVotes[cardI]?.set(
               res.digit,
               (p1CardDigitVotes[cardI]?.get(res.digit) ?? 0) + 1,
@@ -511,19 +528,28 @@ export class VideoKifuAnalyzer {
         }
 
         // 1フレーム内で 1..4 の4つの数字が重複なく全て揃った瞬間（完全な選出コマ）を優先検出
-        if (frameDigits.size >= 4) {
-          const digitsPresent = new Set(frameDigits.values());
+        // 途中で選び直した場合でも最新の確定選出が残るよう lastCompleteSelection を上書き更新する
+        if (frameDigits.size === 4) {
+          const digitsPresent = new Set<1 | 2 | 3 | 4>();
+          let minScore = 1;
+          for (const { digit, score } of frameDigits.values()) {
+            digitsPresent.add(digit);
+            if (score < minScore) minScore = score;
+          }
           if (
+            digitsPresent.size === 4 &&
+            minScore >= 0.45 &&
             digitsPresent.has(1) &&
             digitsPresent.has(2) &&
             digitsPresent.has(3) &&
             digitsPresent.has(4)
           ) {
             const completeSelection: number[] = [0, 0, 0, 0];
-            for (const [cI, d] of frameDigits.entries()) {
+            for (const [cI, { digit }] of frameDigits.entries()) {
               const pIdx = resolveCardToP1Idx(cI) ?? cI;
-              completeSelection[d - 1] = pIdx;
+              completeSelection[digit - 1] = pIdx;
             }
+            lastCompleteSelection = completeSelection;
             p1Selection.length = 0;
             p1Selection.push(...completeSelection);
             logParser.setP1Selection(p1Selection);
@@ -840,7 +866,7 @@ export class VideoKifuAnalyzer {
           const normMsg = normalizeOcrToken(rawMsg);
           const isActionMessage =
             logParser.shouldFlushPendingDamages(rawMsg) ||
-            /\b(used|sent out|go!|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
+            /\b(used|sent out|go[l1I]?[!1lI]?|withdrew|come back|fainted|reacting to|mega evolved)\b/i.test(
               rawMsg,
             ) ||
             /使[つっ]|繰り?出|くり出|くりだ|ゆけ|行け|戻れ|引っこめ|ひっこめ|たおれ|反応|メガシンカ|すなおこし|グラスメイカー/u.test(
@@ -868,9 +894,7 @@ export class VideoKifuAnalyzer {
 
           if (
             lower.includes("you defeated") ||
-            lower.includes("forfeit") ||
-            approxFind(normMsg, normalizeOcrToken("勝負に勝った")).score >= 0.75 ||
-            approxFind(normMsg, normalizeOcrToken("降参が選ばれました")).score >= 0.75
+            approxFind(normMsg, normalizeOcrToken("勝負に勝った")).score >= 0.75
           ) {
             matchResult = "WIN";
           } else if (
@@ -892,6 +916,14 @@ export class VideoKifuAnalyzer {
         }
       }
 
+      if (logParser.hasLead) {
+        if (frame.resultScreenOutcome === "WIN") {
+          resultScreenWinVotes++;
+        } else if (frame.resultScreenOutcome === "LOSS") {
+          resultScreenLossVotes++;
+        }
+      }
+
       onProgress?.({
         currentTimeSec: tSec,
         durationSec,
@@ -903,46 +935,55 @@ export class VideoKifuAnalyzer {
 
     flushPendingDamages(durationSec * 1000);
 
-    // P1選出: 見せ合い画面の選択番号 (1..4) の最多得票カードを順に貪欲割り当て
-    const digitAssignments = new Map<1 | 2 | 3 | 4, number>();
-    const assignedCards = new Set<number>();
-    for (const d of [1, 2, 3, 4] as const) {
-      let bestCard = -1;
-      let bestVotes = 0;
-      for (let cardI = 0; cardI < Math.min(6, myTeam.length); cardI++) {
-        if (assignedCards.has(cardI)) continue;
-        const v = p1CardDigitVotes[cardI]?.get(d) ?? 0;
-        if (v > bestVotes) {
-          bestVotes = v;
-          bestCard = cardI;
+    // P1選出:
+    // 1フレーム内で 1..4 が高信頼で揃った最新の確定選出 (lastCompleteSelection) を最優先する
+    // （途中でキャンセル・選び直しを行った場合に古い投票に巻き戻されるのを防ぐ）。
+    // 完全フレームが一度も得られなかった場合のみ累計得票による貪欲割り当てにフォールバックする。
+    if (lastCompleteSelection !== null) {
+      p1Selection.length = 0;
+      p1Selection.push(...lastCompleteSelection);
+      logParser.setP1Selection(p1Selection);
+    } else {
+      const digitAssignments = new Map<1 | 2 | 3 | 4, number>();
+      const assignedCards = new Set<number>();
+      for (const d of [1, 2, 3, 4] as const) {
+        let bestCard = -1;
+        let bestVotes = 0;
+        for (let cardI = 0; cardI < Math.min(6, myTeam.length); cardI++) {
+          if (assignedCards.has(cardI)) continue;
+          const v = p1CardDigitVotes[cardI]?.get(d) ?? 0;
+          if (v > bestVotes) {
+            bestVotes = v;
+            bestCard = cardI;
+          }
+        }
+        if (bestCard >= 0 && bestVotes > 0) {
+          digitAssignments.set(d, bestCard);
+          assignedCards.add(bestCard);
         }
       }
-      if (bestCard >= 0 && bestVotes > 0) {
-        digitAssignments.set(d, bestCard);
-        assignedCards.add(bestCard);
+
+      const assignedSelection: number[] = [];
+      for (const d of [1, 2, 3, 4] as const) {
+        const cI = digitAssignments.get(d);
+        if (cI !== undefined) {
+          assignedSelection.push(resolveCardToP1Idx(cI));
+        }
       }
+
+      const selectedByTab = Array.from(p1SelectedCardVotes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([idx]) => idx)
+        .filter((idx) => !assignedSelection.includes(idx));
+      const remaining = myTeam
+        .map((_, idx) => idx)
+        .filter((idx) => !assignedSelection.includes(idx) && !selectedByTab.includes(idx));
+
+      p1Selection.length = 0;
+      p1Selection.push(...assignedSelection, ...selectedByTab, ...remaining);
+      p1Selection.splice(4);
+      logParser.setP1Selection(p1Selection);
     }
-
-    const assignedSelection: number[] = [];
-    for (const d of [1, 2, 3, 4] as const) {
-      const cI = digitAssignments.get(d);
-      if (cI !== undefined) {
-        assignedSelection.push(resolveCardToP1Idx(cI));
-      }
-    }
-
-    const selectedByTab = Array.from(p1SelectedCardVotes.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([idx]) => idx)
-      .filter((idx) => !assignedSelection.includes(idx));
-    const remaining = myTeam
-      .map((_, idx) => idx)
-      .filter((idx) => !assignedSelection.includes(idx) && !selectedByTab.includes(idx));
-
-    p1Selection.length = 0;
-    p1Selection.push(...assignedSelection, ...selectedByTab, ...remaining);
-    p1Selection.splice(4);
-    logParser.setP1Selection(p1Selection);
 
     // 見せ合いの選出情報やパーティ技情報がある場合、確定情報に基づいてスロット・技所有者を正しく上書き
     logParser.finalizeLeadAndSlots(p1Selection, p2PreviewSlugs);
@@ -952,8 +993,23 @@ export class VideoKifuAnalyzer {
       p1Selection.push(...finalizedSelection);
     }
 
-    // 最終 HP 残量から勝敗が未確定の場合の推定
-    if (logParser.hasForfeit()) {
+    // 勝敗の確定優先順位:
+    // 1. 対戦終了後の左右分割 WIN / LOSE リザルト画面（言語・終了理由に依存しない最優先 SoT）
+    // 2. 明確な勝敗付き時間切れメッセージ (opp-timeout / own-timeout)
+    // 3. 明確な勝敗メッセージ (You defeated / You lost 等で既に設定済み)
+    // 4. 降参メッセージのみでリザルト画面が無い場合は UNKNOWN
+    // 5. それ以外で UNKNOWN の場合のみ最終 HP 残量から推定
+    if (resultScreenWinVotes > 0 || resultScreenLossVotes > 0) {
+      if (resultScreenWinVotes > resultScreenLossVotes) {
+        matchResult = "WIN";
+      } else if (resultScreenLossVotes > resultScreenWinVotes) {
+        matchResult = "LOSS";
+      }
+    } else if (logParser.getBattleEndReason() === "opp-timeout") {
+      matchResult = "WIN";
+    } else if (logParser.getBattleEndReason() === "own-timeout") {
+      matchResult = "LOSS";
+    } else if (logParser.hasForfeit()) {
       matchResult = "UNKNOWN";
     } else if (matchResult === "UNKNOWN") {
       const p2AllZero = prevHpBars[2] === 0 && prevHpBars[3] === 0;
@@ -1032,8 +1088,15 @@ export async function analyzeBattleVideoFile(
     span.setAttribute("video.file_size_bytes", options.file.size);
     span.setAttribute("video.sample_step_sec", options.sampleStepSec ?? 1.0);
 
-    const frameSource = new HtmlVideoFrameSource(options.file, options.ocrProvider);
+    const frameSource = new HtmlVideoFrameSource(
+      options.file,
+      options.ocrProvider,
+      options.language,
+    );
     await frameSource.init();
+    if (frameSource.detectedLanguage) {
+      span.setAttribute("video.detected_language", frameSource.detectedLanguage);
+    }
 
     try {
       const analyzer = new VideoKifuAnalyzer(options);

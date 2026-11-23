@@ -84,6 +84,8 @@ export interface VideoFrameAnalysis {
   readonly messageRoiHash: number;
   readonly abilityRoiHash: number;
   readonly targetSelectionRoiHash?: number;
+  /** 対戦終了後の左右分割 WIN / LOSE リザルト画面の検出結果（言語非依存） */
+  readonly resultScreenOutcome?: "WIN" | "LOSS" | null;
 }
 
 export interface ChampionsEntityDictionaries {
@@ -128,6 +130,8 @@ export interface VideoKifuAnalysisSummary {
 
 export type RoiOcrHint = "species" | "move" | "ability" | "message" | "hp" | "result";
 
+export type DetectedVideoLanguage = "ja" | "en";
+
 export type RoiOcrProvider = (
   croppedCanvas: HTMLCanvasElement,
   hint: RoiOcrHint,
@@ -142,6 +146,8 @@ export interface VideoFrameCaptured {
 
 export interface VideoFrameSource {
   readonly durationSec: number;
+  /** 事前プリスキャンで自動判定された動画のゲーム言語（未判定・判別不能時は null/undefined） */
+  readonly detectedLanguage?: DetectedVideoLanguage | null;
   seek(timeSec: number): Promise<void>;
   captureFrame(): Promise<VideoFrameCaptured>;
   recognizeRoiText(rect: NormalizedRect, hint: RoiOcrHint): Promise<string | null>;
@@ -154,6 +160,8 @@ export interface VideoKifuAnalyzerOptions {
   readonly dictionaries: ChampionsEntityDictionaries;
   /** レギュレーション識別子（デフォルト: "M-C"） */
   readonly regulation?: string;
+  /** 動画のゲーム言語を明示指定する場合（未指定時は frameSource.detectedLanguage または日英自動） */
+  readonly language?: DetectedVideoLanguage;
   /** サンプリング間隔（秒）。デフォルトは 1.0 秒 */
   readonly sampleStepSec?: number;
   readonly onProgress?: (progress: VideoAnalysisProgress) => void;

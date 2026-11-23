@@ -449,10 +449,10 @@ export function detectTeamPreviewDigitFromRgba(
 
   const y0 = 140 + cardIndex * 126;
 
-  // Selecting レイアウト (X: 86..134, Char: 94..128) と Preparing レイアウト (X: 294..342, Char: 302..336, Y +19px) の両方を走査
+  // Selecting レイアウト (X: 86..134, Char: 94..128) と Preparing レイアウト (X: 294..356, Char: 315..349, Y +19px) の両方を走査
   const layoutCandidates = [
     { boxX0: 86, boxX1: 134, charX0: 94, charX1: 128, yOffset: 0 },
-    { boxX0: 294, boxX1: 342, charX0: 302, charX1: 336, yOffset: 19 },
+    { boxX0: 294, boxX1: 356, charX0: 315, charX1: 349, yOffset: 19 },
   ];
 
   for (const layout of layoutCandidates) {
