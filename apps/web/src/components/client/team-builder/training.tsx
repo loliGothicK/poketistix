@@ -204,6 +204,11 @@ export function Training({
     return pokemon;
   }, [useForm, formChangeState, pokemon]);
 
+  const isMegaForm = useForm && formChangeState?.type === "mega";
+  const displayedAbility = isMegaForm
+    ? (activePokemon.abilities[0] ?? ongoing.ability)
+    : ongoing.ability;
+
   const remainingEvs = useMemo(() => {
     return MAX_EV_TOTAL - Object.values(ongoing.evs).reduce((a, b) => a + b, 0 as number);
   }, [ongoing]);
@@ -593,12 +598,9 @@ export function Training({
 
               <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                 <Autocomplete
-                  value={ongoing.ability}
-                  options={
-                    useForm && formChangeState?.type === "mega"
-                      ? activePokemon.abilities
-                      : pokemon.abilities
-                  }
+                  value={displayedAbility}
+                  options={isMegaForm ? activePokemon.abilities : pokemon.abilities}
+                  disabled={isMegaForm}
                   getOptionLabel={(option) =>
                     t(`abilities.${abilityById.get(option)?.identifier}.name`)
                   }
@@ -606,7 +608,10 @@ export function Training({
                   renderInput={(params) => (
                     <TextField {...params} label={t("teamBuilder.ability")} />
                   )}
-                  onChange={(_, value) => handleUpdate({ ...ongoing, ability: value! })}
+                  onChange={(_, value) => {
+                    if (isMegaForm || value === null) return;
+                    handleUpdate({ ...ongoing, ability: value });
+                  }}
                 />
 
                 <Box sx={{ width: { xs: "100%", md: 140 } }}>
