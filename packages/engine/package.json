@@ -40,7 +40,7 @@
     "@pkmn/sim": "catalog:",
     "@poketistix/data": "workspace:*",
     "@types/node": "catalog:",
-    "glob": "13.0.6",
+    "glob": "13.0.7",
     "outdent": "catalog:",
     "oxfmt": "catalog:",
     "oxlint-plugin-eslint": "catalog:",
