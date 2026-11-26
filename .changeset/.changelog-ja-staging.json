@@ -14,5 +14,9 @@
   {
     "type": "minor",
     "line": "- 新機能・変更点:\n  \n  - quiz: カテゴリや難易度で絞り込みながらクイズを閲覧・挑戦できるクイズ一覧ページ（`/quiz/list`）を追加\n  - share: チーム共有リンク作成時に戦略ノートを含めるか選択できる機能を追加\n  - blog: 『Pokémon Champions』ターン終了時の処理順まとめ（検証結果）の記事を公開"
+  },
+  {
+    "type": "minor",
+    "line": "- 新機能・変更点（プレビュー）:\n  \n  - kifu: 『Pokémon Champions』向けの人間可読な対戦棋譜フォーマット **PBN (Pokémon Battle Notation)**（`.pbn`）および仕様ドキュメント（`/docs/pbn-specification`）をプレビュー公開\n  - battle-record: 対戦記録画面（`/battle-record`）に「動画から棋譜解析」機能をプレビュー公開（MP4 / WebM / MOV 動画のブラウザ内解析、タイムスタンプ付き PBN 棋譜の自動抽出、動画シーク連動の確認・編集、戦績フォームへの反映に対応）\n  \n  パフォーマンス改善:\n  \n  - api / db: Vercel Functions のリージョン最適化（`bom1`）、`postgres.js` のサーバーレス向け接続設定、`GET /api/teams` の 1 クエリ化、および `teams` / `team_members` への複合インデックス追加によりチーム読み込み速度を改善\n  \n  バグ修正:\n  \n  - team-builder: メガシンカ選択時に特性が固定されるよう修正"
   }
 ]

@@ -68,7 +68,7 @@ export const teams = pgTable(
   },
   (t) => [
     check("teams_name_len", sql`char_length(${t.name}) between 1 and 100`),
-    index("teams_user_id_idx").on(t.userId),
+    index("teams_user_created_idx").on(t.userId, t.createdAt),
   ],
 );
 
@@ -83,7 +83,10 @@ export const teamMembers = pgTable(
       .notNull()
       .references(() => boxPokemon.id, { onDelete: "cascade" }),
   },
-  (t) => [check("team_members_slot_range", sql`${t.slotIndex} between 0 and 5`)],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.slotIndex] }),
+    check("team_members_slot_range", sql`${t.slotIndex} between 0 and 5`),
+  ],
 );
 
 export const sharedTeams = pgTable(

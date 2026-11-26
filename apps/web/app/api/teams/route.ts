@@ -22,43 +22,50 @@ export async function GET(_request: Request) {
   const result = await withChildSpan(
     "db.teams.list",
     async (_span) => {
-      const userTeams = await db
-        .select()
+      const rows = await db
+        .select({
+          teamId: teams.id,
+          teamName: teams.name,
+          teamDescription: teams.description,
+          slotIndex: teamMembers.slotIndex,
+          boxId: boxPokemon.id,
+          data: boxPokemon.data,
+        })
         .from(teams)
+        .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+        .leftJoin(boxPokemon, eq(teamMembers.boxPokemonId, boxPokemon.id))
         .where(eq(teams.userId, userId))
         .orderBy(asc(teams.createdAt));
 
-      if (userTeams.length === 0) return [];
+      const teamMap = new Map<
+        string,
+        {
+          readonly id: string;
+          readonly name: string;
+          readonly description: string | undefined;
+          readonly members: (TrainedPokemon | null)[];
+        }
+      >();
 
-      const teamIds = userTeams.map((t) => t.id);
+      for (const row of rows) {
+        let team = teamMap.get(row.teamId);
+        if (!team) {
+          team = {
+            id: row.teamId,
+            name: row.teamName,
+            description: row.teamDescription ?? undefined,
+            members: Array<TrainedPokemon | null>(6).fill(null),
+          };
+          teamMap.set(row.teamId, team);
+        }
 
-      const members = await db
-        .select({
-          teamId: teamMembers.teamId,
-          slotIndex: teamMembers.slotIndex,
-          boxId: boxPokemon.id,
-          slug: boxPokemon.slug,
-          data: boxPokemon.data,
-        })
-        .from(teamMembers)
-        .innerJoin(boxPokemon, eq(teamMembers.boxPokemonId, boxPokemon.id))
-        .where(inArray(teamMembers.teamId, teamIds));
+        if (row.slotIndex !== null && row.boxId !== null && row.data !== null) {
+          const data = row.data as Omit<TrainedPokemon, "boxId">;
+          team.members[row.slotIndex] = { boxId: row.boxId, ...data };
+        }
+      }
 
-      return userTeams.map((team) => {
-        const slots = Array<TrainedPokemon | null>(6).fill(null);
-        members
-          .filter((m) => m.teamId === team.id)
-          .forEach((m) => {
-            const data = m.data as Omit<TrainedPokemon, "boxId">;
-            slots[m.slotIndex] = { boxId: m.boxId, ...data };
-          });
-        return {
-          id: team.id,
-          name: team.name,
-          description: team.description ?? undefined,
-          members: slots,
-        } satisfies Team;
-      });
+      return Array.from(teamMap.values()) satisfies Team[];
     },
     { op: "db.query" },
   );

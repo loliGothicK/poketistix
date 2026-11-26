@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+### Minor Changes
+
+- Features (Preview):
+
+    - kifu (Preview): Introduced **PBN (Pokémon Battle Notation)** (`.pbn`), a human-readable battle log format tailored for *Pokémon Champions*, along with its specification documentation (`/docs/pbn-specification`)
+    - battle-record (Preview): Added **Import from Video** in `/battle-record` to analyze battle recordings (MP4 / WebM / MOV) in the browser, extract timestamped PBN logs, review and edit events alongside video seeking, and apply results to the battle record form
+
+- Performance:
+
+    - api / db: Optimized `GET /api/teams` latency by co-locating Vercel Functions with the database region (`bom1`), configuring `postgres.js` for serverless pooling, consolidating team and member fetching into a single `LEFT JOIN` query, and adding composite indexes on `teams` and `team_members`
+
+- Fixes:
+
+    - team-builder: Locked the Pokémon's Ability when Mega Evolution is selected
+
 ## 0.8.0
 
 ### Minor Changes

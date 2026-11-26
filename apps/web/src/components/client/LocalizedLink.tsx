@@ -1,12 +1,22 @@
 "use client";
 
 import NextLink from "next/link";
-import { useParams } from "next/navigation";
-import React, { ComponentProps } from "react";
+import React, { ComponentProps, createContext, useContext, type ReactNode } from "react";
+
+const LangContext = createContext<string>("en");
+
+export function LangProvider({
+  lang,
+  children,
+}: {
+  readonly lang: string;
+  readonly children: ReactNode;
+}) {
+  return <LangContext.Provider value={lang}>{children}</LangContext.Provider>;
+}
 
 export function LocalizedLink({ href, ...props }: ComponentProps<typeof NextLink>) {
-  const params = useParams();
-  const lang = (params?.lang as string) || "en";
+  const lang = useContext(LangContext) || "en";
 
   let localizedHref = href;
   if (typeof href === "string") {

@@ -1,0 +1,29 @@
+---
+title: "Release v0.9.0"
+description: "Release notes for version 0.9.0 (PBN and Video Import preview)"
+date: "2026-11-24"
+tags: ["release"]
+draft: false
+---
+
+Version `0.9.0` introduces **PBN (Pokémon Battle Notation)** and **Video Kifu Import** as preview features.
+
+> **Preview Notice**: These features are currently available in preview. Recognition accuracy across different capture setups and details of the PBN format are still being actively refined and may change in future updates.
+
+### ✨ Minor Changes (Preview)
+
+- **PBN (Pokémon Battle Notation) Format**:
+  - Released a preview of **PBN (`.pbn`)**, a human-readable battle notation format designed for recording, editing, and sharing _Pokémon Champions_ matches.
+  - Supports the Champions EV scale (0–32 per stat, 66 total), Closed/Open Team Sheet (CTS/OTS) information asymmetry, and video timestamps (`@t=...ms`).
+  - See the full specification at `/docs/pbn-specification`.
+- **Import from Video (`/battle-record`)**:
+  - Added **Import from Video** on the Battle Record page to analyze battle recordings (MP4 / WebM / MOV) directly in the browser and automatically extract timestamped PBN logs.
+  - Review and edit extracted events while seeking the video to each timestamp, then apply the results directly to the battle record form.
+
+### ⚡ Performance Improvements
+
+- **Faster Team Loading (`api` / `db`)**: Co-located Vercel Functions with the database region (`bom1`), tuned `postgres.js` for serverless connection pooling, consolidated `GET /api/teams` into a single query, and added composite indexes on `teams` and `team_members`.
+
+### 🐛 Bug Fixes
+
+- **Team Builder (`team-builder`)**: Fixed an issue where a Pokémon's Ability was not locked when Mega Evolution was selected.

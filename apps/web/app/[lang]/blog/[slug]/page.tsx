@@ -20,6 +20,8 @@ export function generateStaticParams() {
   return Array.from(slugs).map((slug) => ({ slug }));
 }
 
+export const instant = false;
+
 function getPost(slug: string, locale: string) {
   return (
     allPosts.find((post) => post.slug === slug && post.locale === locale && isPostVisible(post)) ||

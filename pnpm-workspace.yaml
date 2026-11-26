@@ -5,12 +5,12 @@ packages:
 
 catalog:
   '@pkmn/sim': 0.11.0
-  '@types/node': 26.6.6
+  '@types/node': 26.6.7
   outdent: 0.8.0
-  oxfmt: 0.79.0
-  oxlint: 1.94.0
+  oxfmt: 0.80.0
+  oxlint: 1.95.0
   oxlint-plugin-eslint: 1.85.0
-  oxlint-tsgolint: 7.0.2007
+  oxlint-tsgolint: 7.0.2008
   ts-morph: 28.0.0
   typescript: 7.0.2
   vite-plugin-top-level-await: 1.6.0

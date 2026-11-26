@@ -44,8 +44,8 @@ import { useAuthSync } from "@/hooks/useAuthSync";
 import { TeamMergeDialog } from "@/components/client/TeamMergeDialog";
 import { AuthButton } from "@/components/client/AuthButton";
 import { Footer } from "@/components/client/Footer";
-import { LocalizedLink as Link } from "@/components/client/LocalizedLink";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { LangProvider, LocalizedLink as Link } from "@/components/client/LocalizedLink";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { supportedLanguageOptions } from "@/i18n/config";
 import { theme } from "@/theme/theme";
@@ -636,20 +636,13 @@ export function AppLayout({
   readonly lang: string;
 }>) {
   const router = useRouter();
-  const pathname = usePathname();
-  const params = useParams();
   const { i18n } = useTranslation();
-
-  const routeLang =
-    (params?.lang as string) ||
-    (pathname.split("/").filter(Boolean)[0] === "en" ? "en" : "ja") ||
-    lang;
 
   if (typeof window === "undefined" && i18n.resolvedLanguage !== lang) {
     void i18n.changeLanguage(lang);
   }
 
-  const activeLang = routeLang || i18n.resolvedLanguage || "en";
+  const activeLang = lang || i18n.resolvedLanguage || "en";
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [queryClient] = useState(
     () =>
@@ -667,10 +660,10 @@ export function AppLayout({
   );
 
   useEffect(() => {
-    if (routeLang && i18n.resolvedLanguage !== routeLang) {
-      void i18n.changeLanguage(routeLang);
+    if (lang && i18n.resolvedLanguage !== lang) {
+      void i18n.changeLanguage(lang);
     }
-  }, [routeLang, i18n]);
+  }, [lang, i18n]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.language, activeLang);
@@ -684,99 +677,102 @@ export function AppLayout({
     document.cookie = `${STORAGE_KEYS.language}=${nextLanguage}; path=/; max-age=31536000; SameSite=Lax`;
     document.documentElement.lang = nextLanguage;
 
+    const currentPath = window.location.pathname;
     const newPath =
-      pathname.replace(/^\/(?:en|ja)(?=\/|$)/, `/${nextLanguage}`) || `/${nextLanguage}`;
+      currentPath.replace(/^\/(?:en|ja)(?=\/|$)/, `/${nextLanguage}`) || `/${nextLanguage}`;
     router.push(newPath);
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme} defaultMode="system">
-        <CssBaseline />
-        <BugReportProvider>
-          <AuthSyncEffect />
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              minHeight: "100dvh",
-              height: "100dvh",
-              overflow: "hidden",
-              width: "100%",
-              bgcolor: "background.default",
-            }}
-          >
-            <ResponsiveAppBar
-              language={activeLang}
-              onLanguageChange={handleLanguageChange}
-              onOpenNav={() => setMobileNavOpen(true)}
-            />
+    <LangProvider lang={activeLang}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={theme} defaultMode="system">
+          <CssBaseline />
+          <BugReportProvider>
+            <AuthSyncEffect />
             <Box
               sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  md: `${SIDE_MENU_WIDTH}px minmax(0, 1fr)`,
-                },
-                flexGrow: 1,
-                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: "100dvh",
+                height: "100dvh",
                 overflow: "hidden",
+                width: "100%",
+                bgcolor: "background.default",
               }}
             >
-              {/* デスクトップ用サイドバー（md以上で表示） */}
-              <SurfaceCard
-                borderRadius={0}
+              <ResponsiveAppBar
+                language={activeLang}
+                onLanguageChange={handleLanguageChange}
+                onOpenNav={() => setMobileNavOpen(true)}
+              />
+              <Box
                 sx={{
-                  display: { xs: "none", md: "flex" },
-                  flexDirection: "row",
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: `${SIDE_MENU_WIDTH}px minmax(0, 1fr)`,
+                  },
+                  flexGrow: 1,
+                  minHeight: 0,
                   overflow: "hidden",
                 }}
               >
-                <Box sx={{ width: SIDE_MENU_WIDTH }}>
-                  <SideMenuContent />
-                </Box>
-              </SurfaceCard>
+                {/* デスクトップ用サイドバー（md以上で表示） */}
+                <SurfaceCard
+                  borderRadius={0}
+                  sx={{
+                    display: { xs: "none", md: "flex" },
+                    flexDirection: "row",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box sx={{ width: SIDE_MENU_WIDTH }}>
+                    <SideMenuContent />
+                  </Box>
+                </SurfaceCard>
 
-              {/* モバイル用サイドバー（md以上ではDrawerごと非表示） */}
-              <Drawer
-                open={mobileNavOpen}
-                onClose={() => setMobileNavOpen(false)}
-                sx={{
-                  display: { xs: "block", md: "none" },
-                  "& .MuiDrawer-paper": {
-                    width: "min(92vw, 320px)",
-                    boxSizing: "border-box",
+                {/* モバイル用サイドバー（md以上ではDrawerごと非表示） */}
+                <Drawer
+                  open={mobileNavOpen}
+                  onClose={() => setMobileNavOpen(false)}
+                  sx={{
+                    display: { xs: "block", md: "none" },
+                    "& .MuiDrawer-paper": {
+                      width: "min(92vw, 320px)",
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                    },
+                  }}
+                >
+                  <MobileDrawerContent
+                    onClose={() => setMobileNavOpen(false)}
+                    language={activeLang}
+                    onLanguageChange={handleLanguageChange}
+                  />
+                </Drawer>
+
+                <Box
+                  component="main"
+                  sx={{
                     display: "flex",
                     flexDirection: "column",
-                  },
-                }}
-              >
-                <MobileDrawerContent
-                  onClose={() => setMobileNavOpen(false)}
-                  language={activeLang}
-                  onLanguageChange={handleLanguageChange}
-                />
-              </Drawer>
-
-              <Box
-                component="main"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  minHeight: "100%",
-                  minWidth: "100%",
-                  margin: "0 auto",
-                  overflowY: "auto",
-                }}
-              >
-                <Box sx={{ flexGrow: 1 }}>{children}</Box>
+                    minHeight: "100%",
+                    minWidth: "100%",
+                    margin: "0 auto",
+                    overflowY: "auto",
+                  }}
+                >
+                  <Box sx={{ flexGrow: 1 }}>{children}</Box>
+                </Box>
               </Box>
             </Box>
-          </Box>
-          <Footer />
-          <BugReportDialog />
-        </BugReportProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+            <Footer />
+            <BugReportDialog />
+          </BugReportProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </LangProvider>
   );
 }
