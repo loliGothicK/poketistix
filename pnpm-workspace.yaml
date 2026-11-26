@@ -5,7 +5,7 @@ packages:
 
 catalog:
   '@pkmn/sim': 0.11.0
-  '@types/node': 26.6.7
+  '@types/node': 26.6.11
   outdent: 0.8.0
   oxfmt: 0.80.0
   oxlint: 1.95.0
